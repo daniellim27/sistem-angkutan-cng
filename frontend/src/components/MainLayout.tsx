@@ -10,21 +10,21 @@ const MainLayout = () => {
 
   const getPageTitle = () => {
     const path = location.pathname;
-    if (path === "/") return "Dashboard";
-    if (path.startsWith("/trips")) return "Manajemen Trips";
-    if (path.startsWith("/delivery-orders")) return "Delivery Orders";
-    if (path.startsWith("/big-dos")) return "Big Delivery Orders";
-    if (path.startsWith("/vehicles/tires")) return "Manajemen Ban";
-    if (path.startsWith("/vehicles")) return "Manajemen Kendaraan";
-    if (path.startsWith("/drivers")) return "Manajemen Supir";
-    if (path.startsWith("/stock")) return "Manajemen Stok";
-    if (path.startsWith("/services")) return "Riwayat Servis";
-    if (path.startsWith("/cash")) return "Buku Kas";
-    if (path.startsWith("/ritase")) return "Dashboard Ritase";
-    if (path.startsWith("/buku-kas")) return "Buku Kas";
-    if (path.startsWith("/tempo")) return "Buku Tempo";
-    if (path.startsWith("/deposit-groups")) return "Pembayaran Deposit";
-    return "Dashboard";
+    if (path === "/") return "CNG Dashboard";
+    if (path.startsWith("/trips")) return "CNG Purchase Orders";
+    if (path.startsWith("/delivery-orders")) return "CNG Delivery Orders";
+    if (path.startsWith("/big-dos")) return "CNG Big Delivery Orders";
+    if (path.startsWith("/vehicles/tires")) return "CNG Tire Management";
+    if (path.startsWith("/vehicles")) return "CNG Fleet Management";
+    if (path.startsWith("/drivers")) return "CNG Driver Management";
+    if (path.startsWith("/stock")) return "CNG Inventory Management";
+    if (path.startsWith("/services")) return "CNG Service History";
+    if (path.startsWith("/cash")) return "CNG Cash Book";
+    if (path.startsWith("/ritase")) return "CNG Ritase Dashboard";
+    if (path.startsWith("/buku-kas")) return "CNG Cash Book";
+    if (path.startsWith("/tempo")) return "CNG Credit Book";
+    if (path.startsWith("/deposit-groups")) return "CNG Deposit Payments";
+    return "CNG Dashboard";
   };
 
   const isActiveLink = (path: string) => {
@@ -52,7 +52,7 @@ const MainLayout = () => {
               sidebarMinimized ? "hidden" : "block"
             }`}
           >
-            Angkutan Sys
+            CNG Angkutan Sys
           </h1>
           <button
             onClick={toggleSidebar}
@@ -102,11 +102,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Dashboard"
+                title="CNG Dashboard"
               >
                 <span className="text-xl mr-3">📊</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Dashboard
+                  CNG Dashboard
                 </span>
               </Link>
             </li>
@@ -114,7 +114,7 @@ const MainLayout = () => {
             {/* Reports & Analytics Section */}
             <li className="mb-2 mt-6">
               <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                Laporan & Analitik
+                Laporan & Analitik CNG
               </div>
             </li>
             <li className="mb-4">
@@ -126,7 +126,7 @@ const MainLayout = () => {
                     : ""
                 }`}
               >
-                📊 Dashboard Ritase
+                📊 CNG Ritase Dashboard
               </Link>
             </li>
 
@@ -139,7 +139,7 @@ const MainLayout = () => {
                     : ""
                 }`}
               >
-                💰 Payments
+                💰 CNG Payments
               </Link>
             </li>
 
@@ -152,7 +152,7 @@ const MainLayout = () => {
                     : ""
                 }`}
               >
-                📩 Deposit Payments
+                📩 CNG Deposit Payments
               </Link>
             </li>
 
@@ -160,7 +160,7 @@ const MainLayout = () => {
             {!sidebarMinimized && (
               <li className="mb-2">
                 <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                  Operasional
+                  Operasi CNG
                 </div>
               </li>
             )}
@@ -172,11 +172,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Purchase Orders"
+                title="CNG Purchase Orders"
               >
                 <span className="text-xl mr-3">📋</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Purchase Orders
+                  CNG Purchase Orders
                 </span>
               </Link>
             </li>
@@ -188,11 +188,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Delivery Orders"
+                title="CNG Delivery Orders"
               >
                 <span className="text-xl mr-3">🚚</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Delivery Orders
+                  CNG Delivery Orders
                 </span>
               </Link>
             </li>
@@ -205,11 +205,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Big Delivery Orders"
+                title="CNG Big Delivery Orders"
               >
                 <span className="text-xl mr-3">🚛</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Big DOs
+                  CNG Big DOs
                 </span>
               </Link>
             </li>
@@ -218,7 +218,7 @@ const MainLayout = () => {
             {!sidebarMinimized && (
               <li className="mb-2 mt-6">
                 <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                  Manajemen Armada
+                  Manajemen Armada CNG
                 </div>
               </li>
             )}
@@ -231,11 +231,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Manajemen Kendaraan"
+                title="CNG Fleet Management"
               >
                 <span className="text-xl mr-3">🚛</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Manajemen Kendaraan
+                  CNG Fleet Management
                 </span>
               </Link>
             </li>
@@ -247,11 +247,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Manajemen Ban"
+                title="CNG Tire Management"
               >
                 <span className="text-xl mr-3">🛞</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Manajemen Ban
+                  CNG Tire Management
                 </span>
               </Link>
             </li>
@@ -263,11 +263,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Manajemen Supir"
+                title="CNG Driver Management"
               >
                 <span className="text-xl mr-3">👨‍💼</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Manajemen Supir
+                  CNG Driver Management
                 </span>
               </Link>
             </li>
@@ -279,11 +279,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Riwayat Servis"
+                title="CNG Service History"
               >
                 <span className="text-xl mr-3">🔧</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Riwayat Servis
+                  CNG Service History
                 </span>
               </Link>
             </li>
@@ -292,7 +292,7 @@ const MainLayout = () => {
             {!sidebarMinimized && (
               <li className="mb-2 mt-6">
                 <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                  Inventaris
+                  Inventaris CNG
                 </div>
               </li>
             )}
@@ -304,11 +304,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Manajemen Stok"
+                title="CNG Inventory Management"
               >
                 <span className="text-xl mr-3">📦</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Manajemen Stok
+                  CNG Inventory Management
                 </span>
               </Link>
             </li>
@@ -320,11 +320,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Inventaris Ban"
+                title="CNG Tire Inventory"
               >
                 <span className="text-xl mr-3">🛞</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Inventaris Ban
+                  CNG Tire Inventory
                 </span>
               </Link>
             </li>
@@ -336,11 +336,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Ban Bekas"
+                title="CNG Used Tires"
               >
                 <span className="text-xl mr-3">🔄</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Ban Bekas
+                  CNG Used Tires
                 </span>
               </Link>
             </li>
@@ -349,7 +349,7 @@ const MainLayout = () => {
             {!sidebarMinimized && (
               <li className="mb-2 mt-6">
                 <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                  Akuntansi
+                  Keuangan CNG
                 </div>
               </li>
             )}
@@ -361,11 +361,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Buku Kas"
+                title="CNG Cash Book"
               >
                 <span className="text-xl mr-3">💰</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Buku Kas
+                  CNG Cash Book
                 </span>
               </Link>
             </li>
@@ -377,11 +377,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Buku Tempo"
+                title="CNG Credit Book"
               >
                 <span className="text-xl mr-3">🤬</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Buku Tempo
+                  CNG Credit Book
                 </span>
               </Link>
             </li>
