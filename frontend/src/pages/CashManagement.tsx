@@ -25,6 +25,11 @@ interface CashTransaction {
   account: string;
   attachment_urls?: Array<string>;
   no_nota?: string[];
+  // SPBG-specific fields
+  spbg_location?: string;
+  gas_volume_m3?: number;
+  calculation_method?: 'jisdor' | 'fixed';
+  jisdor_rate?: number;
 }
 
 interface CashSummary {
@@ -32,6 +37,45 @@ interface CashSummary {
   total_kredit: number;
   saldo: number;
 }
+
+// Enhanced CNG and SPBG transaction categories
+const cngCategories = [
+  { id: 'cng_fuel', name: 'CNG Fuel Purchase', type: 'expense' },
+  { id: 'cng_deposit', name: 'SPBG Deposit', type: 'expense' },
+  { id: 'cng_refund', name: 'SPBG Refund', type: 'income' },
+  { id: 'cng_maintenance', name: 'CNG Equipment Maintenance', type: 'expense' },
+  { id: 'cng_insurance', name: 'CNG Insurance', type: 'expense' },
+  // New SPBG-specific categories
+  { id: 'spbg_gas_filling', name: 'SPBG Gas Filling', type: 'expense' },
+  { id: 'spbg_deposit_topup', name: 'SPBG Deposit Top-up', type: 'expense' },
+  { id: 'spbg_deposit_withdrawal', name: 'SPBG Deposit Withdrawal', type: 'income' },
+  { id: 'spbg_jisdor_calculation', name: 'SPBG JISDOR Rate Calculation', type: 'expense' },
+  { id: 'spbg_fixed_rate', name: 'SPBG Fixed Rate Calculation', type: 'expense' }
+];
+
+// SPBG locations for filtering
+const spbgLocations = [
+  { value: 'jakarta', label: 'Jakarta' },
+  { value: 'bandung', label: 'Bandung' },
+  { value: 'surabaya', label: 'Surabaya' },
+  { value: 'semarang', label: 'Semarang' },
+  { value: 'yogyakarta', label: 'Yogyakarta' },
+  { value: 'medan', label: 'Medan' },
+  { value: 'palembang', label: 'Palembang' },
+  { value: 'makassar', label: 'Makassar' }
+];
+
+// Helper functions
+const isSPBGTransaction = (transaction: CashTransaction) => {
+  if (!transaction.category_id) return false;
+  const category = cngCategories.find(c => c.id === transaction.category_id?.toString());
+  return category?.id?.startsWith('spbg') || false;
+};
+
+const getSPBGLocationLabel = (value: string) => {
+  const location = spbgLocations.find(loc => loc.value === value);
+  return location ? location.label : value;
+};
 
 const CashManagementPage = () => {
   const [transactions, setTransactions] = useState<CashTransaction[]>([]);
@@ -53,7 +97,9 @@ const CashManagementPage = () => {
     date_to: '',
     search: '',
     account: 'All',
-    cng_only: false // New filter for CNG transactions
+    cng_only: false, // Existing CNG filter
+    spbg_only: false, // New filter for SPBG transactions only
+    spbg_location: '' // Filter by specific SPBG location
   });
   
   const [pagination, setPagination] = useState({
@@ -74,19 +120,15 @@ const CashManagementPage = () => {
     account: 'General',
     transaction_date: new Date().toISOString().split('T')[0],
     no_nota: [] as string[],
+    // SPBG-specific form fields
+    spbg_location: '',
+    gas_volume_m3: '',
+    calculation_method: 'jisdor' as 'jisdor' | 'fixed',
+    jisdor_rate: ''
   });
 
   const [accounts, setAccounts] = useState<string[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string>(formData.account);
-
-  // CNG-specific transaction categories
-  const cngCategories = [
-    { id: 'cng_fuel', name: 'CNG Fuel Purchase', type: 'expense' },
-    { id: 'cng_deposit', name: 'SPBG Deposit', type: 'expense' },
-    { id: 'cng_refund', name: 'SPBG Refund', type: 'income' },
-    { id: 'cng_maintenance', name: 'CNG Equipment Maintenance', type: 'expense' },
-    { id: 'cng_insurance', name: 'CNG Insurance', type: 'expense' }
-  ];
 
   useEffect(() => {
     const fetchAccounts = async () => {
@@ -230,7 +272,12 @@ const CashManagementPage = () => {
       reference_number: transaction.reference_number || '',
       transaction_date: transaction.transaction_date,
       account: transaction.account || 'General',
-      no_nota: transaction.no_nota || ['']
+      no_nota: transaction.no_nota || [''],
+      // Include SPBG fields
+      spbg_location: transaction.spbg_location || '',
+      gas_volume_m3: transaction.gas_volume_m3?.toString() || '',
+      calculation_method: transaction.calculation_method || 'jisdor',
+      jisdor_rate: transaction.jisdor_rate?.toString() || ''
     });
     setAttachmentFiles([]);
     setShowModal(true);
@@ -259,7 +306,12 @@ const CashManagementPage = () => {
       reference_number: '',
       account: 'General',
       transaction_date: new Date().toISOString().split('T')[0],
-      no_nota: ['']
+      no_nota: [''],
+      // Reset SPBG fields
+      spbg_location: '',
+      gas_volume_m3: '',
+      calculation_method: 'jisdor',
+      jisdor_rate: ''
     });
     setAttachmentFiles([]);
   };
@@ -280,12 +332,12 @@ const CashManagementPage = () => {
     });
   };
 
-  if (loading) return <div className="text-center p-8">Loading CNG cash transactions...</div>;
+  if (loading) return <div className="text-center p-8">Loading cash transactions...</div>;
 
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">CNG Cash Book</h1>
+        <h1 className="text-3xl font-bold text-gray-800">Cash Book</h1>
         <button
           onClick={() => {
             resetForm();
@@ -294,7 +346,7 @@ const CashManagementPage = () => {
           }}
           className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
         >
-          + Add CNG Transaction
+          + Add Transaction
         </button>
       </div>
 
@@ -306,21 +358,21 @@ const CashManagementPage = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-green-500">
-          <h3 className="text-lg font-semibold text-gray-700">Total CNG Debit</h3>
+          <h3 className="text-lg font-semibold text-gray-700">Total Debit</h3>
           <p className="text-2xl font-bold text-green-600">{formatCurrency(summary.total_debit)}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-red-500">
-          <h3 className="text-lg font-semibold text-gray-700">Total CNG Credit</h3>
+          <h3 className="text-lg font-semibold text-gray-700">Total Credit</h3>
           <p className="text-2xl font-bold text-red-600">{formatCurrency(summary.total_kredit)}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-blue-500">
-          <h3 className="text-lg font-semibold text-gray-700">CNG Balance</h3>
+          <h3 className="text-lg font-semibold text-gray-700">Balance</h3>
           <p className={`text-2xl font-bold ${summary.saldo >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
             {formatCurrency(summary.saldo)}
           </p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-gray-500">
-          <h3 className="text-lg font-semibold text-gray-700">Total CNG Transactions</h3>
+          <h3 className="text-lg font-semibold text-gray-700">Total Transactions</h3>
           <p className="text-2xl font-bold text-gray-600">{pagination.total}</p>
         </div>
       </div>
@@ -328,27 +380,27 @@ const CashManagementPage = () => {
       <div className="bg-white p-4 rounded-lg shadow mb-6">
         <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">CNG Type</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
             <select
               value={filters.transaction_type}
               onChange={(e) => setFilters(prev => ({ ...prev, transaction_type: e.target.value }))}
               className="w-full border border-gray-300 rounded-md px-3 py-2"
             >
-              <option value="">All CNG Types</option>
-              <option value="debit">CNG Debit</option>
-              <option value="kredit">CNG Credit</option>
+              <option value="">All Types</option>
+              <option value="debit">Debit</option>
+              <option value="kredit">Credit</option>
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              CNG Category
+              Category
             </label>
             <select
               value={filters.category_id}
               onChange={(e) => setFilters(prev => ({ ...prev, category_id: e.target.value }))}
               className="w-full border border-gray-300 rounded-md px-3 py-2"
             >
-              <option value="">Select CNG Category</option>
+              <option value="">Select Category</option>
               {categories.map(category => (
                   <option key={category.id} value={category.id}>
                     {category.category_name}
@@ -378,14 +430,14 @@ const CashManagementPage = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
             <input
               type="text"
-              placeholder="CNG description or reference..."
+              placeholder="Description or reference..."
               value={filters.search}
               onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
               className="w-full border border-gray-300 rounded-md px-3 py-2"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">CNG Account</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Account</label>
             <CreatableSelect
               value={filters.account === 'All' ? { label: 'All', value: 'All' } : { label: filters.account, value: filters.account }}
               options={[
@@ -404,8 +456,9 @@ const CashManagementPage = () => {
           </div>
         </div>
         
-        {/* CNG Filter */}
-        <div className="mt-4 flex items-center space-x-4">
+        {/* Enhanced Filter Section */}
+        <div className="mt-4 flex flex-wrap items-center gap-4">
+          {/* CNG Filter */}
           <label className="flex items-center">
             <input
               type="checkbox"
@@ -413,8 +466,35 @@ const CashManagementPage = () => {
               onChange={(e) => setFilters(prev => ({ ...prev, cng_only: e.target.checked }))}
               className="mr-2"
             />
-            CNG Transactions Only
+            <span className="text-sm text-gray-700">CNG Transactions Only</span>
           </label>
+
+          {/* SPBG Filter */}
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={filters.spbg_only}
+              onChange={(e) => setFilters(prev => ({ ...prev, spbg_only: e.target.checked }))}
+              className="mr-2"
+            />
+            <span className="text-sm text-gray-700">SPBG Transactions Only</span>
+          </label>
+
+          {/* SPBG Location Filter */}
+          {filters.spbg_only && (
+            <select
+              value={filters.spbg_location}
+              onChange={(e) => setFilters(prev => ({ ...prev, spbg_location: e.target.value }))}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+            >
+              <option value="">All SPBG Locations</option>
+              {spbgLocations.map(location => (
+                <option key={location.value} value={location.value}>
+                  {location.label}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         
         <div className="mt-4 flex gap-2">
@@ -427,19 +507,21 @@ const CashManagementPage = () => {
                 date_to: '',
                 search: '',
                 account: 'All',
-                cng_only: false
+                cng_only: false,
+                spbg_only: false,
+                spbg_location: ''
               });
               setPagination(prev => ({ ...prev, page: 1 }));
             }}
             className="bg-gray-500 hover:bg-gray-700 text-white px-4 py-2 rounded"
           >
-            Reset CNG Filter
+            Reset Filter
           </button>
         </div>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">CNG Account *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Account *</label>
         <CreatableSelect
           value={{ label: selectedAccount, value: selectedAccount }}
           options={accounts.map(account => ({ label: account, value: account }))}
@@ -462,128 +544,180 @@ const CashManagementPage = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  CNG Date
+                  Date
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  CNG Type
+                  Type
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  CNG Category
+                  Category
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  CNG Description
+                  Description
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  CNG Debit
+                  Debit
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  CNG Credit
+                  Credit
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  CNG Balance
+                  Balance
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  CNG Note No.
+                  Note No.
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  CNG Account
+                  Account
                 </th>
+                {/* SPBG-specific columns - only show when SPBG transactions exist */}
+                {transactions.some(isSPBGTransaction) && (
+                  <>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      SPBG Location
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Gas Volume
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Calculation
+                    </th>
+                  </>
+                )}
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  CNG Actions
+                  Actions
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {transactions.map((transaction) => (
-                <tr key={transaction.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatDate(transaction.transaction_date)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      transaction.transaction_type === 'debit' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {transaction.transaction_type === 'debit' ? 'Debit' : 'Kredit'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {transaction.category?.category_name || '-'}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900">
-                    <div>
-                      <div className="font-medium">{transaction.description}</div>
-                      {transaction.reference_number && (
-                        <div className="text-xs text-gray-500">Ref: {transaction.reference_number}</div>
-                      )}
-                       {transaction.attachment_urls && transaction.attachment_urls.length > 0 ? (
-                          <div className="space-y-1">
-                            {transaction.attachment_urls.map((url, index) => (
-                              <div key={index}>
-                                <a
-                                  href={`${process.env.REACT_APP_BACKEND_URL}/${url}`}
-                                  target="_blank"
-                                  className="text-blue-500 hover:underline"
-                                >
-                                  Nota {index + 1}
-                                </a>
-                              </div>
-                            ))}
-                          </div>
-                        ) : 'Tidak ada file'}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                    {transaction.transaction_type === 'debit' ? (
-                      <span className="text-green-600 font-medium">
-                        {formatCurrency(transaction.amount)}
+              {transactions.map((transaction) => {
+                const isSPBG = isSPBGTransaction(transaction);
+                return (
+                  <tr key={transaction.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {formatDate(transaction.transaction_date)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        transaction.transaction_type === 'debit' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {transaction.transaction_type === 'debit' ? 'Debit' : 'Credit'}
                       </span>
-                    ) : '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                    {transaction.transaction_type === 'kredit' ? (
-                      <span className="text-red-600 font-medium">
-                        {formatCurrency(transaction.amount)}
-                      </span>
-                    ) : '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium">
-                    {transaction.running_balance !== undefined ? (
-                      <span className={transaction.running_balance >= 0 ? 'text-blue-600' : 'text-red-600'}>
-                        {formatCurrency(transaction.running_balance)}
-                      </span>
-                    ) : '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {transaction.no_nota 
-                      ? Array.isArray(transaction.no_nota) 
-                        ? transaction.no_nota.join(', ') 
-                        : JSON.parse(transaction.no_nota).join(', ') 
-                      : '-'
-                    }
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {transaction.account}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                    <div className="flex justify-center space-x-2">
-                      <button
-                        onClick={() => handleEdit(transaction)}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(transaction.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Hapus
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {transaction.category?.category_name || '-'}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      <div>
+                        <div className="font-medium">{transaction.description}</div>
+                        {transaction.reference_number && (
+                          <div className="text-xs text-gray-500">Ref: {transaction.reference_number}</div>
+                        )}
+                         {transaction.attachment_urls && transaction.attachment_urls.length > 0 ? (
+                            <div className="space-y-1">
+                              {transaction.attachment_urls.map((url, index) => (
+                                <div key={index}>
+                                  <a
+                                    href={`${process.env.REACT_APP_BACKEND_URL}/${url}`}
+                                    target="_blank"
+                                    className="text-blue-500 hover:underline"
+                                  >
+                                    Nota {index + 1}
+                                  </a>
+                                </div>
+                              ))}
+                            </div>
+                          ) : 'Tidak ada file'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                      {transaction.transaction_type === 'debit' ? (
+                        <span className="text-green-600 font-medium">
+                          {formatCurrency(transaction.amount)}
+                        </span>
+                      ) : '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                      {transaction.transaction_type === 'kredit' ? (
+                        <span className="text-red-600 font-medium">
+                          {formatCurrency(transaction.amount)}
+                        </span>
+                      ) : '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium">
+                      {transaction.running_balance !== undefined ? (
+                        <span className={transaction.running_balance >= 0 ? 'text-blue-600' : 'text-red-600'}>
+                          {formatCurrency(transaction.running_balance)}
+                        </span>
+                      ) : '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {transaction.no_nota 
+                        ? Array.isArray(transaction.no_nota) 
+                          ? transaction.no_nota.join(', ') 
+                          : JSON.parse(transaction.no_nota).join(', ') 
+                        : '-'
+                      }
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {transaction.account}
+                    </td>
+                    
+                    {/* SPBG-specific information - only show when SPBG transactions exist */}
+                    {transactions.some(isSPBGTransaction) && (
+                      <>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {isSPBG && transaction.spbg_location ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              {getSPBGLocationLabel(transaction.spbg_location)}
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {isSPBG && transaction.gas_volume_m3 ? (
+                            <span className="font-medium text-blue-600">
+                              {transaction.gas_volume_m3} m³
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {isSPBG && transaction.calculation_method ? (
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              transaction.calculation_method === 'jisdor' 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-purple-100 text-purple-800'
+                            }`}>
+                              {transaction.calculation_method === 'jisdor' ? 'JISDOR' : 'Fixed Rate'}
+                              {transaction.jisdor_rate && transaction.calculation_method === 'jisdor' && (
+                                <span className="ml-1">({transaction.jisdor_rate})</span>
+                              )}
+                            </span>
+                          ) : '-'}
+                        </td>
+                      </>
+                    )}
+                    
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                      <div className="flex justify-center space-x-2">
+                        <button
+                          onClick={() => handleEdit(transaction)}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(transaction.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

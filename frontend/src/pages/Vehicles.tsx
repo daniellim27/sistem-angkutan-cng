@@ -277,18 +277,18 @@ const VehiclesPage = () => {
     );
   };
 
-  if (loading) return <div className="text-center p-8">Loading CNG vehicles...</div>;
+  if (loading) return <div className="text-center p-8">Loading vehicles...</div>;
   if (error) return <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">{error}</div>;
 
   return (
     <div className="container mx-auto px-4 py-6">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">CNG Fleet Management</h1>
+        <h1 className="text-3xl font-bold text-gray-800">Fleet Management</h1>
         <div className="flex space-x-2">
           <Link to="/vehicles/create">
             <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow-md transition duration-200">
-              + Add CNG Vehicle
+              + Add Vehicle
             </button>
           </Link>
         </div>
@@ -300,13 +300,13 @@ const VehiclesPage = () => {
           {/* Search */}
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Search CNG Vehicles
+              Search Vehicles
             </label>
             <input
               type="text"
               value={searchTerm}
               onChange={handleSearchChange}
-              placeholder="Search CNG vehicles by license plate, type, or capacity..."
+              placeholder="Search vehicles by license plate, type, or capacity..."
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
@@ -314,17 +314,17 @@ const VehiclesPage = () => {
           {/* Status Filter */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Filter by CNG Status
+              Filter by Status
             </label>
             <select
               value={statusFilter}
               onChange={handleStatusFilterChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="all">All CNG Statuses</option>
-              <option value="available">CNG Available</option>
-              <option value="in_use">CNG In Use</option>
-              <option value="maintenance">CNG Maintenance</option>
+              <option value="all">All Statuses</option>
+              <option value="available">Available</option>
+              <option value="in_use">In Use</option>
+              <option value="maintenance">Maintenance</option>
             </select>
           </div>
         </div>
@@ -332,8 +332,8 @@ const VehiclesPage = () => {
         {/* Filter Summary */}
         <div className="mt-3 text-sm text-gray-600">
           {filteredVehicles.length === allVehicles.length 
-            ? `Showing all ${allVehicles.length} CNG vehicles`
-            : `Found ${filteredVehicles.length} of ${allVehicles.length} CNG vehicles`
+            ? `Showing all ${allVehicles.length} vehicles`
+            : `Found ${filteredVehicles.length} of ${allVehicles.length} vehicles`
           }
           {searchTerm && ` matching "${searchTerm}"`}
           {statusFilter !== 'all' && ` with status "${statusFilter}"`}
@@ -355,13 +355,13 @@ const VehiclesPage = () => {
                     {vehicle.status.replace('_', ' ')}
                   </span>
                 </div>
-                <p className="text-sm text-gray-600">CNG {vehicle.type} - {vehicle.capacity ? parseInt(vehicle.capacity).toLocaleString('id-ID') : '-'} kg</p>
+                <p className="text-sm text-gray-600">{vehicle.type} - {vehicle.capacity ? parseInt(vehicle.capacity).toLocaleString('id-ID') : '-'} kg</p>
 
                 <hr className="my-4"/>
 
                 <div className="mb-4">
                   <div className="flex justify-between items-start">
-                    <h3 className="font-semibold text-gray-700 mb-2">CNG Driver Information</h3>
+                    <h3 className="font-semibold text-gray-700 mb-2">Driver Information</h3>
                     <button 
                       onClick={() => handleOpenModal(vehicle)}
                       className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-1 px-2 rounded"
@@ -386,19 +386,19 @@ const VehiclesPage = () => {
                       </span>
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-400 italic mt-2">No CNG driver assigned</p>
+                    <p className="text-sm text-gray-400 italic mt-2">No driver assigned</p>
                   )}
                 </div>
 
                 <div className="mt-4">
-                  <h3 className="font-semibold text-gray-700 mb-2">CNG Service & Documents</h3>
+                  <h3 className="font-semibold text-gray-700 mb-2">Service & Documents</h3>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Last CNG Service:</span>
+                      <span className="text-gray-600">Last Service:</span>
                       <span className="font-medium text-gray-800">{formatDate(vehicle.last_service_date)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Next CNG Service Due:</span>
+                      <span className="text-gray-600">Next Service Due:</span>
                       <span className={`font-medium ${getDateColor(vehicle.next_service_due)}`}>{formatDate(vehicle.next_service_due)}</span>
                     </div>
                     <div className="flex justify-between">
@@ -419,29 +419,29 @@ const VehiclesPage = () => {
                   to={`/services/create?vehicleId=${vehicle.id}`} 
                   className="text-sm text-blue-600 hover:text-blue-900 font-medium"
                 >
-                  Add CNG Service
+                  Add Service
                 </Link>
                 <Link 
                   to={`/vehicles/${vehicle.id}/services`} 
                   className="text-sm text-gray-600 hover:text-gray-900 font-medium"
                 >
-                  CNG History
+                  History
                 </Link>
                 <Link 
                   to={`/vehicles/tires?vehicleId=${vehicle.id}`} 
                   className="text-sm text-green-600 hover:text-green-900 font-medium" 
-                  title="Kelola Ban CNG"
+                  title="Manage Tires"
                 >
-                  Manage CNG Tires
+                  Manage Tires
                 </Link>
                 <Link 
                   to={`/vehicles/edit/${vehicle.id}`} 
                   className="text-sm text-indigo-600 hover:text-indigo-900 font-medium"
                 >
-                  Edit CNG Vehicle
+                  Edit
                 </Link>
                 <button onClick={() => handleDelete(vehicle.id)} className="text-sm text-red-600 hover:text-red-900 font-medium">
-                  Delete CNG Vehicle
+                  Delete
                 </button>
               </div>
             </div>
@@ -449,8 +449,8 @@ const VehiclesPage = () => {
         ) : (
           <div className="col-span-1 md:col-span-2 xl:col-span-3 text-center py-10 text-gray-500">
             {filteredVehicles.length === 0 && allVehicles.length > 0
-              ? 'No CNG vehicles found matching your search criteria'
-              : 'Tidak ada data kendaraan CNG.'
+              ? 'No vehicles found matching your search criteria'
+              : 'No vehicles available.'
             }
           </div>
         )}

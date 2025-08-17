@@ -1,5 +1,5 @@
 // src/pages/DeliveryOrders.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import apiClient from "../api/axiosConfig";
 
@@ -40,6 +40,32 @@ interface DeliveryOrder {
   ongkosan?: number;
 }
 
+interface PurchaseOrder {
+  id: number;
+  po_number: string;
+  customer_name: string;
+  item_name: string;
+  total_quantity: number;
+  unit: string;
+  unit_price: string | null;
+  total_amount: string;
+  load_location: string | null;
+  unload_location: string | null;
+  order_date: string;
+  status: string;
+  notes: string | null;
+  remaining_quantity: number;
+  can_create_do: boolean;
+  fulfillment_status: string;
+  delivery_progress: {
+    total_deliveries: number;
+    completed_deliveries: number;
+    percentage: number;
+    delivered_units: number;
+    pending_units: number;
+  };
+}
+
 const DeliveryOrdersPage = () => {
   const [searchParams] = useSearchParams();
   const [deliveryOrders, setDeliveryOrders] = useState<DeliveryOrder[]>([]);
@@ -54,7 +80,11 @@ const DeliveryOrdersPage = () => {
     completed: 0,
     cancelled: 0,
   });
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [showPODropdown, setShowPODropdown] = useState(false);
+  const [loadingPOs, setLoadingPOs] = useState(false);
   const navigate = useNavigate();
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const poId = searchParams.get("po_id");
 
@@ -76,6 +106,51 @@ const DeliveryOrdersPage = () => {
   useEffect(() => {
     fetchDeliveryOrders();
   }, [statusFilter, poId, searchQuery]); // Add searchQuery to dependencies
+
+  // Handle clicking outside dropdown to close it
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowPODropdown(false);
+      }
+    };
+
+    if (showPODropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showPODropdown]);
+
+  const fetchPurchaseOrders = async () => {
+    try {
+      setLoadingPOs(true);
+      const response = await apiClient.get("/purchase-orders?page=1&limit=20");
+      if (response.data.success) {
+        setPurchaseOrders(response.data.data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch purchase orders:", err);
+    } finally {
+      setLoadingPOs(false);
+    }
+  };
+
+  const handleAddDeliveryOrder = () => {
+    if (purchaseOrders.length === 0) {
+      fetchPurchaseOrders();
+    }
+    setShowPODropdown(!showPODropdown);
+  };
+
+  const handlePOClick = (po: PurchaseOrder) => {
+    if (po.can_create_do) {
+      navigate(`/trips/po/${po.id}/create-do`);
+    }
+    setShowPODropdown(false);
+  };
 
   const fetchDeliveryOrders = async () => {
     try {
@@ -159,24 +234,133 @@ const DeliveryOrdersPage = () => {
     <div>
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">CNG Delivery Orders</h1>
+          <h1 className="text-3xl font-bold text-gray-800">Delivery Orders</h1>
           {poId && (
             <p className="text-gray-600 mt-1">
-              Filtered by CNG Purchase Order ID: {poId}
+              Filtered by Purchase Order ID: {poId}
               <Link
                 to="/delivery-orders"
                 className="ml-2 text-blue-600 hover:text-blue-800"
               >
-                (Clear filter)
+                {/* (Clear filter) */}
               </Link>
             </p>
           )}
         </div>
-        <Link to="/trips">
-          <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-            ← Back to CNG Purchase Orders
-          </button>
-        </Link>
+        <div className="flex items-center space-x-3">
+          {/* Add Delivery Order Button with Dropdown */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={handleAddDeliveryOrder}
+              disabled={loadingPOs}
+              className="bg-green-500 hover:bg-green-700 disabled:bg-green-300 text-white font-bold py-2 px-4 rounded flex items-center"
+            >
+              {loadingPOs ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <span className="mr-2">+</span>
+                  Add Delivery Order
+                </>
+              )}
+            </button>
+            
+            {/* Purchase Orders Dropdown */}
+            {showPODropdown && (
+              <div className="absolute right-0 mt-2 w-96 bg-white border border-gray-300 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
+                <div className="p-3 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-800">Select Purchase Order</h3>
+                  <p className="text-sm text-gray-600">Choose a PO to create delivery orders from</p>
+                </div>
+                
+                {loadingPOs ? (
+                  <div className="p-4 text-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto"></div>
+                    <p className="text-sm text-gray-500 mt-2">Loading purchase orders...</p>
+                  </div>
+                ) : purchaseOrders.length === 0 ? (
+                  <div className="p-4 text-center text-gray-500">
+                    No purchase orders found
+                  </div>
+                ) : (
+                  <div className="p-2">
+                    {purchaseOrders.map((po) => (
+                      <div
+                        key={po.id}
+                        onClick={() => handlePOClick(po)}
+                        className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                          po.can_create_do
+                            ? 'hover:bg-blue-50 border border-gray-200 hover:border-blue-300'
+                            : 'bg-gray-100 border border-gray-300 cursor-not-allowed'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-2 mb-1">
+                              <span className="font-semibold text-gray-800">{po.po_number}</span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                po.can_create_do 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {po.can_create_do ? 'Available' : 'Complete'}
+                              </span>
+                            </div>
+                            <p className="text-sm font-medium text-gray-700">{po.customer_name}</p>
+                            <p className="text-sm text-gray-600">{po.item_name}</p>
+                          </div>
+                          <div className="text-right text-sm">
+                            {po.can_create_do ? (
+                              <div className="text-green-600 font-semibold">
+                                <div className="text-lg">{po.remaining_quantity}</div>
+                                <div className="text-xs">{po.unit} remaining</div>
+                              </div>
+                            ) : (
+                              <div className="text-gray-500">
+                                <div className="text-lg">0</div>
+                                <div className="text-xs">{po.unit} remaining</div>
+                              </div>
+                            )}
+                            <div className="text-gray-500 text-xs mt-1">
+                              {po.delivery_progress.total_deliveries} deliveries
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {po.can_create_do ? (
+                          <div className="text-xs text-blue-600 font-medium flex items-center">
+                            <span className="mr-1">✓</span>
+                            Can create delivery orders
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-500 flex items-center">
+                            <span className="mr-1">✗</span>
+                            All quantities fulfilled
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                <div className="p-3 border-t border-gray-200 bg-gray-50">
+                  <p className="text-xs text-gray-600 text-center">
+                    Only POs with remaining quantities can create delivery orders
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <Link to="/trips">
+            <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+              ← Back to Purchase Orders
+            </button>
+          </Link>
+        </div>
       </div>
 
       {/* Search and Status Filter */}
@@ -189,28 +373,28 @@ const DeliveryOrdersPage = () => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search CNG delivery orders by DO number, name, customer, or item..."
+            placeholder="Search delivery orders by DO number, name, customer, or item..."
             className="border border-gray-300 rounded-md px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Filter by CNG Status:
+            Filter by Status:
           </label>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="all">All CNG Statuses</option>
-            <option value="assigned">CNG Assigned</option>
-            <option value="otw_to_load_location">CNG On Way to Load</option>
-            <option value="at_load_location">CNG At Load Location</option>
-            <option value="otw_to_unload_location">CNG On Way to Unload</option>
-            <option value="at_unload_location">CNG At Unload Location</option>
-            <option value="otw_to_base">CNG Returning to Base</option>
-            <option value="completed">CNG Completed</option>
-            <option value="cancelled">CNG Cancelled</option>
+            <option value="all">All Statuses</option>
+            <option value="assigned">Assigned</option>
+            <option value="otw_to_load_location">On Way to Load</option>
+            <option value="at_load_location">At Load Location</option>
+            <option value="otw_to_unload_location">On Way to Unload</option>
+            <option value="at_unload_location">At Unload Location</option>
+            <option value="otw_to_base">Returning to Base</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
           </select>
         </div>
       </div>
@@ -218,25 +402,25 @@ const DeliveryOrdersPage = () => {
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700">Total CNG</h3>
+          <h3 className="text-lg font-semibold text-gray-700">Total</h3>
           <p className="text-2xl font-bold text-blue-600">{stats.total}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700">CNG Assigned</h3>
+          <h3 className="text-lg font-semibold text-gray-700">Assigned</h3>
           <p className="text-2xl font-bold text-yellow-600">{stats.assigned}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700">CNG In Progress</h3>
+          <h3 className="text-lg font-semibold text-gray-700">In Progress</h3>
           <p className="text-2xl font-bold text-blue-600">
             {stats.in_progress}
           </p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700">CNG Completed</h3>
+          <h3 className="text-lg font-semibold text-gray-700">Completed</h3>
           <p className="text-2xl font-bold text-green-600">{stats.completed}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700">CNG Cancelled</h3>
+          <h3 className="text-lg font-semibold text-gray-700">Cancelled</h3>
           <p className="text-2xl font-bold text-red-600">{stats.cancelled}</p>
         </div>
       </div>
@@ -247,37 +431,37 @@ const DeliveryOrdersPage = () => {
           <thead>
             <tr className="bg-gray-50 border-b-2 border-gray-200">
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                CNG DO Number
+                DO Number
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                CNG Name
+                Name
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                CNG PO Number
+                PO Number
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                CNG Customer
+                Customer
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                CNG Driver
+                Driver
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                CNG Vehicle
+                Vehicle
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                CNG Quantity & Unit
+                Quantity & Unit
               </th>
               <th className="px-4 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
-                CNG Status
+                Status
               </th>
               <th className="px-4 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">
-                CNG Total Amount
+                Total Amount
               </th>
               <th className="w-12 px-2 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
-                CNG Doc
+                Doc
               </th>
               <th className="w-16 px-2 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
-                CNG Actions
+                Actions
               </th>
             </tr>
           </thead>
@@ -557,7 +741,7 @@ const DeliveryOrdersPage = () => {
                                 navigate(`/delivery-orders/${dOrder.id}/edit`);
                               }}
                               className="inline-flex items-center justify-center w-7 h-7 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-all duration-200"
-                              title="Edit CNG Delivery Order"
+                              title="Edit Delivery Order"
                             >
                               <svg
                                 className="w-4 h-4"
@@ -617,7 +801,7 @@ const DeliveryOrdersPage = () => {
       {deliveryOrders.length > 0 && (
         <div className="mt-6 bg-white p-4 rounded-lg shadow">
           <h3 className="text-lg font-semibold text-gray-800 mb-3">
-            CNG Unit Distribution
+            Unit Distribution
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
             {(["kilogram", "ton", "kubik"] as const).map((unit) => {
