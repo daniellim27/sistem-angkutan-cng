@@ -159,10 +159,10 @@ const DeliveryOrdersPage = () => {
     <div>
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Delivery Orders</h1>
+          <h1 className="text-3xl font-bold text-gray-800">CNG Delivery Orders</h1>
           {poId && (
             <p className="text-gray-600 mt-1">
-              Filtered by Purchase Order ID: {poId}
+              Filtered by CNG Purchase Order ID: {poId}
               <Link
                 to="/delivery-orders"
                 className="ml-2 text-blue-600 hover:text-blue-800"
@@ -174,7 +174,7 @@ const DeliveryOrdersPage = () => {
         </div>
         <Link to="/trips">
           <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-            ← Back to Purchase Orders
+            ← Back to CNG Purchase Orders
           </button>
         </Link>
       </div>
@@ -189,28 +189,28 @@ const DeliveryOrdersPage = () => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by DO number, name, customer, or item..."
+            placeholder="Search CNG delivery orders by DO number, name, customer, or item..."
             className="border border-gray-300 rounded-md px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Filter by Status:
+            Filter by CNG Status:
           </label>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="all">All Status</option>
-            <option value="assigned">Assigned</option>
-            <option value="otw_to_load_location">On Way to Load</option>
-            <option value="at_load_location">At Load Location</option>
-            <option value="otw_to_unload_location">On Way to Unload</option>
-            <option value="at_unload_location">At Unload Location</option>
-            <option value="otw_to_base">Returning to Base</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
+            <option value="all">All CNG Statuses</option>
+            <option value="assigned">CNG Assigned</option>
+            <option value="otw_to_load_location">CNG On Way to Load</option>
+            <option value="at_load_location">CNG At Load Location</option>
+            <option value="otw_to_unload_location">CNG On Way to Unload</option>
+            <option value="at_unload_location">CNG At Unload Location</option>
+            <option value="otw_to_base">CNG Returning to Base</option>
+            <option value="completed">CNG Completed</option>
+            <option value="cancelled">CNG Cancelled</option>
           </select>
         </div>
       </div>
@@ -218,25 +218,25 @@ const DeliveryOrdersPage = () => {
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700">Total</h3>
+          <h3 className="text-lg font-semibold text-gray-700">Total CNG</h3>
           <p className="text-2xl font-bold text-blue-600">{stats.total}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700">Assigned</h3>
+          <h3 className="text-lg font-semibold text-gray-700">CNG Assigned</h3>
           <p className="text-2xl font-bold text-yellow-600">{stats.assigned}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700">In Progress</h3>
+          <h3 className="text-lg font-semibold text-gray-700">CNG In Progress</h3>
           <p className="text-2xl font-bold text-blue-600">
             {stats.in_progress}
           </p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700">Completed</h3>
+          <h3 className="text-lg font-semibold text-gray-700">CNG Completed</h3>
           <p className="text-2xl font-bold text-green-600">{stats.completed}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700">Cancelled</h3>
+          <h3 className="text-lg font-semibold text-gray-700">CNG Cancelled</h3>
           <p className="text-2xl font-bold text-red-600">{stats.cancelled}</p>
         </div>
       </div>
@@ -247,37 +247,37 @@ const DeliveryOrdersPage = () => {
           <thead>
             <tr className="bg-gray-50 border-b-2 border-gray-200">
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                DO Number
+                CNG DO Number
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Name
+                CNG Name
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                PO Number
+                CNG PO Number
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Customer
+                CNG Customer
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Driver
+                CNG Driver
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Vehicle
+                CNG Vehicle
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Quantity & Unit
+                CNG Quantity & Unit
               </th>
               <th className="px-4 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Status
+                CNG Status
               </th>
               <th className="px-4 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Total Amount
+                CNG Total Amount
               </th>
               <th className="w-12 px-2 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Doc
+                CNG Doc
               </th>
               <th className="w-16 px-2 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Actions
+                CNG Actions
               </th>
             </tr>
           </thead>
@@ -557,7 +557,7 @@ const DeliveryOrdersPage = () => {
                                 navigate(`/delivery-orders/${dOrder.id}/edit`);
                               }}
                               className="inline-flex items-center justify-center w-7 h-7 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-all duration-200"
-                              title="Edit Delivery Order"
+                              title="Edit CNG Delivery Order"
                             >
                               <svg
                                 className="w-4 h-4"
@@ -617,7 +617,7 @@ const DeliveryOrdersPage = () => {
       {deliveryOrders.length > 0 && (
         <div className="mt-6 bg-white p-4 rounded-lg shadow">
           <h3 className="text-lg font-semibold text-gray-800 mb-3">
-            Unit Distribution
+            CNG Unit Distribution
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
             {(["kilogram", "ton", "kubik"] as const).map((unit) => {

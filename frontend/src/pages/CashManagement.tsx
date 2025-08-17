@@ -52,7 +52,8 @@ const CashManagementPage = () => {
     date_from: '',
     date_to: '',
     search: '',
-    account: 'All'
+    account: 'All',
+    cng_only: false // New filter for CNG transactions
   });
   
   const [pagination, setPagination] = useState({
@@ -77,6 +78,15 @@ const CashManagementPage = () => {
 
   const [accounts, setAccounts] = useState<string[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string>(formData.account);
+
+  // CNG-specific transaction categories
+  const cngCategories = [
+    { id: 'cng_fuel', name: 'CNG Fuel Purchase', type: 'expense' },
+    { id: 'cng_deposit', name: 'SPBG Deposit', type: 'expense' },
+    { id: 'cng_refund', name: 'SPBG Refund', type: 'income' },
+    { id: 'cng_maintenance', name: 'CNG Equipment Maintenance', type: 'expense' },
+    { id: 'cng_insurance', name: 'CNG Insurance', type: 'expense' }
+  ];
 
   useEffect(() => {
     const fetchAccounts = async () => {
@@ -270,12 +280,12 @@ const CashManagementPage = () => {
     });
   };
 
-  if (loading) return <div className="text-center p-8">Loading cash transactions...</div>;
+  if (loading) return <div className="text-center p-8">Loading CNG cash transactions...</div>;
 
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Buku Kas</h1>
+        <h1 className="text-3xl font-bold text-gray-800">CNG Cash Book</h1>
         <button
           onClick={() => {
             resetForm();
@@ -284,7 +294,7 @@ const CashManagementPage = () => {
           }}
           className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
         >
-          + Tambah Transaksi
+          + Add CNG Transaction
         </button>
       </div>
 
@@ -296,49 +306,49 @@ const CashManagementPage = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-green-500">
-          <h3 className="text-lg font-semibold text-gray-700">Total Debit</h3>
+          <h3 className="text-lg font-semibold text-gray-700">Total CNG Debit</h3>
           <p className="text-2xl font-bold text-green-600">{formatCurrency(summary.total_debit)}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-red-500">
-          <h3 className="text-lg font-semibold text-gray-700">Total Kredit</h3>
+          <h3 className="text-lg font-semibold text-gray-700">Total CNG Credit</h3>
           <p className="text-2xl font-bold text-red-600">{formatCurrency(summary.total_kredit)}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-blue-500">
-          <h3 className="text-lg font-semibold text-gray-700">Saldo</h3>
+          <h3 className="text-lg font-semibold text-gray-700">CNG Balance</h3>
           <p className={`text-2xl font-bold ${summary.saldo >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
             {formatCurrency(summary.saldo)}
           </p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-gray-500">
-          <h3 className="text-lg font-semibold text-gray-700">Total Transaksi</h3>
+          <h3 className="text-lg font-semibold text-gray-700">Total CNG Transactions</h3>
           <p className="text-2xl font-bold text-gray-600">{pagination.total}</p>
         </div>
       </div>
 
       <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tipe</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">CNG Type</label>
             <select
               value={filters.transaction_type}
               onChange={(e) => setFilters(prev => ({ ...prev, transaction_type: e.target.value }))}
               className="w-full border border-gray-300 rounded-md px-3 py-2"
             >
-              <option value="">Semua Tipe</option>
-              <option value="debit">Debit</option>
-              <option value="kredit">Kredit</option>
+              <option value="">All CNG Types</option>
+              <option value="debit">CNG Debit</option>
+              <option value="kredit">CNG Credit</option>
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Kategori
+              CNG Category
             </label>
             <select
               value={filters.category_id}
               onChange={(e) => setFilters(prev => ({ ...prev, category_id: e.target.value }))}
               className="w-full border border-gray-300 rounded-md px-3 py-2"
             >
-              <option value="">Pilih Kategori</option>
+              <option value="">Select CNG Category</option>
               {categories.map(category => (
                   <option key={category.id} value={category.id}>
                     {category.category_name}
@@ -347,7 +357,7 @@ const CashManagementPage = () => {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Dari Tanggal</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
             <input
               type="date"
               value={filters.date_from}
@@ -356,7 +366,7 @@ const CashManagementPage = () => {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Sampai Tanggal</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
             <input
               type="date"
               value={filters.date_to}
@@ -365,18 +375,17 @@ const CashManagementPage = () => {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Cari</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
             <input
               type="text"
-              placeholder="Deskripsi atau referensi..."
+              placeholder="CNG description or reference..."
               value={filters.search}
               onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
               className="w-full border border-gray-300 rounded-md px-3 py-2"
             />
           </div>
-          {/* Filter Dropdown for Akun */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Akun</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">CNG Account</label>
             <CreatableSelect
               value={filters.account === 'All' ? { label: 'All', value: 'All' } : { label: filters.account, value: filters.account }}
               options={[
@@ -394,6 +403,20 @@ const CashManagementPage = () => {
             />
           </div>
         </div>
+        
+        {/* CNG Filter */}
+        <div className="mt-4 flex items-center space-x-4">
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={filters.cng_only}
+              onChange={(e) => setFilters(prev => ({ ...prev, cng_only: e.target.checked }))}
+              className="mr-2"
+            />
+            CNG Transactions Only
+          </label>
+        </div>
+        
         <div className="mt-4 flex gap-2">
           <button
             onClick={() => {
@@ -403,19 +426,20 @@ const CashManagementPage = () => {
                 date_from: '',
                 date_to: '',
                 search: '',
-                account: 'All'
+                account: 'All',
+                cng_only: false
               });
               setPagination(prev => ({ ...prev, page: 1 }));
             }}
             className="bg-gray-500 hover:bg-gray-700 text-white px-4 py-2 rounded"
           >
-            Reset Filter
+            Reset CNG Filter
           </button>
         </div>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Akun *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">CNG Account *</label>
         <CreatableSelect
           value={{ label: selectedAccount, value: selectedAccount }}
           options={accounts.map(account => ({ label: account, value: account }))}
@@ -438,34 +462,34 @@ const CashManagementPage = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Tanggal
+                  CNG Date
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Tipe
+                  CNG Type
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Kategori
+                  CNG Category
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Deskripsi
+                  CNG Description
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Debit
+                  CNG Debit
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Kredit
+                  CNG Credit
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Saldo
+                  CNG Balance
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  No. Nota
+                  CNG Note No.
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Akun
+                  CNG Account
                 </th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Aksi
+                  CNG Actions
                 </th>
               </tr>
             </thead>

@@ -81,7 +81,7 @@ const AssignDriverModal: React.FC<Props> = ({ isOpen, onClose, vehicle, onSucces
 
   const handleAssign = async () => {
     if (!selectedDriver) {
-      alert('Please select a driver to assign.');
+      alert('Please select a CNG driver to assign.');
       return;
     }
     try {
@@ -102,7 +102,7 @@ const AssignDriverModal: React.FC<Props> = ({ isOpen, onClose, vehicle, onSucces
       onSuccess();
       onClose();
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || 'Failed to assign driver.';
+      const errorMessage = err.response?.data?.message || 'Failed to assign CNG driver.';
       alert(errorMessage);
     } finally {
       setLoading(false);
@@ -110,7 +110,7 @@ const AssignDriverModal: React.FC<Props> = ({ isOpen, onClose, vehicle, onSucces
   };
 
   const handleRemove = async () => {
-    if (window.confirm('Are you sure you want to remove the driver from this vehicle?')) {
+    if (window.confirm('Are you sure you want to remove the CNG driver from this vehicle?')) {
       try {
         setLoading(true);
         await apiClient.patch(`/vehicles/${vehicle.id}/assign-driver`, { driver_id: null });
@@ -129,7 +129,7 @@ const AssignDriverModal: React.FC<Props> = ({ isOpen, onClose, vehicle, onSucces
         onSuccess();
         onClose();
       } catch (err: any) {
-        const errorMessage = err.response?.data?.message || 'Failed to remove driver.';
+        const errorMessage = err.response?.data?.message || 'Failed to remove CNG driver.';
         alert(errorMessage);
       } finally {
         setLoading(false);
@@ -142,10 +142,10 @@ const AssignDriverModal: React.FC<Props> = ({ isOpen, onClose, vehicle, onSucces
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
       <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
-        <h2 className="text-2xl font-bold mb-4">Assign Driver for {vehicle.license_plate}</h2>
+        <h2 className="text-2xl font-bold mb-4">Assign CNG Driver for {vehicle.license_plate}</h2>
         
         <div className="mb-4">
-          <h3 className="font-semibold">Current Driver:</h3>
+          <h3 className="font-semibold">Current CNG Driver:</h3>
           {vehicle.driver_name ? (
             <div className="flex items-center justify-between mt-2">
               <p className="text-gray-800">{vehicle.driver_name}</p>
@@ -154,14 +154,14 @@ const AssignDriverModal: React.FC<Props> = ({ isOpen, onClose, vehicle, onSucces
                 disabled={!canRemoveDriver || loading}
                 className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded text-sm disabled:bg-gray-400"
               >
-                Remove
+                Remove CNG Driver
               </button>
             </div>
           ) : (
-            <p className="text-gray-500 italic mt-2">No driver assigned</p>
+            <p className="text-gray-500 italic mt-2">No CNG driver assigned</p>
           )}
           {!canRemoveDriver && vehicle.driver_name && (
-            <p className="text-xs text-red-600 mt-1">Cannot remove driver while vehicle is in use.</p>
+            <p className="text-xs text-red-600 mt-1">Cannot remove CNG driver while vehicle is in use.</p>
           )}
         </div>
 
@@ -169,9 +169,9 @@ const AssignDriverModal: React.FC<Props> = ({ isOpen, onClose, vehicle, onSucces
 
         <div className="mb-4">
           <label htmlFor="driver-select" className="block text-sm font-medium text-gray-700 mb-2">
-            Assign a New Driver
+            Assign a New CNG Driver
           </label>
-          {loading && <p>Loading drivers...</p>}
+          {loading && <p>Loading CNG drivers...</p>}
           {error && <p className="text-red-500">{error}</p>}
           {!loading && !error && (
             <>
@@ -182,7 +182,7 @@ const AssignDriverModal: React.FC<Props> = ({ isOpen, onClose, vehicle, onSucces
                 className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
                 disabled={loading || availableDrivers.length === 0}
               >
-                <option value="">-- Select an available driver --</option>
+                <option value="">-- Select an available CNG driver --</option>
                 {availableDrivers.map((driver) => (
                   <option key={driver.id} value={driver.id}>
                     {driver.name}
@@ -191,7 +191,7 @@ const AssignDriverModal: React.FC<Props> = ({ isOpen, onClose, vehicle, onSucces
               </select>
               {availableDrivers.length === 0 && (
                 <p className="text-sm text-gray-500 mt-2">
-                  No available drivers found. All drivers may be currently assigned to vehicles.
+                  No available CNG drivers found. All drivers may be currently assigned to vehicles.
                 </p>
               )}
             </>
@@ -210,7 +210,7 @@ const AssignDriverModal: React.FC<Props> = ({ isOpen, onClose, vehicle, onSucces
             disabled={!selectedDriver || loading}
             className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400"
           >
-            {loading ? 'Saving...' : 'Save Assignment'}
+            {loading ? 'Saving...' : 'Save CNG Assignment'}
           </button>
         </div>
       </div>
