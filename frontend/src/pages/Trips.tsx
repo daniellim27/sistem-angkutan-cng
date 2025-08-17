@@ -209,17 +209,17 @@ const TripsPage = () => {
   };
 
   if (loading && purchaseOrders.length === 0)
-    return <div className="text-center p-8">Loading CNG purchase orders...</div>;
+    return <div className="text-center p-8">Loading purchase orders...</div>;
   if (error)
     return <div className="bg-red-100 text-red-700 p-4 rounded">{error}</div>;
 
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">CNG Purchase Orders</h1>
+        <h1 className="text-3xl font-bold text-gray-800">Purchase Orders</h1>
         <Link to="/trips/create-po">
           <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-            + Create New CNG Purchase Order
+            + Create New Purchase Order
           </button>
         </Link>
       </div>
@@ -227,18 +227,18 @@ const TripsPage = () => {
       {stats.active + stats.completed + stats.cancelled > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold text-gray-700">Total CNG PO</h3>
+            <h3 className="text-lg font-semibold text-gray-700">Total PO</h3>
             <p className="text-2xl font-bold text-blue-600">
               {stats.active + stats.completed + stats.cancelled}
             </p>
           </div>
           <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold text-gray-700">Active CNG POs</h3>
+            <h3 className="text-lg font-semibold text-gray-700">Active POs</h3>
             <p className="text-2xl font-bold text-yellow-600">{stats.active}</p>
           </div>
           <div className="bg-white p-4 rounded-lg shadow">
             <h3 className="text-lg font-semibold text-gray-700">
-              Completed CNG POs
+              Completed POs
             </h3>
             <p className="text-2xl font-bold text-green-600">
               {stats.completed}
@@ -246,7 +246,7 @@ const TripsPage = () => {
           </div>
           <div className="bg-white p-4 rounded-lg shadow">
             <h3 className="text-lg font-semibold text-gray-700">
-              Cancelled CNG POs
+              Cancelled POs
             </h3>
             <p className="text-2xl font-bold text-red-600">{stats.cancelled}</p>
           </div>

@@ -87,6 +87,13 @@ interface DOFormData {
   load_longitude: string;
   unload_latitude: string;
   unload_longitude: string;
+  // Enhanced with gas filling fields
+  gas_volume_m3: string;
+  spbg_location: string;
+  calculation_method: 'jisdor' | 'fixed';
+  jisdor_rate: string;
+  gas_filling_cost: string;
+  showGasFilling: boolean; // Added for toggle
 }
 
 interface MarkerType {
@@ -189,6 +196,13 @@ const CreateDeliveryFromPO: React.FC = () => {
       load_longitude: "",
       unload_latitude: "",
       unload_longitude: "",
+      // Initialize gas filling fields
+      gas_volume_m3: "",
+      spbg_location: "",
+      calculation_method: 'jisdor',
+      jisdor_rate: "",
+      gas_filling_cost: "",
+      showGasFilling: false // Added for toggle
     },
   ]);
   
@@ -201,6 +215,24 @@ const CreateDeliveryFromPO: React.FC = () => {
     load: boolean;
     unload: boolean;
   }>({ load: false, unload: false });
+
+  // SPBG locations for selection
+  const spbgLocations = [
+    { value: 'jakarta', label: 'Jakarta' },
+    { value: 'bandung', label: 'Bandung' },
+    { value: 'surabaya', label: 'Surabaya' },
+    { value: 'semarang', label: 'Semarang' },
+    { value: 'yogyakarta', label: 'Yogyakarta' },
+    { value: 'medan', label: 'Medan' },
+    { value: 'palembang', label: 'Palembang' },
+    { value: 'makassar', label: 'Makassar' }
+  ];
+
+  // Gas calculation methods
+  const calculationMethods = [
+    { value: 'jisdor', label: 'JISDOR Rate (Dynamic)' },
+    { value: 'fixed', label: 'Fixed Rate (Standard)' }
+  ];
 
   // Default map center
   const defaultCenter = { lat: -6.2088, lng: 106.8456 };
@@ -234,7 +266,11 @@ const CreateDeliveryFromPO: React.FC = () => {
     const operationalCosts =
       (parseFloat(formData.trip_allowance) || 0) +
       (parseFloat(formData.gaji) || 0);
-    return totalRevenue - operationalCosts;
+    
+    // Include gas filling cost in the calculation
+    const gasFillingCost = parseFloat(formData.gas_filling_cost) || 0;
+    
+    return totalRevenue - operationalCosts - gasFillingCost;
   };
 
   // Location setting function
@@ -318,6 +354,13 @@ const CreateDeliveryFromPO: React.FC = () => {
         load_longitude: details.load_longitude?.toString() || "",
         unload_latitude: details.unload_latitude?.toString() || "",
         unload_longitude: details.unload_longitude?.toString() || "",
+        // Initialize gas filling fields
+        gas_volume_m3: "",
+        spbg_location: "",
+        calculation_method: 'jisdor' as 'jisdor' | 'fixed',
+        jisdor_rate: "",
+        gas_filling_cost: "",
+        showGasFilling: false // Added for toggle
       };
       setFormDataList([initialFormData]);
 
@@ -364,6 +407,37 @@ const CreateDeliveryFromPO: React.FC = () => {
     }
   };
 
+  // Auto-calculate gas filling cost when volume changes
+  const calculateGasFillingCost = (formData: DOFormData): void => {
+    const volume = parseFloat(formData.gas_volume_m3);
+    if (!volume) {
+      const newFormDataList = [...formDataList];
+      newFormDataList[currentFormIndex] = { ...formData, gas_filling_cost: '' };
+      setFormDataList(newFormDataList);
+      return;
+    }
+
+    let cost = 0;
+    if (formData.calculation_method === 'jisdor' && formData.jisdor_rate) {
+      const jisdorRate = parseFloat(formData.jisdor_rate);
+      if (!isNaN(jisdorRate)) {
+        // Formula: (volume/27.27) * 12.7 * jisdor_rate
+        // Round to 2 decimal places to avoid precision issues
+        cost = Math.round((volume / 27.27) * 12.7 * jisdorRate * 100) / 100;
+      }
+    } else if (formData.calculation_method === 'fixed') {
+      // Fixed rate: 7800 IDR per m³
+      cost = Math.round(volume * 7800 * 100) / 100;
+    }
+
+    const newFormDataList = [...formDataList];
+    newFormDataList[currentFormIndex] = { 
+      ...formData, 
+      gas_filling_cost: cost > 0 ? cost.toString() : ''
+    };
+    setFormDataList(newFormDataList);
+  };
+
   const handleInputChange = (
     index: number,
     e: React.ChangeEvent<
@@ -390,6 +464,15 @@ const CreateDeliveryFromPO: React.FC = () => {
       ).toString();
       setFormDataList([...newFormDataList]);
     }
+
+    // Auto-calculate gas filling cost when gas-related fields change
+    if (
+      e.target.name === 'gas_volume_m3' || 
+      e.target.name === 'calculation_method' || 
+      e.target.name === 'jisdor_rate'
+    ) {
+      calculateGasFillingCost(newFormDataList[index]);
+    }
   };
 
   const addForm = () => {
@@ -410,6 +493,13 @@ const CreateDeliveryFromPO: React.FC = () => {
         load_longitude: poDetails?.load_longitude?.toString() || "",
         unload_latitude: poDetails?.unload_latitude?.toString() || "",
         unload_longitude: poDetails?.unload_longitude?.toString() || "",
+        // Initialize gas filling fields
+        gas_volume_m3: "",
+        spbg_location: "",
+        calculation_method: 'jisdor',
+        jisdor_rate: "",
+        gas_filling_cost: "",
+        showGasFilling: false // Added for toggle
       },
     ]);
   };
@@ -562,6 +652,12 @@ const CreateDeliveryFromPO: React.FC = () => {
             : null,
           payment_status: "proses_tagihan",
           status: "assigned",
+          // Include gas filling data
+          gas_volume_m3: formData.gas_volume_m3 ? parseFloat(formData.gas_volume_m3) : null,
+          spbg_location: formData.spbg_location || null,
+          calculation_method: formData.calculation_method,
+          jisdor_rate: formData.jisdor_rate ? parseFloat(formData.jisdor_rate) : null,
+          gas_filling_cost: formData.gas_filling_cost ? parseFloat(formData.gas_filling_cost) : null
         };
 
         console.log(`Creating DO with payload:`, payload);
@@ -886,6 +982,161 @@ const CreateDeliveryFromPO: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Gas Filling Information Section - Toggleable */}
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newFormDataList = [...formDataList];
+                      newFormDataList[index] = {
+                        ...newFormDataList[index],
+                        showGasFilling: !newFormDataList[index].showGasFilling
+                      };
+                      setFormDataList(newFormDataList);
+                    }}
+                    className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
+                  >
+                    {formData.showGasFilling ? '🔽 Hide' : '⛽ Add'} Gas Filling Details
+                  </button>
+                  
+                  {formData.showGasFilling && (
+                    <div className="mt-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <h4 className="text-sm font-semibold text-blue-900 mb-3">
+                        ⛽ Gas Filling Information
+                      </h4>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Gas Volume (m³)
+                          </label>
+                          <input
+                            type="number"
+                            name="gas_volume_m3"
+                            value={formData.gas_volume_m3}
+                            onChange={(e) => handleInputChange(index, e)}
+                            step="0.01"
+                            placeholder="100.00"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            SPBG Location
+                          </label>
+                          <select
+                            name="spbg_location"
+                            value={formData.spbg_location}
+                            onChange={(e) => handleInputChange(index, e)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">Select SPBG Location</option>
+                            {spbgLocations.map(location => (
+                              <option key={location.value} value={location.value}>
+                                {location.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Calculation Method
+                          </label>
+                          <select
+                            name="calculation_method"
+                            value={formData.calculation_method}
+                            onChange={(e) => handleInputChange(index, e)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            {calculationMethods.map(method => (
+                              <option key={method.value} value={method.value}>
+                                {method.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            JISDOR Rate (IDR)
+                          </label>
+                          <input
+                            type="number"
+                            name="jisdor_rate"
+                            value={formData.jisdor_rate}
+                            onChange={(e) => handleInputChange(index, e)}
+                            step="0.01"
+                            placeholder="7800.00"
+                            disabled={formData.calculation_method !== 'jisdor'}
+                            className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                              formData.calculation_method !== 'jisdor' ? 'bg-gray-100' : ''
+                            }`}
+                          />
+                          {formData.calculation_method !== 'jisdor' && (
+                            <p className="text-xs text-gray-500 mt-1">Only required for JISDOR calculation</p>
+                          )}
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Calculated Gas Filling Cost (IDR)
+                          </label>
+                          <input
+                            type="number"
+                            name="gas_filling_cost"
+                            value={formData.gas_filling_cost}
+                            onChange={(e) => handleInputChange(index, e)}
+                            step="0.01"
+                            min="0"
+                            max="999999999"
+                            placeholder="Will be calculated automatically"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md bg-blue-100 font-medium"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            {formData.calculation_method === 'jisdor' 
+                              ? 'Formula: (Volume/27.27) × 12.7 × JISDOR Rate'
+                              : 'Fixed Rate: 7,800 IDR per m³'
+                            }
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Gas Filling Summary */}
+                      {formData.gas_volume_m3 && formData.spbg_location && (
+                        <div className="mt-3 p-3 bg-blue-100 rounded-lg border border-blue-300">
+                          <h5 className="text-sm font-medium text-blue-900 mb-2">Gas Filling Summary</h5>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                            <div>
+                              <span className="text-blue-700">Volume:</span>
+                              <span className="ml-1 text-blue-900 font-medium">{formData.gas_volume_m3} m³</span>
+                            </div>
+                            <div>
+                              <span className="text-blue-700">Location:</span>
+                              <span className="ml-1 text-blue-900 font-medium">
+                                {spbgLocations.find(loc => loc.value === formData.spbg_location)?.label}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-blue-700">Method:</span>
+                              <span className="ml-1 text-blue-900 font-medium capitalize">
+                                {formData.calculation_method}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-blue-700">Cost:</span>
+                              <span className="ml-1 text-blue-900 font-medium">
+                                {formData.gas_filling_cost ? `Rp ${parseFloat(formData.gas_filling_cost).toLocaleString('id-ID')}` : 'Calculating...'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {formData.minimal_load_quantity && formData.unit_price && (
                   <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                     <h4 className="text-sm font-semibold text-gray-700 mb-2">
@@ -926,6 +1177,27 @@ const CreateDeliveryFromPO: React.FC = () => {
                             parseFloat(formData.minimal_load_quantity) || 0,
                             parseFloat(formData.unit_price) || 0,
                             poDetails?.unit || "ton"
+                          ).toLocaleString("id-ID")}
+                        </span>
+                      </div>
+                      
+                      {/* Gas Filling Cost in Revenue Calculation */}
+                      {formData.gas_filling_cost && parseFloat(formData.gas_filling_cost) > 0 && (
+                        <div className="flex justify-between text-red-600 border-t pt-1">
+                          <span>Gas Filling Cost:</span>
+                          <span>
+                            - Rp {parseFloat(formData.gas_filling_cost).toLocaleString("id-ID")}
+                          </span>
+                        </div>
+                      )}
+                      
+                      <div className="flex justify-between font-semibold border-t pt-1">
+                        <span>Net Profit:</span>
+                        <span>
+                          Rp{" "}
+                          {calculateOngkosan(
+                            formData,
+                            poDetails?.unit
                           ).toLocaleString("id-ID")}
                         </span>
                       </div>

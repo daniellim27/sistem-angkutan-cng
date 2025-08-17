@@ -21,6 +21,12 @@ const PaymentsOverview: React.FC = () => {
   const [stats, setStats] = useState<PaymentStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // SPBG Filter State
+  const [spbgFilter, setSpbgFilter] = useState({
+    spbg_only: false,
+    spbg_location: "",
+    gas_filling_only: false,
+  });
 
   useEffect(() => {
     fetchOverviewData();
@@ -73,6 +79,75 @@ const PaymentsOverview: React.FC = () => {
         <p className="text-gray-600 mt-2">
           Manage invoices, payments, and financial tracking for delivery orders
         </p>
+      </div>
+
+      {/* SPBG Filter Section */}
+      <div className="bg-white shadow rounded-lg p-6 mb-8 border border-gray-200">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">⛽ SPBG Filter Options</h3>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="overview_spbg_only"
+              checked={spbgFilter.spbg_only}
+              onChange={(e) => setSpbgFilter(prev => ({ ...prev, spbg_only: e.target.checked }))}
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <label htmlFor="overview_spbg_only" className="text-sm font-medium text-gray-700">
+              SPBG Transactions Only
+            </label>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="overview_gas_filling_only"
+              checked={spbgFilter.gas_filling_only}
+              onChange={(e) => setSpbgFilter(prev => ({ ...prev, gas_filling_only: e.target.checked }))}
+              className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+            />
+            <label htmlFor="overview_gas_filling_only" className="text-sm font-medium text-gray-700">
+              Gas Filling Only
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              SPBG Location
+            </label>
+            <select
+              value={spbgFilter.spbg_location}
+              onChange={(e) => setSpbgFilter(prev => ({ ...prev, spbg_location: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Locations</option>
+              <option value="jakarta">Jakarta</option>
+              <option value="bandung">Bandung</option>
+              <option value="surabaya">Surabaya</option>
+              <option value="semarang">Semarang</option>
+              <option value="yogyakarta">Yogyakarta</option>
+              <option value="medan">Medan</option>
+              <option value="palembang">Palembang</option>
+              <option value="makassar">Makassar</option>
+            </select>
+          </div>
+
+          <div className="flex items-end">
+            <button
+              onClick={() => setSpbgFilter({ spbg_only: false, spbg_location: "", gas_filling_only: false })}
+              className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            >
+              Clear Filters
+            </button>
+          </div>
+        </div>
+        
+        <div className="mt-3 text-sm text-gray-500 flex items-center">
+          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Filter overview data to focus on SPBG-related transactions and payments
+        </div>
       </div>
 
       {/* Stats Cards */}
