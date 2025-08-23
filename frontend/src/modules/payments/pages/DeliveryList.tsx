@@ -83,7 +83,7 @@ const DeliveryList: React.FC = () => {
   useEffect(() => {
     fetchDeliveryOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.status, filters.customer, filters.page]);
+  }, [filters.status, filters.customer, filters.page, filters.spbg_only, filters.spbg_location, filters.gas_filling_only]);
 
   const fetchDeliveryOrders = async () => {
     try {

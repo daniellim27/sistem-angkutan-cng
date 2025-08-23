@@ -175,6 +175,10 @@ module.exports = {
         limit = 20,
         sort = "created_at",
         order = "DESC",
+        // SPBG Filter Parameters
+        spbg_only,
+        spbg_location,
+        gas_filling_only
       } = req.query;
 
       const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -192,6 +196,26 @@ module.exports = {
         doWhereClause.customer_name = {
           [Op.iLike]: `%${customer}%`,
         };
+      }
+
+      // SPBG Filtering for Delivery Orders
+      if (spbg_only === 'true' || spbg_only === true) {
+        doWhereClause[Op.or] = [
+          { spbg_location: { [Op.not]: null } },
+          { gas_volume_m3: { [Op.not]: null } },
+          { calculation_method: { [Op.not]: null } }
+        ];
+      }
+
+      if (spbg_location && spbg_location !== '') {
+        doWhereClause.spbg_location = spbg_location;
+      }
+
+      if (gas_filling_only === 'true' || gas_filling_only === true) {
+        doWhereClause[Op.and] = [
+          { gas_volume_m3: { [Op.not]: null } },
+          { gas_volume_m3: { [Op.gt]: 0 } }
+        ];
       }
 
       const { count, rows } = await DeliveryOrderInvoices.findAndCountAll({
@@ -710,7 +734,15 @@ module.exports = {
   async getBulkEligibleDOs(req, res, next) {
     try {
       const { Op } = require("sequelize");
-      const { customer, po_id, limit = 100 } = req.query;
+      const { 
+        customer, 
+        po_id, 
+        limit = 100,
+        // SPBG Filter Parameters
+        spbg_only,
+        spbg_location,
+        gas_filling_only
+      } = req.query;
 
       let whereClause = {
         status: "completed",
@@ -740,6 +772,26 @@ module.exports = {
       // Filter by PO
       if (po_id) {
         whereClause.purchase_order_id = po_id;
+      }
+
+      // SPBG Filtering
+      if (spbg_only === 'true' || spbg_only === true) {
+        whereClause[Op.or] = [
+          { spbg_location: { [Op.not]: null } },
+          { gas_volume_m3: { [Op.not]: null } },
+          { calculation_method: { [Op.not]: null } }
+        ];
+      }
+
+      if (spbg_location && spbg_location !== '') {
+        whereClause.spbg_location = spbg_location;
+      }
+
+      if (gas_filling_only === 'true' || gas_filling_only === true) {
+        whereClause[Op.and] = [
+          { gas_volume_m3: { [Op.not]: null } },
+          { gas_volume_m3: { [Op.gt]: 0 } }
+        ];
       }
 
       const deliveryOrders = await DeliveryOrder.findAll({
@@ -1141,6 +1193,34 @@ module.exports = {
     try {
       const { Op } = require("sequelize");
       const { sequelize } = require("../../models");
+      const { 
+        // SPBG Filter Parameters
+        spbg_only,
+        spbg_location,
+        gas_filling_only
+      } = req.query;
+
+      // Build SPBG filter conditions
+      let spbgWhereClause = {};
+      
+      if (spbg_only === 'true' || spbg_only === true) {
+        spbgWhereClause[Op.or] = [
+          { spbg_location: { [Op.not]: null } },
+          { gas_volume_m3: { [Op.not]: null } },
+          { calculation_method: { [Op.not]: null } }
+        ];
+      }
+
+      if (spbg_location && spbg_location !== '') {
+        spbgWhereClause.spbg_location = spbg_location;
+      }
+
+      if (gas_filling_only === 'true' || gas_filling_only === true) {
+        spbgWhereClause[Op.and] = [
+          { gas_volume_m3: { [Op.not]: null } },
+          { gas_volume_m3: { [Op.gt]: 0 } }
+        ];
+      }
 
       // Total outstanding (proses_tagihan + awaiting_confirmation)
       const outstandingQuery = await DeliveryOrder.sum("final_amount", {
@@ -1149,14 +1229,28 @@ module.exports = {
             [Op.in]: ["proses_tagihan", "awaiting_confirmation"],
           },
           final_amount: { [Op.not]: null },
+          ...spbgWhereClause
         },
       });
 
       // Total paid (lunas)
-      const paidQuery = await DeliveryOrderPayments.sum("payment_amount");
+      const paidQuery = await DeliveryOrderPayments.sum("payment_amount", {
+        include: [{
+          model: DeliveryOrder,
+          as: "deliveryOrder",
+          where: spbgWhereClause,
+          required: true
+        }]
+      });
 
       // Pending invoices count
       const pendingInvoices = await DeliveryOrderInvoices.count({
+        include: [{
+          model: DeliveryOrder,
+          as: "deliveryOrder",
+          where: spbgWhereClause,
+          required: true
+        }],
         where: {
           status: { [Op.in]: ["issued", "sent"] },
         },
@@ -1168,11 +1262,18 @@ module.exports = {
           payment_status: {
             [Op.in]: ["proses_tagihan", "awaiting_confirmation"],
           },
+          ...spbgWhereClause
         },
       });
 
       // Overdue invoices (past due_date and not paid)
       const overdueInvoices = await DeliveryOrderInvoices.count({
+        include: [{
+          model: DeliveryOrder,
+          as: "deliveryOrder",
+          where: spbgWhereClause,
+          required: true
+        }],
         where: {
           due_date: { [Op.lt]: new Date() },
           status: { [Op.ne]: "paid" },
@@ -1188,6 +1289,8 @@ module.exports = {
             model: DeliveryOrder,
             as: "deliveryOrder",
             attributes: ["do_number", "customer_name"],
+            where: spbgWhereClause,
+            required: true
           },
         ],
       });
@@ -1224,7 +1327,16 @@ module.exports = {
   async getDeliveryOrders(req, res, next) {
     try {
       const { Op } = require("sequelize");
-      const { status = "pending", customer, page = 1, limit = 20 } = req.query;
+      const { 
+        status = "pending", 
+        customer, 
+        page = 1, 
+        limit = 20,
+        // SPBG Filter Parameters
+        spbg_only,
+        spbg_location,
+        gas_filling_only
+      } = req.query;
 
       const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -1244,6 +1356,26 @@ module.exports = {
         whereClause.customer_name = {
           [Op.iLike]: `%${customer}%`,
         };
+      }
+
+      // SPBG Filtering
+      if (spbg_only === 'true' || spbg_only === true) {
+        whereClause[Op.or] = [
+          { spbg_location: { [Op.not]: null } },
+          { gas_volume_m3: { [Op.not]: null } },
+          { calculation_method: { [Op.not]: null } }
+        ];
+      }
+
+      if (spbg_location && spbg_location !== '') {
+        whereClause.spbg_location = spbg_location;
+      }
+
+      if (gas_filling_only === 'true' || gas_filling_only === true) {
+        whereClause[Op.and] = [
+          { gas_volume_m3: { [Op.not]: null } },
+          { gas_volume_m3: { [Op.gt]: 0 } }
+        ];
       }
 
       const { count, rows } = await DeliveryOrder.findAndCountAll({

@@ -39,21 +39,6 @@ interface CashSummary {
   saldo: number;
 }
 
-// Enhanced CNG and SPBG transaction categories
-const cngCategories = [
-  { id: 'cng_fuel', name: 'CNG Fuel Purchase', type: 'expense' },
-  { id: 'cng_deposit', name: 'SPBG Deposit', type: 'expense' },
-  { id: 'cng_refund', name: 'SPBG Refund', type: 'income' },
-  { id: 'cng_maintenance', name: 'CNG Equipment Maintenance', type: 'expense' },
-  { id: 'cng_insurance', name: 'CNG Insurance', type: 'expense' },
-  // New SPBG-specific categories
-  { id: 'spbg_gas_filling', name: 'SPBG Gas Filling', type: 'expense' },
-  { id: 'spbg_deposit_topup', name: 'SPBG Deposit Top-up', type: 'expense' },
-  { id: 'spbg_deposit_withdrawal', name: 'SPBG Deposit Withdrawal', type: 'income' },
-  { id: 'spbg_jisdor_calculation', name: 'SPBG JISDOR Rate Calculation', type: 'expense' },
-  { id: 'spbg_fixed_rate', name: 'SPBG Fixed Rate Calculation', type: 'expense' }
-];
-
 // SPBG locations for filtering
 const spbgLocations = [
   { value: 'jakarta', label: 'Jakarta' },
@@ -68,9 +53,11 @@ const spbgLocations = [
 
 // Helper functions
 const isSPBGTransaction = (transaction: CashTransaction) => {
-  if (!transaction.category_id) return false;
-  const category = cngCategories.find(c => c.id === transaction.category_id?.toString());
-  return category?.id?.startsWith('spbg') || false;
+  // Check if this is an SPBG transaction by category_id = 10 or by SPBG fields
+  return transaction.category_id === 10 || 
+         transaction.spbg_location || 
+         transaction.gas_volume_m3 || 
+         transaction.calculation_method;
 };
 
 const getSPBGLocationLabel = (value: string) => {
@@ -97,10 +84,7 @@ const CashManagementPage = () => {
     date_from: '',
     date_to: '',
     search: '',
-    account: 'All',
-    cng_only: false, // Existing CNG filter
-    spbg_only: false, // New filter for SPBG transactions only
-    spbg_location: '' // Filter by specific SPBG location
+    account: 'All'
   });
   
   const [pagination, setPagination] = useState({
@@ -221,10 +205,10 @@ const CashManagementPage = () => {
     }
 
     // For SPBG transactions, calculate amount from gas filling cost
-    if (formData.category_id === 'spbg') {
+    let finalAmount = formData.amount;
+    if (formData.category_id === '10') { // SPBG category ID is 10
       if (formData.gas_volume_m3 && formData.jisdor_rate) {
-        const calculatedAmount = parseFloat(formData.gas_volume_m3) * parseFloat(formData.jisdor_rate);
-        setFormData(prev => ({ ...prev, amount: calculatedAmount.toString() }));
+        finalAmount = (parseFloat(formData.gas_volume_m3) * parseFloat(formData.jisdor_rate)).toString();
       } else {
         setError('For SPBG transactions, Gas Volume and JISDOR Rate are required to calculate amount.');
         return;
@@ -233,11 +217,13 @@ const CashManagementPage = () => {
 
     const submissionData = new FormData();
 
-    // Append other fields
-    // Append all form data except `no_nota`
+    // Append all form data with the calculated amount
     Object.entries(formData).forEach(([key, value]) => {
       if (key === 'no_nota') return; // Skip no_nota for now
-      if (typeof value === 'string' || typeof value === 'number') {
+      if (key === 'amount') {
+        // Use the calculated amount for SPBG transactions
+        submissionData.append(key, finalAmount);
+      } else if (typeof value === 'string' || typeof value === 'number') {
         submissionData.append(key, value.toString());
       } else if (Array.isArray(value)) {
         submissionData.append(key, JSON.stringify(value)); // Serialize arrays
@@ -276,7 +262,7 @@ const CashManagementPage = () => {
     // Handle special categories
     if (value === 'inventory_redirect' || value === 'service_redirect') {
       setIsSpecialCategory(true);
-    } else if (value === 'spbg') {
+    } else if (value === '10') { // SPBG category ID is 10
       // For SPBG transactions, set default values and clear regular fields
       setFormData(prev => ({
         ...prev,
@@ -303,7 +289,7 @@ const CashManagementPage = () => {
     
     setFormData({
       transaction_type: transaction.transaction_type,
-      category_id: isSPBG ? 'spbg' : (transaction.category_id?.toString() || ''),
+      category_id: isSPBG ? '10' : (transaction.category_id?.toString() || ''),
       amount: transaction.amount.toString(),
       description: transaction.description,
       reference_number: transaction.reference_number || '',
@@ -499,46 +485,6 @@ const CashManagementPage = () => {
         </div>
         
         {/* Enhanced Filter Section */}
-        <div className="mt-4 flex flex-wrap items-center gap-4">
-          {/* CNG Filter */}
-          <label className="flex items-center">
-            <input
-              type="checkbox"
-              checked={filters.cng_only}
-              onChange={(e) => setFilters(prev => ({ ...prev, cng_only: e.target.checked }))}
-              className="mr-2"
-            />
-            <span className="text-sm text-gray-700">CNG Transactions Only</span>
-          </label>
-
-          {/* SPBG Filter */}
-          <label className="flex items-center">
-            <input
-              type="checkbox"
-              checked={filters.spbg_only}
-              onChange={(e) => setFilters(prev => ({ ...prev, spbg_only: e.target.checked }))}
-              className="mr-2"
-            />
-            <span className="text-sm text-gray-700">SPBG Transactions Only</span>
-          </label>
-
-          {/* SPBG Location Filter */}
-          {filters.spbg_only && (
-            <select
-              value={filters.spbg_location}
-              onChange={(e) => setFilters(prev => ({ ...prev, spbg_location: e.target.value }))}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-            >
-              <option value="">All SPBG Locations</option>
-              {spbgLocations.map(location => (
-                <option key={location.value} value={location.value}>
-                  {location.label}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-        
         <div className="mt-4 flex gap-2">
           <button
             onClick={() => {
@@ -548,10 +494,7 @@ const CashManagementPage = () => {
                 date_from: '',
                 date_to: '',
                 search: '',
-                account: 'All',
-                cng_only: false,
-                spbg_only: false,
-                spbg_location: ''
+                account: 'All'
               });
               setPagination(prev => ({ ...prev, page: 1 }));
             }}
@@ -912,7 +855,7 @@ const CashManagementPage = () => {
                       ))}
                     
                     {/* SPBG Option */}
-                    <option value="spbg">SPBG</option>
+                    <option value="10">SPBG</option>
                     
                     {formData.transaction_type === 'kredit' && (
                       <option value="inventory_redirect">Inventory (Pembelian Stok)</option>
@@ -924,7 +867,7 @@ const CashManagementPage = () => {
                 </div>
 
                 {/* Regular Transaction Fields - Show when NOT SPBG */}
-                {!isSpecialCategory && formData.category_id !== 'spbg' && (
+                {!isSpecialCategory && formData.category_id !== '10' && (
                   <>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -984,7 +927,7 @@ const CashManagementPage = () => {
                 )}
 
                 {/* SPBG Transaction Fields - Show when SPBG is selected */}
-                {formData.category_id === 'spbg' && (
+                {formData.category_id === '10' && (
                   <>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1204,7 +1147,7 @@ const CashManagementPage = () => {
                 )}
 
                 {/* File Upload Section - Show for regular transactions */}
-                {!isSpecialCategory && formData.category_id !== 'spbg' && (
+                {!isSpecialCategory && formData.category_id !== '10' && (
                   <>
                     <div className="mt-2">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Upload Nota</label>
@@ -1304,7 +1247,7 @@ const CashManagementPage = () => {
                 )}
 
                                  {/* No. Nota Section for SPBG Transactions */}
-                 {formData.category_id === 'spbg' && (
+                 {formData.category_id === '10' && (
                    <>
                      {formData.no_nota.map((nota, index) => (
                        <div key={index}>

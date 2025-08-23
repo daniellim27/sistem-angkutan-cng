@@ -11,6 +11,9 @@
     "seeder": "node src/utils/runSeeder.js",
     "migrate:fresh": "node src/utils/migrateFresh.js",
     "hash-passwords": "node src/utils/hashPasswords.js",
+    "migrate:spbg": "node run_spbg_migration.js",
+    "insert:test-data": "node insert_test_data.js",
+    "add:spbg-category": "node add_spbg_category.js",
     "lint": "eslint src/"
   },
   "keywords": [],

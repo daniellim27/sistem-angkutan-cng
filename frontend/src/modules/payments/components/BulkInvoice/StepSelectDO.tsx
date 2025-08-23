@@ -43,7 +43,7 @@ const StepSelectDO: React.FC<StepSelectDOProps> = ({
 
   useEffect(() => {
     fetchEligibleDOs();
-  }, []);
+  }, [spbgFilter]);
 
   useEffect(() => {
     if (selectedDOs.length > 0) {
@@ -64,7 +64,7 @@ const StepSelectDO: React.FC<StepSelectDOProps> = ({
       setLoading(true);
       setError(null);
 
-      const response = await paymentsApi.getBulkEligibleDOs();
+      const response = await paymentsApi.getBulkEligibleDOs(spbgFilter);
       setEligibleDOs(response.data.data.eligible_dos);
       setGroupedDOs(response.data.data.grouped_by_customer);
     } catch (err: any) {

@@ -25,7 +25,8 @@ exports.getAllCashTransactions = async (req, res, next) => {
       date_from, 
       date_to,
       search,
-      account
+      account,
+      spbg_location
     } = req.query;
     
     const offset = (page - 1) * limit;
@@ -67,6 +68,11 @@ exports.getAllCashTransactions = async (req, res, next) => {
 
     if (account && account !== 'All') {
       whereClause.account = account;
+    }
+
+    // SPBG Filtering
+    if (spbg_location && spbg_location !== '') {
+      whereClause.spbg_location = spbg_location;
     }
 
     // Get transactions with pagination
@@ -327,16 +333,37 @@ exports.createCashTransaction = async (req, res, next) => {
       await transaction.rollback();
       return res.status(400).json({ success: false, message: 'Invalid transaction type' });
     }
-    if (!amount || parseFloat(amount) <= 0) {
+    // === SPBG VALIDATION ===
+    let finalAmount = parseFloat(amount);
+    
+    // For SPBG transactions (category_id = 10), use gas_filling_cost as amount if amount is not provided
+    if (category_id === '10' && (!amount || parseFloat(amount) <= 0)) {
+      if (gas_filling_cost && parseFloat(gas_filling_cost) > 0) {
+        finalAmount = parseFloat(gas_filling_cost);
+      } else if (gas_volume_m3 && jisdor_rate) {
+        // Auto-calculate if gas_filling_cost is not provided
+        finalAmount = parseFloat(gas_volume_m3) * parseFloat(jisdor_rate);
+      } else {
+        await transaction.rollback();
+        return res.status(400).json({ 
+          success: false, 
+          message: 'For SPBG transactions, either provide amount or gas_volume_m3 + jisdor_rate for auto-calculation' 
+        });
+      }
+    }
+    
+    // General amount validation (for non-SPBG or if amount is provided)
+    if (!finalAmount || finalAmount <= 0) {
       await transaction.rollback();
       return res.status(400).json({ success: false, message: 'Amount must be greater than 0' });
     }
+    
     if (!description || description.trim() === '') {
       await transaction.rollback();
       return res.status(400).json({ success: false, message: 'Description is required' });
     }
 
-    // === SPBG VALIDATION ===
+    // === SPBG FIELD VALIDATION ===
     if (gas_volume_m3 && parseFloat(gas_volume_m3) < 0) {
       await transaction.rollback();
       return res.status(400).json({ success: false, message: 'Gas volume must be greater than or equal to 0' });
@@ -356,8 +383,8 @@ exports.createCashTransaction = async (req, res, next) => {
 
     const cashTransaction = await CashTransaction.create({
       transaction_type,
-      category_id: category_id || null,
-      amount: parseFloat(amount),
+      category_id: parseCategoryId(category_id), // Parse category_id to integer
+      amount: finalAmount, // Use the calculated/validated amount
       description: description.trim(),
       reference_number: reference_number || null,
       transaction_date: transaction_date || new Date(),
@@ -369,7 +396,7 @@ exports.createCashTransaction = async (req, res, next) => {
       gas_volume_m3: gas_volume_m3 ? parseFloat(gas_volume_m3) : null,
       calculation_method: calculation_method || null,
       jisdor_rate: jisdor_rate ? parseFloat(jisdor_rate) : null,
-      gas_filling_cost: gas_filling_cost ? parseFloat(gas_filling_cost) : null,
+      gas_filling_cost: gas_filling_cost ? parseFloat(gas_filling_cost) : finalAmount, // Use finalAmount if not provided
     }, { transaction });
 
     const createdTransaction = await CashTransaction.findByPk(cashTransaction.id, {
