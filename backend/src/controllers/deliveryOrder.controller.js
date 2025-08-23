@@ -77,6 +77,12 @@ exports.createDeliveryOrder = async (req, res, next) => {
       due_date,
       trip_allowance,
       gaji, // <-- FIELD BARU
+      // === GAS FILLING FIELDS ===
+      gas_volume_m3,
+      spbg_location,
+      calculation_method,
+      jisdor_rate,
+      gas_filling_cost,
     } = req.body;
 
     // Validasi sederhana
@@ -149,6 +155,28 @@ exports.createDeliveryOrder = async (req, res, next) => {
       });
     }
 
+    // === GAS FILLING VALIDATION ===
+    if (gas_volume_m3 && parseFloat(gas_volume_m3) < 0) {
+      return res.status(400).json({
+        message: "Gas volume must be greater than or equal to 0",
+      });
+    }
+    if (jisdor_rate && parseFloat(jisdor_rate) < 0) {
+      return res.status(400).json({
+        message: "JISDOR rate must be greater than or equal to 0",
+      });
+    }
+    if (gas_filling_cost && parseFloat(gas_filling_cost) < 0) {
+      return res.status(400).json({
+        message: "Gas filling cost must be greater than or equal to 0",
+      });
+    }
+    if (calculation_method && !['jisdor', 'fixed'].includes(calculation_method)) {
+      return res.status(400).json({
+        message: "Invalid calculation method. Must be 'jisdor' or 'fixed'",
+      });
+    }
+
     // Handle file upload (surat jalan)
     let surat_jalan_url = null;
     if (req.file) {
@@ -180,6 +208,12 @@ exports.createDeliveryOrder = async (req, res, next) => {
       trip_allowance: trip_allowance || 0,
       gaji: gaji || 0,
       status: "assigned",
+      // === GAS FILLING FIELDS ===
+      gas_volume_m3: gas_volume_m3 ? parseFloat(gas_volume_m3) : null,
+      spbg_location: spbg_location || null,
+      calculation_method: calculation_method || null,
+      jisdor_rate: jisdor_rate ? parseFloat(jisdor_rate) : null,
+      gas_filling_cost: gas_filling_cost ? parseFloat(gas_filling_cost) : null,
     });
 
     // Set status driver & mobil ke busy/in_use (opsional, jika ada field status di tabel driver/vehicle)

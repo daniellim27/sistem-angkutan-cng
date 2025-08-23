@@ -47,6 +47,36 @@ module.exports = (sequelize) => {
       type: DataTypes.ARRAY(DataTypes.STRING),
       allowNull: true
     },
+    // === SPBG FIELDS ===
+    spbg_location: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      comment: 'SPBG (Stasiun Pengisian Bahan Bakar Gas) location'
+    },
+    gas_volume_m3: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      comment: 'Gas volume in cubic meters',
+      validate: { min: 0 }
+    },
+    calculation_method: {
+      type: DataTypes.ENUM('jisdor', 'fixed'),
+      allowNull: true,
+      defaultValue: 'jisdor',
+      comment: 'Method used for gas filling cost calculation'
+    },
+    jisdor_rate: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      comment: 'JISDOR rate for gas filling cost calculation',
+      validate: { min: 0 }
+    },
+    gas_filling_cost: {
+      type: DataTypes.DECIMAL(15, 2),
+      allowNull: true,
+      comment: 'Calculated gas filling cost',
+      validate: { min: 0 }
+    }
   }, {
     tableName: 'cash_transactions',
     timestamps: true,
