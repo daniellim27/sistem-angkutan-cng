@@ -1215,3 +1215,84 @@ exports.getDeliveryStatistics = async (req, res, next) => {
     next(err);
   }
 };
+
+/**
+ * 🎯 GET SENSOR DATA FOR DELIVERY ORDER
+ * GET /api/web/delivery-orders/:id/sensordata
+ */
+exports.getSensorData = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { limit = 10 } = req.query;
+
+    // Validate delivery order exists
+    const deliveryOrder = await DeliveryOrder.findByPk(id);
+    if (!deliveryOrder) {
+      return res.status(404).json({
+        success: false,
+        message: 'Delivery order not found'
+      });
+    }
+
+    // Get latest sensor data from IoT table
+    const { IotRawData } = require('../../models');
+    
+    const latestSensorData = await IotRawData.findOne({
+      where: { delivery_order_id: id },
+      order: [['created_at', 'DESC']]
+    });
+
+    if (!latestSensorData) {
+      return res.json({
+        success: true,
+        data: null,
+        message: 'No sensor data available for this delivery order'
+      });
+    }
+
+    // Get recent sensor data history
+    const sensorDataHistory = await IotRawData.findAll({
+      where: { delivery_order_id: id },
+      order: [['created_at', 'DESC']],
+      limit: parseInt(limit),
+      attributes: [
+        'id',
+        'pressure_in',
+        'pressure_out', 
+        'temperature',
+        'meter_pulse',
+        'created_at'
+      ]
+    });
+
+    res.json({
+      success: true,
+      data: {
+        latest: {
+          id: latestSensorData.id,
+          pressure_in: latestSensorData.pressure_in,
+          pressure_out: latestSensorData.pressure_out,
+          temperature: latestSensorData.temperature,
+          meter_pulse: latestSensorData.meter_pulse,
+          created_at: latestSensorData.created_at
+        },
+        history: sensorDataHistory.map(record => ({
+          id: record.id,
+          pressure_in: record.pressure_in,
+          pressure_out: record.pressure_out,
+          temperature: record.temperature,
+          meter_pulse: record.meter_pulse,
+          created_at: record.created_at
+        }))
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error getting sensor data:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to retrieve sensor data' 
+    });
+    next(error);
+  }
+};

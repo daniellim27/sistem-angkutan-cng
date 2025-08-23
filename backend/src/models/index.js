@@ -40,6 +40,12 @@ const setupDepositGroupMemberModel = require("./depositGroupMember.model");
 
 // GPS Tracking Model
 const setupDriverLocationModel = require("./driverLocation.model");
+
+// NEW: Exchange Rate Model for JISDOR scraping
+const setupExchangeRateModel = require("./exchangeRate.model");
+
+// NEW: IoT Raw Data Model
+const setupIotRawDataModel = require("./iotRawData.model");
 // Initialize Sequelize connection using your .env variables
 const sequelize = new Sequelize(
   process.env.DB_NAME,
@@ -103,6 +109,10 @@ db.DepositGroupMember = setupDepositGroupMemberModel(sequelize);
 
 // GPS Tracking Model
 db.DriverLocation = setupDriverLocationModel(sequelize);
+
+// Exchange Rate and IoT models
+db.ExchangeRate = setupExchangeRateModel(sequelize);
+db.IotRawData = setupIotRawDataModel(sequelize);
 const {
   User,
   DriverProfile,
@@ -133,6 +143,8 @@ const {
   DepositGroup,
   DepositGroupMember,
   DriverLocation,
+  ExchangeRate,
+  IotRawData,
 } = db;
 
 // User <-> Profile Associations (One-to-One)
@@ -514,5 +526,14 @@ DriverLocation.belongsTo(DeliveryOrder, {
   as: "deliveryOrder",
 });
 
+// === IoT Data Associations ===
+DeliveryOrder.hasMany(IotRawData, {
+  foreignKey: "delivery_order_id",
+  as: "iotData",
+});
+IotRawData.belongsTo(DeliveryOrder, {
+  foreignKey: "delivery_order_id",
+  as: "deliveryOrder",
+});
 
 module.exports = db;
