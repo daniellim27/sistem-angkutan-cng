@@ -10,22 +10,21 @@ const MainLayout = () => {
 
   const getPageTitle = () => {
     const path = location.pathname;
-    if (path === "/") return "Dashboard";
-    if (path.startsWith("/trips")) return "Manajemen Trips";
+    if (path === "/") return "CNG Dashboard";
+    if (path.startsWith("/trips")) return "Purchase Orders";
     if (path.startsWith("/delivery-orders")) return "Delivery Orders";
     if (path.startsWith("/big-dos")) return "Big Delivery Orders";
-    if (path.startsWith("/vehicles/tires")) return "Manajemen Ban";
-    if (path.startsWith("/vehicles")) return "Manajemen Kendaraan";
-    if (path.startsWith("/drivers")) return "Manajemen Supir";
-    if (path.startsWith("/stock")) return "Manajemen Stok";
-    if (path.startsWith("/services")) return "Riwayat Servis";
-    if (path.startsWith("/cash")) return "Buku Kas";
-    if (path.startsWith("/ritase")) return "Dashboard Ritase";
-    if (path.startsWith("/buku-kas")) return "Buku Kas";
-    if (path.startsWith("/tempo")) return "Buku Tempo";
-    if (path.startsWith("/deposit-groups")) return "Pembayaran Deposit";
-    if (path.startsWith("/live-tracking")) return "Live GPS Tracking";
-    return "Dashboard";
+    if (path.startsWith("/vehicles/tires")) return "Tire Management";
+    if (path.startsWith("/vehicles")) return "Fleet Management";
+    if (path.startsWith("/drivers")) return "Driver Management";
+    if (path.startsWith("/stock")) return "Inventory Management";
+    if (path.startsWith("/services")) return "Service History";
+    if (path.startsWith("/cash")) return "Cash Book";
+    if (path.startsWith("/ritase")) return "Ritase Dashboard";
+    if (path.startsWith("/buku-kas")) return "Cash Book";
+    if (path.startsWith("/tempo")) return "Credit Book";
+    if (path.startsWith("/deposit-groups")) return "Deposit Payments";
+    return "CNG Dashboard";
   };
 
   const isActiveLink = (path: string) => {
@@ -53,7 +52,7 @@ const MainLayout = () => {
               sidebarMinimized ? "hidden" : "block"
             }`}
           >
-            Angkutan Sys
+            CNG Angkutan Sys
           </h1>
           <button
             onClick={toggleSidebar}
@@ -103,11 +102,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Dashboard"
+                title="CNG Dashboard"
               >
                 <span className="text-xl mr-3">📊</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Dashboard
+                  CNG Dashboard
                 </span>
               </Link>
             </li>
@@ -115,7 +114,7 @@ const MainLayout = () => {
             {/* Reports & Analytics Section */}
             <li className="mb-2 mt-6">
               <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                Laporan & Analitik
+                Reports & Analytics
               </div>
             </li>
             <li className="mb-4">
@@ -127,7 +126,7 @@ const MainLayout = () => {
                     : ""
                 }`}
               >
-                📊 Dashboard Ritase
+                📊 Ritase Dashboard
               </Link>
             </li>
 
@@ -161,7 +160,7 @@ const MainLayout = () => {
             {!sidebarMinimized && (
               <li className="mb-2">
                 <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                  Operasional
+                  Operations
                 </div>
               </li>
             )}
@@ -219,7 +218,7 @@ const MainLayout = () => {
             {!sidebarMinimized && (
               <li className="mb-2 mt-6">
                 <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                  Manajemen Armada
+                  Fleet Management
                 </div>
               </li>
             )}
@@ -232,11 +231,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Manajemen Kendaraan"
+                title="Fleet Management"
               >
                 <span className="text-xl mr-3">🚛</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Manajemen Kendaraan
+                  Fleet Management
                 </span>
               </Link>
             </li>
@@ -248,11 +247,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Manajemen Ban"
+                title="Tire Management"
               >
                 <span className="text-xl mr-3">🛞</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Manajemen Ban
+                  Tire Management
                 </span>
               </Link>
             </li>
@@ -264,11 +263,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Manajemen Supir"
+                title="Driver Management"
               >
                 <span className="text-xl mr-3">👨‍💼</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Manajemen Supir
+                  Driver Management
                 </span>
               </Link>
             </li>
@@ -280,27 +279,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Riwayat Servis"
+                title="Service History"
               >
                 <span className="text-xl mr-3">🔧</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Riwayat Servis
-                </span>
-              </Link>
-            </li>
-            <li className="mb-4">
-              <Link
-                to="/live-tracking"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/live-tracking")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Live GPS Tracking"
-              >
-                <span className="text-xl mr-3">📍</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Live GPS Tracking
+                  Service History
                 </span>
               </Link>
             </li>
@@ -309,7 +292,7 @@ const MainLayout = () => {
             {!sidebarMinimized && (
               <li className="mb-2 mt-6">
                 <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                  Inventaris
+                  Inventory
                 </div>
               </li>
             )}
@@ -321,11 +304,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Manajemen Stok"
+                title="Inventory Management"
               >
                 <span className="text-xl mr-3">📦</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Manajemen Stok
+                  Inventory Management
                 </span>
               </Link>
             </li>
@@ -337,11 +320,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Inventaris Ban"
+                title="Tire Inventory"
               >
                 <span className="text-xl mr-3">🛞</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Inventaris Ban
+                  Tire Inventory
                 </span>
               </Link>
             </li>
@@ -353,11 +336,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Ban Bekas"
+                title="Used Tires"
               >
                 <span className="text-xl mr-3">🔄</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Ban Bekas
+                  Used Tires
                 </span>
               </Link>
             </li>
@@ -366,7 +349,7 @@ const MainLayout = () => {
             {!sidebarMinimized && (
               <li className="mb-2 mt-6">
                 <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                  Akuntansi
+                  Finance
                 </div>
               </li>
             )}
@@ -378,11 +361,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Buku Kas"
+                title="Cash Book"
               >
                 <span className="text-xl mr-3">💰</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Buku Kas
+                  Cash Book
                 </span>
               </Link>
             </li>
@@ -394,11 +377,11 @@ const MainLayout = () => {
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Buku Tempo"
+                title="Credit Book"
               >
                 <span className="text-xl mr-3">🤬</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Buku Tempo
+                  Credit Book
                 </span>
               </Link>
             </li>

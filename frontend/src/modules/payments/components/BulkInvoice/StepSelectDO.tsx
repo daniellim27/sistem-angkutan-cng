@@ -34,10 +34,16 @@ const StepSelectDO: React.FC<StepSelectDOProps> = ({
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // SPBG Filter State
+  const [spbgFilter, setSpbgFilter] = useState({
+    spbg_only: false,
+    spbg_location: "",
+    gas_filling_only: false,
+  });
 
   useEffect(() => {
     fetchEligibleDOs();
-  }, []);
+  }, [spbgFilter]);
 
   useEffect(() => {
     if (selectedDOs.length > 0) {
@@ -58,7 +64,7 @@ const StepSelectDO: React.FC<StepSelectDOProps> = ({
       setLoading(true);
       setError(null);
 
-      const response = await paymentsApi.getBulkEligibleDOs();
+      const response = await paymentsApi.getBulkEligibleDOs(spbgFilter);
       setEligibleDOs(response.data.data.eligible_dos);
       setGroupedDOs(response.data.data.grouped_by_customer);
     } catch (err: any) {
@@ -173,6 +179,68 @@ const StepSelectDO: React.FC<StepSelectDOProps> = ({
       {/* Customer Groups */}
       <div className="space-y-4">
         <h4 className="font-medium text-gray-900">Available Delivery Orders</h4>
+
+        {/* SPBG Filter Section */}
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+          <h5 className="text-sm font-medium text-gray-700 mb-3">⛽ SPBG Filter Options</h5>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="bulk_spbg_only"
+                checked={spbgFilter.spbg_only}
+                onChange={(e) => setSpbgFilter(prev => ({ ...prev, spbg_only: e.target.checked }))}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="bulk_spbg_only" className="text-sm text-gray-700">
+                SPBG Orders Only
+              </label>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="bulk_gas_filling_only"
+                checked={spbgFilter.gas_filling_only}
+                onChange={(e) => setSpbgFilter(prev => ({ ...prev, gas_filling_only: e.target.checked }))}
+                className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+              />
+              <label htmlFor="bulk_gas_filling_only" className="text-sm text-gray-700">
+                Gas Filling Only
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                SPBG Location
+              </label>
+              <select
+                value={spbgFilter.spbg_location}
+                onChange={(e) => setSpbgFilter(prev => ({ ...prev, spbg_location: e.target.value }))}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">All Locations</option>
+                <option value="jakarta">Jakarta</option>
+                <option value="bandung">Bandung</option>
+                <option value="surabaya">Surabaya</option>
+                <option value="semarang">Semarang</option>
+                <option value="yogyakarta">Yogyakarta</option>
+                <option value="medan">Medan</option>
+                <option value="palembang">Palembang</option>
+                <option value="makassar">Makassar</option>
+              </select>
+            </div>
+
+            <div className="flex items-end">
+              <button
+                onClick={() => setSpbgFilter({ spbg_only: false, spbg_location: "", gas_filling_only: false })}
+                className="px-3 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
 
         {Object.keys(groupedDOs).length === 0 ? (
           <div className="text-center py-8 text-gray-500">

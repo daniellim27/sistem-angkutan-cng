@@ -72,12 +72,6 @@ interface Vehicle {
   driver_status: string | null;
 }
 
-interface UnloadLocation {
-  location: string;
-  latitude: string;
-  longitude: string;
-}
-
 interface DOFormData {
   do_name: string;
   item_name: string; // Added from incoming - for item selection
@@ -88,9 +82,18 @@ interface DOFormData {
   gaji: string;
   ongkosan: string;
   load_location: string;
-  unload_locations: UnloadLocation[];
+  unload_location: string;
   load_latitude: string;
   load_longitude: string;
+  unload_latitude: string;
+  unload_longitude: string;
+  // Enhanced with gas filling fields
+  gas_volume_m3: string;
+  spbg_location: string;
+  calculation_method: 'jisdor' | 'fixed';
+  jisdor_rate: string;
+  gas_filling_cost: string;
+  showGasFilling: boolean; // Added for toggle
 }
 
 interface MarkerType {
@@ -98,7 +101,6 @@ interface MarkerType {
   lng: number;
   title: string;
   type: "load" | "unload";
-  unloadIndex?: number;
 }
 
 const SearchControlComponent = ({
@@ -135,7 +137,7 @@ const SearchControlComponent = ({
 };
 
 const MapClickHandler: React.FC<{
-  selectedLocationType: string | null;
+  selectedLocationType: "load" | "unload" | null;
   onLocationSelect: (lat: number, lng: number, address: string) => void;
   onClearSelection: () => void;
 }> = ({ selectedLocationType, onLocationSelect, onClearSelection }) => {
@@ -189,21 +191,48 @@ const CreateDeliveryFromPO: React.FC = () => {
       gaji: "",
       ongkosan: "",
       load_location: "",
-      unload_locations: [{ location: "", latitude: "", longitude: "" }],
+      unload_location: "",
       load_latitude: "",
       load_longitude: "",
+      unload_latitude: "",
+      unload_longitude: "",
+      // Initialize gas filling fields
+      gas_volume_m3: "",
+      spbg_location: "",
+      calculation_method: 'jisdor',
+      jisdor_rate: "",
+      gas_filling_cost: "",
+      showGasFilling: false // Added for toggle
     },
   ]);
   
   // Map-related states
-  const [selectedLocationType, setSelectedLocationType] = useState<string | null>(null);
+  const [selectedLocationType, setSelectedLocationType] = useState<"load" | "unload" | null>(null);
   const [showMap, setShowMap] = useState<boolean>(true);
   const [markers, setMarkers] = useState<MarkerType[]>([]);
   const [currentFormIndex, setCurrentFormIndex] = useState<number>(0);
   const [linkProcessing, setLinkProcessing] = useState<{
     load: boolean;
-    unload: { [key: string]: boolean };
-  }>({ load: false, unload: {} });
+    unload: boolean;
+  }>({ load: false, unload: false });
+
+  // SPBG locations for selection
+  const spbgLocations = [
+    { value: 'jakarta', label: 'Jakarta' },
+    { value: 'bandung', label: 'Bandung' },
+    { value: 'surabaya', label: 'Surabaya' },
+    { value: 'semarang', label: 'Semarang' },
+    { value: 'yogyakarta', label: 'Yogyakarta' },
+    { value: 'medan', label: 'Medan' },
+    { value: 'palembang', label: 'Palembang' },
+    { value: 'makassar', label: 'Makassar' }
+  ];
+
+  // Gas calculation methods
+  const calculationMethods = [
+    { value: 'jisdor', label: 'JISDOR Rate (Dynamic)' },
+    { value: 'fixed', label: 'Fixed Rate (Standard)' }
+  ];
 
   // Default map center
   const defaultCenter = { lat: -6.2088, lng: 106.8456 };
@@ -237,11 +266,15 @@ const CreateDeliveryFromPO: React.FC = () => {
     const operationalCosts =
       (parseFloat(formData.trip_allowance) || 0) +
       (parseFloat(formData.gaji) || 0);
-    return totalRevenue - operationalCosts;
+    
+    // Include gas filling cost in the calculation
+    const gasFillingCost = parseFloat(formData.gas_filling_cost) || 0;
+    
+    return totalRevenue - operationalCosts - gasFillingCost;
   };
 
   // Location setting function
-  const setLocationWithType = (lat: number, lng: number, address: string, type: string) => {
+  const setLocationWithType = (lat: number, lng: number, address: string, type: "load" | "unload") => {
     const newFormDataList = [...formDataList];
     if (type === "load") {
       newFormDataList[currentFormIndex] = {
@@ -250,43 +283,25 @@ const CreateDeliveryFromPO: React.FC = () => {
         load_latitude: lat.toString(),
         load_longitude: lng.toString(),
       };
-    } else if (type.startsWith("unload-")) {
-      const unloadIndex = parseInt(type.split("-")[1]);
-      const newUnloadLocations = [...newFormDataList[currentFormIndex].unload_locations];
-      newUnloadLocations[unloadIndex] = {
-        location: address,
-        latitude: lat.toString(),
-        longitude: lng.toString(),
-      };
+    } else {
       newFormDataList[currentFormIndex] = {
         ...newFormDataList[currentFormIndex],
-        unload_locations: newUnloadLocations,
+        unload_location: address,
+        unload_latitude: lat.toString(),
+        unload_longitude: lng.toString(),
       };
     }
     setFormDataList(newFormDataList);
 
     // Update markers
     setMarkers(prev => {
-      if (type === "load") {
-        const filtered = prev.filter(m => m.type !== "load");
-        return [...filtered, {
-          lat,
-          lng,
-          title: "Load Location",
-          type: "load"
-        }];
-      } else if (type.startsWith("unload-")) {
-        const unloadIndex = parseInt(type.split("-")[1]);
-        const filtered = prev.filter(m => !(m.type === "unload" && m.unloadIndex === unloadIndex));
-        return [...filtered, {
-          lat,
-          lng,
-          title: `Unload Location ${unloadIndex + 1}`,
-          type: "unload",
-          unloadIndex
-        }];
-      }
-      return prev;
+      const filtered = prev.filter(m => m.type !== type);
+      return [...filtered, {
+        lat,
+        lng,
+        title: type === "load" ? "Load Location" : "Unload Location",
+        type
+      }];
     });
 
     setSelectedLocationType(null);
@@ -334,13 +349,18 @@ const CreateDeliveryFromPO: React.FC = () => {
         gaji: "",
         ongkosan: "",
         load_location: details.load_location || "",
-        unload_locations: [{ 
-          location: details.unload_location || "", 
-          latitude: details.unload_latitude?.toString() || "", 
-          longitude: details.unload_longitude?.toString() || "" 
-        }],
+        unload_location: details.unload_location || "",
         load_latitude: details.load_latitude?.toString() || "",
         load_longitude: details.load_longitude?.toString() || "",
+        unload_latitude: details.unload_latitude?.toString() || "",
+        unload_longitude: details.unload_longitude?.toString() || "",
+        // Initialize gas filling fields
+        gas_volume_m3: "",
+        spbg_location: "",
+        calculation_method: 'jisdor' as 'jisdor' | 'fixed',
+        jisdor_rate: "",
+        gas_filling_cost: "",
+        showGasFilling: false // Added for toggle
       };
       setFormDataList([initialFormData]);
 
@@ -358,9 +378,8 @@ const CreateDeliveryFromPO: React.FC = () => {
         initialMarkers.push({
           lat: details.unload_latitude,
           lng: details.unload_longitude,
-          title: "Unload Location 1",
-          type: "unload",
-          unloadIndex: 0
+          title: "Unload Location",
+          type: "unload"
         });
       }
       setMarkers(initialMarkers);
@@ -386,6 +405,37 @@ const CreateDeliveryFromPO: React.FC = () => {
       console.error("Error fetching vehicles:", err);
       setErrors(prev => [...prev, "Failed to fetch available vehicles."]);
     }
+  };
+
+  // Auto-calculate gas filling cost when volume changes
+  const calculateGasFillingCost = (formData: DOFormData): void => {
+    const volume = parseFloat(formData.gas_volume_m3);
+    if (!volume) {
+      const newFormDataList = [...formDataList];
+      newFormDataList[currentFormIndex] = { ...formData, gas_filling_cost: '' };
+      setFormDataList(newFormDataList);
+      return;
+    }
+
+    let cost = 0;
+    if (formData.calculation_method === 'jisdor' && formData.jisdor_rate) {
+      const jisdorRate = parseFloat(formData.jisdor_rate);
+      if (!isNaN(jisdorRate)) {
+        // Formula: (volume/27.27) * 12.7 * jisdor_rate
+        // Round to 2 decimal places to avoid precision issues
+        cost = Math.round((volume / 27.27) * 12.7 * jisdorRate * 100) / 100;
+      }
+    } else if (formData.calculation_method === 'fixed') {
+      // Fixed rate: 7800 IDR per m³
+      cost = Math.round(volume * 7800 * 100) / 100;
+    }
+
+    const newFormDataList = [...formDataList];
+    newFormDataList[currentFormIndex] = { 
+      ...formData, 
+      gas_filling_cost: cost > 0 ? cost.toString() : ''
+    };
+    setFormDataList(newFormDataList);
   };
 
   const handleInputChange = (
@@ -414,49 +464,15 @@ const CreateDeliveryFromPO: React.FC = () => {
       ).toString();
       setFormDataList([...newFormDataList]);
     }
-  };
 
-  const handleUnloadLocationChange = (
-    formIndex: number,
-    unloadIndex: number,
-    field: keyof UnloadLocation,
-    value: string
-  ): void => {
-    const newFormDataList = [...formDataList];
-    const newUnloadLocations = [...newFormDataList[formIndex].unload_locations];
-    newUnloadLocations[unloadIndex] = {
-      ...newUnloadLocations[unloadIndex],
-      [field]: value,
-    };
-    newFormDataList[formIndex] = {
-      ...newFormDataList[formIndex],
-      unload_locations: newUnloadLocations,
-    };
-    setFormDataList(newFormDataList);
-  };
-
-  const addUnloadLocation = (formIndex: number) => {
-    const newFormDataList = [...formDataList];
-    newFormDataList[formIndex] = {
-      ...newFormDataList[formIndex],
-      unload_locations: [
-        ...newFormDataList[formIndex].unload_locations,
-        { location: "", latitude: "", longitude: "" }
-      ],
-    };
-    setFormDataList(newFormDataList);
-  };
-
-  const removeUnloadLocation = (formIndex: number, unloadIndex: number) => {
-    const newFormDataList = [...formDataList];
-    newFormDataList[formIndex] = {
-      ...newFormDataList[formIndex],
-      unload_locations: newFormDataList[formIndex].unload_locations.filter((_, i) => i !== unloadIndex),
-    };
-    setFormDataList(newFormDataList);
-
-    // Remove marker for this unload location
-    setMarkers(prev => prev.filter(m => !(m.type === "unload" && m.unloadIndex === unloadIndex)));
+    // Auto-calculate gas filling cost when gas-related fields change
+    if (
+      e.target.name === 'gas_volume_m3' || 
+      e.target.name === 'calculation_method' || 
+      e.target.name === 'jisdor_rate'
+    ) {
+      calculateGasFillingCost(newFormDataList[index]);
+    }
   };
 
   const addForm = () => {
@@ -472,13 +488,18 @@ const CreateDeliveryFromPO: React.FC = () => {
         gaji: "",
         ongkosan: "",
         load_location: poDetails?.load_location || "",
-        unload_locations: [{ 
-          location: poDetails?.unload_location || "", 
-          latitude: poDetails?.unload_latitude?.toString() || "", 
-          longitude: poDetails?.unload_longitude?.toString() || "" 
-        }],
+        unload_location: poDetails?.unload_location || "",
         load_latitude: poDetails?.load_latitude?.toString() || "",
         load_longitude: poDetails?.load_longitude?.toString() || "",
+        unload_latitude: poDetails?.unload_latitude?.toString() || "",
+        unload_longitude: poDetails?.unload_longitude?.toString() || "",
+        // Initialize gas filling fields
+        gas_volume_m3: "",
+        spbg_location: "",
+        calculation_method: 'jisdor',
+        jisdor_rate: "",
+        gas_filling_cost: "",
+        showGasFilling: false // Added for toggle
       },
     ]);
   };
@@ -488,7 +509,6 @@ const CreateDeliveryFromPO: React.FC = () => {
     const newForm: DOFormData = {
       ...currentForm,
       do_name: `${currentForm.do_name} - Copy`, // Auto-append " - Copy" to DO Name
-      unload_locations: currentForm.unload_locations.map(ul => ({ ...ul })), // Deep copy unload locations
     };
     setFormDataList([...formDataList, newForm]);
   };
@@ -501,19 +521,11 @@ const CreateDeliveryFromPO: React.FC = () => {
     vehicles.find((v) => v.id.toString() === vehicleId);
 
   const handleProcessLocationLink = async (
-    type: string,
+    type: "load" | "unload",
     input: string
   ) => {
     if (!input) return;
-    
-    if (type === "load") {
-      setLinkProcessing((prev) => ({ ...prev, load: true }));
-    } else {
-      setLinkProcessing((prev) => ({ 
-        ...prev, 
-        unload: { ...prev.unload, [type]: true }
-      }));
-    }
+    setLinkProcessing((prev) => ({ ...prev, [type]: true }));
     setErrors([]); // Clear previous errors
 
     try {
@@ -540,14 +552,7 @@ const CreateDeliveryFromPO: React.FC = () => {
         "Could not process the location link. Please try again or enter coordinates manually.",
       ]);
     } finally {
-      if (type === "load") {
-        setLinkProcessing((prev) => ({ ...prev, load: false }));
-      } else {
-        setLinkProcessing((prev) => ({ 
-          ...prev, 
-          unload: { ...prev.unload, [type]: false }
-        }));
-      }
+      setLinkProcessing((prev) => ({ ...prev, [type]: false }));
     }
   };
 
@@ -616,11 +621,6 @@ const CreateDeliveryFromPO: React.FC = () => {
           poDetails.unit
         );
 
-        // For multiple unload locations, we'll use the first one for the main payload
-        // and store additional ones in a separate field
-        const primaryUnload = formData.unload_locations[0] || { location: "", latitude: "", longitude: "" };
-        const additionalUnloads = formData.unload_locations.slice(1);
-
         const payload = {
           purchase_order_id: poDetails.id,
           vehicle_id: parseInt(formData.vehicle_id),
@@ -636,22 +636,28 @@ const CreateDeliveryFromPO: React.FC = () => {
           gaji: parseFloat(formData.gaji),
           ongkosan: parseFloat(formData.ongkosan),
           load_location: formData.load_location || poDetails.load_location,
-          unload_location: primaryUnload.location || poDetails.unload_location,
+          unload_location:
+            formData.unload_location || poDetails.unload_location,
           load_latitude: formData.load_latitude
             ? parseFloat(formData.load_latitude)
             : null,
           load_longitude: formData.load_longitude
             ? parseFloat(formData.load_longitude)
             : null,
-          unload_latitude: primaryUnload.latitude
-            ? parseFloat(primaryUnload.latitude)
+          unload_latitude: formData.unload_latitude
+            ? parseFloat(formData.unload_latitude)
             : null,
-          unload_longitude: primaryUnload.longitude
-            ? parseFloat(primaryUnload.longitude)
+          unload_longitude: formData.unload_longitude
+            ? parseFloat(formData.unload_longitude)
             : null,
-          additional_unload_locations: additionalUnloads.length > 0 ? additionalUnloads : null,
           payment_status: "proses_tagihan",
           status: "assigned",
+          // Include gas filling data
+          gas_volume_m3: formData.gas_volume_m3 ? parseFloat(formData.gas_volume_m3) : null,
+          spbg_location: formData.spbg_location || null,
+          calculation_method: formData.calculation_method,
+          jisdor_rate: formData.jisdor_rate ? parseFloat(formData.jisdor_rate) : null,
+          gas_filling_cost: formData.gas_filling_cost ? parseFloat(formData.gas_filling_cost) : null
         };
 
         console.log(`Creating DO with payload:`, payload);
@@ -976,6 +982,161 @@ const CreateDeliveryFromPO: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Gas Filling Information Section - Toggleable */}
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newFormDataList = [...formDataList];
+                      newFormDataList[index] = {
+                        ...newFormDataList[index],
+                        showGasFilling: !newFormDataList[index].showGasFilling
+                      };
+                      setFormDataList(newFormDataList);
+                    }}
+                    className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
+                  >
+                    {formData.showGasFilling ? '🔽 Hide' : '⛽ Add'} Gas Filling Details
+                  </button>
+                  
+                  {formData.showGasFilling && (
+                    <div className="mt-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <h4 className="text-sm font-semibold text-blue-900 mb-3">
+                        ⛽ Gas Filling Information
+                      </h4>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Gas Volume (m³)
+                          </label>
+                          <input
+                            type="number"
+                            name="gas_volume_m3"
+                            value={formData.gas_volume_m3}
+                            onChange={(e) => handleInputChange(index, e)}
+                            step="0.01"
+                            placeholder="100.00"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            SPBG Location
+                          </label>
+                          <select
+                            name="spbg_location"
+                            value={formData.spbg_location}
+                            onChange={(e) => handleInputChange(index, e)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">Select SPBG Location</option>
+                            {spbgLocations.map(location => (
+                              <option key={location.value} value={location.value}>
+                                {location.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Calculation Method
+                          </label>
+                          <select
+                            name="calculation_method"
+                            value={formData.calculation_method}
+                            onChange={(e) => handleInputChange(index, e)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            {calculationMethods.map(method => (
+                              <option key={method.value} value={method.value}>
+                                {method.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            JISDOR Rate (IDR)
+                          </label>
+                          <input
+                            type="number"
+                            name="jisdor_rate"
+                            value={formData.jisdor_rate}
+                            onChange={(e) => handleInputChange(index, e)}
+                            step="0.01"
+                            placeholder="7800.00"
+                            disabled={formData.calculation_method !== 'jisdor'}
+                            className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                              formData.calculation_method !== 'jisdor' ? 'bg-gray-100' : ''
+                            }`}
+                          />
+                          {formData.calculation_method !== 'jisdor' && (
+                            <p className="text-xs text-gray-500 mt-1">Only required for JISDOR calculation</p>
+                          )}
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Calculated Gas Filling Cost (IDR)
+                          </label>
+                          <input
+                            type="number"
+                            name="gas_filling_cost"
+                            value={formData.gas_filling_cost}
+                            onChange={(e) => handleInputChange(index, e)}
+                            step="0.01"
+                            min="0"
+                            max="999999999"
+                            placeholder="Will be calculated automatically"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md bg-blue-100 font-medium"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            {formData.calculation_method === 'jisdor' 
+                              ? 'Formula: (Volume/27.27) × 12.7 × JISDOR Rate'
+                              : 'Fixed Rate: 7,800 IDR per m³'
+                            }
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Gas Filling Summary */}
+                      {formData.gas_volume_m3 && formData.spbg_location && (
+                        <div className="mt-3 p-3 bg-blue-100 rounded-lg border border-blue-300">
+                          <h5 className="text-sm font-medium text-blue-900 mb-2">Gas Filling Summary</h5>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                            <div>
+                              <span className="text-blue-700">Volume:</span>
+                              <span className="ml-1 text-blue-900 font-medium">{formData.gas_volume_m3} m³</span>
+                            </div>
+                            <div>
+                              <span className="text-blue-700">Location:</span>
+                              <span className="ml-1 text-blue-900 font-medium">
+                                {spbgLocations.find(loc => loc.value === formData.spbg_location)?.label}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-blue-700">Method:</span>
+                              <span className="ml-1 text-blue-900 font-medium capitalize">
+                                {formData.calculation_method}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-blue-700">Cost:</span>
+                              <span className="ml-1 text-blue-900 font-medium">
+                                {formData.gas_filling_cost ? `Rp ${parseFloat(formData.gas_filling_cost).toLocaleString('id-ID')}` : 'Calculating...'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {formData.minimal_load_quantity && formData.unit_price && (
                   <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                     <h4 className="text-sm font-semibold text-gray-700 mb-2">
@@ -1016,6 +1177,27 @@ const CreateDeliveryFromPO: React.FC = () => {
                             parseFloat(formData.minimal_load_quantity) || 0,
                             parseFloat(formData.unit_price) || 0,
                             poDetails?.unit || "ton"
+                          ).toLocaleString("id-ID")}
+                        </span>
+                      </div>
+                      
+                      {/* Gas Filling Cost in Revenue Calculation */}
+                      {formData.gas_filling_cost && parseFloat(formData.gas_filling_cost) > 0 && (
+                        <div className="flex justify-between text-red-600 border-t pt-1">
+                          <span>Gas Filling Cost:</span>
+                          <span>
+                            - Rp {parseFloat(formData.gas_filling_cost).toLocaleString("id-ID")}
+                          </span>
+                        </div>
+                      )}
+                      
+                      <div className="flex justify-between font-semibold border-t pt-1">
+                        <span>Net Profit:</span>
+                        <span>
+                          Rp{" "}
+                          {calculateOngkosan(
+                            formData,
+                            poDetails?.unit
                           ).toLocaleString("id-ID")}
                         </span>
                       </div>
@@ -1078,83 +1260,54 @@ const CreateDeliveryFromPO: React.FC = () => {
 
                 <div className="mt-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Unload Locations *
+                    Unload Location *
                   </label>
-                  
-                  {formData.unload_locations.map((unloadLoc, unloadIndex) => (
-                    <div key={unloadIndex} className="mb-4 p-4 border border-gray-200 rounded-md">
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="text-sm font-medium text-gray-700">
-                          Unload Location {unloadIndex + 1}
-                        </h4>
-                        {formData.unload_locations.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeUnloadLocation(index, unloadIndex)}
-                            className="text-xs text-red-500 hover:text-red-700"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                      
-                      <textarea
-                        value={unloadLoc.location}
-                        onChange={(e) => handleUnloadLocationChange(index, unloadIndex, 'location', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        rows={3}
-                        required
-                        placeholder="Enter or select on map"
-                      />
-                      
-                      <div className="mt-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleProcessLocationLink(
-                              `unload-${unloadIndex}`,
-                              unloadLoc.location
-                            )
-                          }
-                          disabled={linkProcessing.unload[`unload-${unloadIndex}`]}
-                          className="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded w-full"
-                        >
-                          {linkProcessing.unload[`unload-${unloadIndex}`]
-                            ? "Processing..."
-                            : "📌 Extract from Google Maps Link"}
-                        </button>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Paste Google Maps link or address. Shortened links will
-                          open in browser.
-                        </p>
-                      </div>
-                      
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCurrentFormIndex(index);
-                          setSelectedLocationType(`unload-${unloadIndex}`);
-                        }}
-                        className={`mt-2 px-3 py-1 rounded text-sm w-full ${
-                          selectedLocationType === `unload-${unloadIndex}` && currentFormIndex === index
-                            ? "bg-red-500 text-white animate-pulse"
-                            : "bg-gray-200 hover:bg-gray-300"
-                        }`}
-                      >
-                        {showMap &&
-                          (selectedLocationType === `unload-${unloadIndex}` && currentFormIndex === index
-                            ? "Click on map..."
-                            : `Set Unload Location ${unloadIndex + 1}`)}
-                      </button>
-                    </div>
-                  ))}
-                  
+                  <textarea
+                    name="unload_location"
+                    value={formData.unload_location}
+                    onChange={(e) => handleInputChange(index, e)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    rows={3}
+                    required
+                    placeholder="Enter or select on map"
+                  />
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleProcessLocationLink(
+                          "unload",
+                          formData.unload_location
+                        )
+                      }
+                      disabled={linkProcessing.unload}
+                      className="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded w-full"
+                    >
+                      {linkProcessing.unload
+                        ? "Processing..."
+                        : "📌 Extract from Google Maps Link"}
+                    </button>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Paste Google Maps link or address. Shortened links will
+                      open in browser.
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => addUnloadLocation(index)}
-                    className="w-full mt-2 px-3 py-2 bg-green-100 hover:bg-green-200 text-green-700 rounded border border-green-300"
+                    onClick={() => {
+                      setCurrentFormIndex(index);
+                      setSelectedLocationType("unload");
+                    }}
+                    className={`mt-2 px-3 py-1 rounded text-sm w-full ${
+                      selectedLocationType === "unload" && currentFormIndex === index
+                        ? "bg-red-500 text-white animate-pulse"
+                        : "bg-gray-200 hover:bg-gray-300"
+                    }`}
                   >
-                    + Add More Unload Location
+                    {showMap &&
+                      (selectedLocationType === "unload" && currentFormIndex === index
+                        ? "Click on map..."
+                        : "Set Unload Location")}
                   </button>
                 </div>
               </div>
@@ -1209,10 +1362,8 @@ const CreateDeliveryFromPO: React.FC = () => {
                 style={{ height: "100%", width: "100%" }}
               >
                 <TileLayer
-                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-                  attribution="© OpenStreetMap contributors, © CARTO"
-                  subdomains="abcd"
-                  maxZoom={19}
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution="© OpenStreetMap contributors"
                 />
                 <SearchControlComponent onLocationFound={handleSearchSelect} />
                 <MapClickHandler 
@@ -1242,7 +1393,7 @@ const CreateDeliveryFromPO: React.FC = () => {
               </p>
               {selectedLocationType && (
                 <p className="text-blue-600 mt-2">
-                  🎯 Ready to set {selectedLocationType.includes('unload') ? `unload location ${parseInt(selectedLocationType.split('-')[1]) + 1}` : selectedLocationType} for form {currentFormIndex + 1}
+                  🎯 Ready to set {selectedLocationType} location for form {currentFormIndex + 1}
                 </p>
               )}
             </div>

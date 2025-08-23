@@ -284,11 +284,11 @@ const VehiclesPage = () => {
     <div className="container mx-auto px-4 py-6">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Manajemen Kendaraan</h1>
+        <h1 className="text-3xl font-bold text-gray-800">Fleet Management</h1>
         <div className="flex space-x-2">
           <Link to="/vehicles/create">
             <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow-md transition duration-200">
-              + Tambah Kendaraan
+              + Add Vehicle
             </button>
           </Link>
         </div>
@@ -306,7 +306,7 @@ const VehiclesPage = () => {
               type="text"
               value={searchTerm}
               onChange={handleSearchChange}
-              placeholder="Search by license plate, type, or capacity..."
+              placeholder="Search vehicles by license plate, type, or capacity..."
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
@@ -321,7 +321,7 @@ const VehiclesPage = () => {
               onChange={handleStatusFilterChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="all">All Status</option>
+              <option value="all">All Statuses</option>
               <option value="available">Available</option>
               <option value="in_use">In Use</option>
               <option value="maintenance">Maintenance</option>
@@ -430,7 +430,7 @@ const VehiclesPage = () => {
                 <Link 
                   to={`/vehicles/tires?vehicleId=${vehicle.id}`} 
                   className="text-sm text-green-600 hover:text-green-900 font-medium" 
-                  title="Kelola Ban"
+                  title="Manage Tires"
                 >
                   Manage Tires
                 </Link>
@@ -450,7 +450,7 @@ const VehiclesPage = () => {
           <div className="col-span-1 md:col-span-2 xl:col-span-3 text-center py-10 text-gray-500">
             {filteredVehicles.length === 0 && allVehicles.length > 0
               ? 'No vehicles found matching your search criteria'
-              : 'Tidak ada data kendaraan.'
+              : 'No vehicles available.'
             }
           </div>
         )}

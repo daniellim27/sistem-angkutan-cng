@@ -40,7 +40,6 @@ const setupDepositGroupMemberModel = require("./depositGroupMember.model");
 
 // GPS Tracking Model
 const setupDriverLocationModel = require("./driverLocation.model");
-
 // Initialize Sequelize connection using your .env variables
 const sequelize = new Sequelize(
   process.env.DB_NAME,
@@ -104,7 +103,6 @@ db.DepositGroupMember = setupDepositGroupMemberModel(sequelize);
 
 // GPS Tracking Model
 db.DriverLocation = setupDriverLocationModel(sequelize);
-
 const {
   User,
   DriverProfile,
@@ -485,6 +483,7 @@ DepositGroup.hasMany(PurchaseOrder, {
   as: "purchaseOrders",
 });
 
+<<<<<<< HEAD
 // DriverLocation Associations (GPS Tracking)
 // User (Driver) to DriverLocation (One-to-Many)
 User.hasMany(DriverLocation, {
@@ -515,6 +514,8 @@ DriverLocation.belongsTo(DeliveryOrder, {
   foreignKey: "delivery_order_id",
   as: "deliveryOrder",
 });
+=======
+>>>>>>> origin/main
 
 
 module.exports = db;

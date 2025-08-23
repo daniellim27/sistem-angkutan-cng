@@ -1,7 +1,10 @@
 // server.js
 require("dotenv").config();
+const minimist = require("minimist");
 
 const admin = require("./services/firebase");
+const argv = minimist(process.argv.slice(2));
+const host = argv.host || 'localhost';
 
 const express = require("express");
 const setupMiddleware = require("./middlewares/setup.middleware");
@@ -139,6 +142,7 @@ initializeDatabase().then(() => {
   app.use("/api/web/payments", webPaymentsRoutes);
   app.use("/api/web/ritase-payments", legacyRitasePaymentsRoutes);
   app.use("/api/web/deposit-groups", webDepositGroupRoutes);
+  app.use("/api/web/utils", utilsRoutes);
 
   // Add tracking routes for both web and mobile access
   app.use("/api/tracking", trackingRoutes);
@@ -150,8 +154,8 @@ initializeDatabase().then(() => {
   app.use(errorHandler);
   
   // Start HTTP server
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+  app.listen(PORT, host, () => {
+    console.log(`🚀 Server running on http://${host}:${PORT}`);
     console.log(
       `📱 Mobile API: /api/purchase-orders, /api/delivery-orders, /api/vehicles`
     );
