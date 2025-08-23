@@ -1,5 +1,5 @@
 // server.js
-require("dotenv").config();
+require("dotenv").config({ path: require('path').join(__dirname, '../.env') });
 const minimist = require("minimist");
 
 const admin = require("./services/firebase");
@@ -41,8 +41,14 @@ const legacyRitasePaymentsRoutes = require("./routes/web/ritase.payments.legacy.
 const utilsRoutes = require("./routes/utils.routes");
 const webDepositGroupRoutes = require("./routes/web/depositGroup.routes");
 
+// NEW: Exchange Rate Routes for JISDOR scraping
+const webExchangeRateRoutes = require("./routes/web/exchangeRates.routes");
+
+// NEW: Exchange Rate Scheduler
+const ExchangeRateScheduler = require("./services/exchangeRateScheduler");
+
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000; // Changed default from 5000 to 3000
 
 // Setup middleware (cors, json, etc)
 setupMiddleware(app);
@@ -50,7 +56,14 @@ setupMiddleware(app);
 // Test database connection
 sequelize
   .authenticate()
-  .then(() => console.log("✅ Database connection established successfully."))
+  .then(() => {
+    console.log("✅ Database connection established successfully.");
+    
+    // Initialize and start exchange rate scheduler with proper models
+    const models = require('./models');
+    exchangeRateScheduler = new ExchangeRateScheduler(models);
+    exchangeRateScheduler.start();
+  })
   .catch((err) => console.error("❌ Unable to connect to the database:", err));
 
 // Basic route
@@ -75,6 +88,7 @@ app.get("/", (req, res) => {
         ritase: "/api/web/ritase",
         buku_kas: "/api/web/buku-kas",
         payments: "/api/web/payments",
+        exchange_rates: "/api/web/exchange-rates",
       },
     },
   });
@@ -109,6 +123,7 @@ app.use("/api/web/big-delivery-orders", webBigDeliveryOrderRoutes);
 app.use("/api/web/payments", webPaymentsRoutes);
 app.use("/api/web/utils", utilsRoutes);
 app.use("/api/web/deposit-groups", webDepositGroupRoutes);
+app.use("/api/web/exchange-rates", webExchangeRateRoutes);
 
 // Error handling middleware
 app.use(errorHandler);
@@ -116,4 +131,6 @@ app.use(errorHandler);
 // Start HTTP server
 app.listen(PORT, host, () => {
   console.log(`🚀 Server running on http://${host}:${PORT}`);
+  console.log(`📋 Environment: PORT=${process.env.PORT || 'not set'}, Using port: ${PORT}`);
+  console.log(`🌐 CORS enabled for: localhost:3001, localhost:3000, and all origins`);
 });

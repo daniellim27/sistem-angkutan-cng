@@ -54,10 +54,6 @@ const InvoiceList: React.FC = () => {
     page: 1,
     sort: "created_at",
     order: "DESC",
-    // SPBG Filter Fields
-    spbg_only: false,
-    spbg_location: "",
-    gas_filling_only: false,
   });
 
   useEffect(() => {
@@ -260,63 +256,6 @@ const InvoiceList: React.FC = () => {
             >
               Refresh
             </button>
-          </div>
-        </div>
-
-        {/* SPBG Filter Options */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-200">
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="spbg_only"
-              checked={filters.spbg_only}
-              onChange={(e) => handleFilterChange("spbg_only", e.target.checked)}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <label htmlFor="spbg_only" className="text-sm font-medium text-gray-700">
-              ⛽ SPBG Invoices Only
-            </label>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="gas_filling_only"
-              checked={filters.gas_filling_only}
-              onChange={(e) => handleFilterChange("gas_filling_only", e.target.checked)}
-              className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-            />
-            <label htmlFor="gas_filling_only" className="text-sm font-medium text-gray-700">
-              🔥 Gas Filling Invoices Only
-            </label>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              SPBG Location
-            </label>
-            <select
-              value={filters.spbg_location}
-              onChange={(e) => handleFilterChange("spbg_location", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Locations</option>
-              <option value="jakarta">Jakarta</option>
-              <option value="bandung">Bandung</option>
-              <option value="surabaya">Surabaya</option>
-              <option value="semarang">Semarang</option>
-              <option value="yogyakarta">Yogyakarta</option>
-              <option value="medan">Medan</option>
-              <option value="palembang">Palembang</option>
-              <option value="makassar">Makassar</option>
-            </select>
-          </div>
-
-          <div className="text-sm text-gray-500 flex items-center">
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Filter SPBG-related invoices
           </div>
         </div>
       </div>

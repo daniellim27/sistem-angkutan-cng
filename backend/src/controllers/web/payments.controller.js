@@ -1194,93 +1194,70 @@ module.exports = {
       const { Op } = require("sequelize");
       const { sequelize } = require("../../models");
       const { 
-        // SPBG Filter Parameters
+        // SPBG Filter Parameters - TEMPORARILY DISABLED
         spbg_only,
         spbg_location,
         gas_filling_only
       } = req.query;
 
-      // Build SPBG filter conditions
-      let spbgWhereClause = {};
-      
-      if (spbg_only === 'true' || spbg_only === true) {
-        spbgWhereClause[Op.or] = [
-          { spbg_location: { [Op.not]: null } },
-          { gas_volume_m3: { [Op.not]: null } },
-          { calculation_method: { [Op.not]: null } }
-        ];
-      }
+      // TEMPORARILY DISABLE SPBG FILTERING TO DEBUG GROUP BY ISSUE
+      console.log("🔍 DEBUG: SPBG filters received:", { spbg_only, spbg_location, gas_filling_only });
 
-      if (spbg_location && spbg_location !== '') {
-        spbgWhereClause.spbg_location = spbg_location;
-      }
-
-      if (gas_filling_only === 'true' || gas_filling_only === true) {
-        spbgWhereClause[Op.and] = [
-          { gas_volume_m3: { [Op.not]: null } },
-          { gas_volume_m3: { [Op.gt]: 0 } }
-        ];
-      }
-
+      console.log("🔍 DEBUG: Starting outstandingQuery...");
       // Total outstanding (proses_tagihan + awaiting_confirmation)
       const outstandingQuery = await DeliveryOrder.sum("final_amount", {
         where: {
           payment_status: {
             [Op.in]: ["proses_tagihan", "awaiting_confirmation"],
           },
-          final_amount: { [Op.not]: null },
-          ...spbgWhereClause
+          final_amount: { [Op.not]: null }
+          // SPBG filters temporarily removed
         },
       });
+      console.log("🔍 DEBUG: outstandingQuery completed:", outstandingQuery);
 
-      // Total paid (lunas)
-      const paidQuery = await DeliveryOrderPayments.sum("payment_amount", {
-        include: [{
-          model: DeliveryOrder,
-          as: "deliveryOrder",
-          where: spbgWhereClause,
-          required: true
-        }]
-      });
+      console.log("🔍 DEBUG: Starting paidQuery...");
+      // Total paid (lunas) - Use raw SQL to avoid automatic JOIN issues
+      const [paidResult] = await sequelize.query(
+        'SELECT COALESCE(SUM(payment_amount), 0) as total_paid FROM delivery_order_payments',
+        { type: sequelize.QueryTypes.SELECT }
+      );
+      const paidQuery = paidResult.total_paid;
+      console.log("🔍 DEBUG: paidQuery completed:", paidQuery);
 
-      // Pending invoices count
+      console.log("🔍 DEBUG: Starting pendingInvoices...");
+      // Pending invoices count - Simple query without SPBG filters
       const pendingInvoices = await DeliveryOrderInvoices.count({
-        include: [{
-          model: DeliveryOrder,
-          as: "deliveryOrder",
-          where: spbgWhereClause,
-          required: true
-        }],
         where: {
-          status: { [Op.in]: ["issued", "sent"] },
-        },
+          status: { [Op.in]: ["issued", "sent"] }
+        }
       });
+      console.log("🔍 DEBUG: pendingInvoices completed:", pendingInvoices);
 
+      console.log("🔍 DEBUG: Starting pendingDeliveries...");
       // ✅ ADD: Pending deliveries count (NEW)
       const pendingDeliveries = await DeliveryOrder.count({
         where: {
           payment_status: {
             [Op.in]: ["proses_tagihan", "awaiting_confirmation"],
-          },
-          ...spbgWhereClause
+          }
+          // SPBG filters temporarily removed
         },
       });
+      console.log("🔍 DEBUG: pendingDeliveries completed:", pendingDeliveries);
 
-      // Overdue invoices (past due_date and not paid)
+      console.log("🔍 DEBUG: Starting overdueInvoices...");
+      // Overdue invoices (past due_date and not paid) - Simple query without SPBG filters
       const overdueInvoices = await DeliveryOrderInvoices.count({
-        include: [{
-          model: DeliveryOrder,
-          as: "deliveryOrder",
-          where: spbgWhereClause,
-          required: true
-        }],
         where: {
           due_date: { [Op.lt]: new Date() },
-          status: { [Op.ne]: "paid" },
-        },
+          status: { [Op.ne]: "paid" }
+        }
       });
+      console.log("🔍 DEBUG: overdueInvoices completed:", overdueInvoices);
 
-      // Recent payments (last 10)
+      console.log("🔍 DEBUG: Starting recentPayments...");
+      // Recent payments (last 10) - Simple query without SPBG filters
       const recentPayments = await DeliveryOrderPayments.findAll({
         limit: 10,
         order: [["payment_date", "DESC"]],
@@ -1289,11 +1266,11 @@ module.exports = {
             model: DeliveryOrder,
             as: "deliveryOrder",
             attributes: ["do_number", "customer_name"],
-            where: spbgWhereClause,
             required: true
           },
-        ],
+        ]
       });
+      console.log("🔍 DEBUG: recentPayments completed, count:", recentPayments.length);
 
       const stats = {
         totalOutstanding: outstandingQuery || 0,
@@ -1310,11 +1287,14 @@ module.exports = {
         })),
       };
 
+      console.log("🔍 DEBUG: Stats calculated successfully:", stats);
+
       return res.json({
         success: true,
         data: stats,
       });
     } catch (err) {
+      console.error("❌ ERROR in getOverviewStats:", err);
       return next(err);
     }
   },

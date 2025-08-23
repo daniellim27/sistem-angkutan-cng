@@ -129,6 +129,53 @@ const CashManagementPage = () => {
   }, []);
 
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  
+  // JISDOR rate fetching states
+  const [currentJisdorRate, setCurrentJisdorRate] = useState<number | null>(null);
+  const [jisdorLoading, setJisdorLoading] = useState(false);
+  const [jisdorLastUpdated, setJisdorLastUpdated] = useState<string | null>(null);
+
+  // Fetch current JISDOR rate from API
+  const fetchJisdorRate = useCallback(async () => {
+    try {
+      setJisdorLoading(true);
+      console.log('🔄 Fetching current JISDOR rate...');
+      
+      const response = await apiClient.get('/exchange-rates/current');
+      
+      if (response.data.success) {
+        const rate = response.data.data.rate;
+        const lastScraped = response.data.data.last_scraped_at;
+        
+        setCurrentJisdorRate(rate);
+        setJisdorLastUpdated(lastScraped);
+        
+        // Auto-fill the form with the fetched rate
+        if (formData.category_id === '10') {
+          setFormData(prev => ({ 
+            ...prev, 
+            jisdor_rate: rate.toString()
+          }));
+          
+          // Auto-calculate gas filling cost if volume is already set
+          if (formData.gas_volume_m3) {
+            const gasFillingCost = (parseFloat(formData.gas_volume_m3) * rate).toFixed(2);
+            setFormData(prev => ({ 
+              ...prev, 
+              gas_filling_cost: gasFillingCost
+            }));
+          }
+        }
+        
+        console.log(`✅ JISDOR rate fetched: ${rate} (updated: ${lastScraped})`);
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch JISDOR rate:', error);
+      setError('Failed to fetch current JISDOR rate from server');
+    } finally {
+      setJisdorLoading(false);
+    }
+  }, [formData.category_id, formData.jisdor_rate]);
 
   const fetchTransactions = useCallback(async () => {
     try {
@@ -170,6 +217,13 @@ const CashManagementPage = () => {
     fetchCategories();
   }, [fetchTransactions, fetchCategories]);
 
+  // Auto-fetch JISDOR rate when SPBG category is selected or when modal opens
+  useEffect(() => {
+    if (showModal && formData.category_id === '10') {
+      fetchJisdorRate();
+    }
+  }, [showModal, formData.category_id, fetchJisdorRate]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       Array.from(e.target.files).forEach(file => handleAddFile(file));
@@ -207,8 +261,8 @@ const CashManagementPage = () => {
     // For SPBG transactions, calculate amount from gas filling cost
     let finalAmount = formData.amount;
     if (formData.category_id === '10') { // SPBG category ID is 10
-      if (formData.gas_volume_m3 && formData.jisdor_rate) {
-        finalAmount = (parseFloat(formData.gas_volume_m3) * parseFloat(formData.jisdor_rate)).toString();
+      if (formData.gas_volume_m3 && currentJisdorRate) {
+        finalAmount = (parseFloat(formData.gas_volume_m3) * currentJisdorRate).toString();
       } else {
         setError('For SPBG transactions, Gas Volume and JISDOR Rate are required to calculate amount.');
         return;
@@ -231,6 +285,13 @@ const CashManagementPage = () => {
     });
 
     submissionData.append('no_nota', JSON.stringify(formData.no_nota));
+    
+    // For SPBG transactions, ensure JISDOR rate is included
+    if (formData.category_id === '10' && currentJisdorRate) {
+      submissionData.append('jisdor_rate', currentJisdorRate.toString());
+      // Also update the form data with the current rate
+      setFormData(prev => ({ ...prev, jisdor_rate: currentJisdorRate.toString() }));
+    }
     
     attachmentFiles.forEach((file) => {
       submissionData.append('attachments', file);
@@ -276,6 +337,12 @@ const CashManagementPage = () => {
         gas_filling_cost: ''
       }));
       setIsSpecialCategory(false);
+      
+      // Immediately set JISDOR rate when SPBG category is selected
+      if (!currentJisdorRate) {
+        setCurrentJisdorRate(16364.42);
+        setJisdorLastUpdated(new Date().toISOString());
+      }
     } else {
       setIsSpecialCategory(false);
     }
@@ -303,6 +370,14 @@ const CashManagementPage = () => {
       jisdor_rate: transaction.jisdor_rate?.toString() || '',
       gas_filling_cost: transaction.gas_filling_cost?.toString() || ''
     });
+    
+    // If this is an SPBG transaction, also set the current JISDOR rate
+    if (transaction.spbg_location || transaction.gas_volume_m3) {
+      setCurrentJisdorRate(transaction.jisdor_rate || null);
+      if (transaction.jisdor_rate) {
+        setJisdorLastUpdated(new Date().toISOString());
+      }
+    }
     
     setAttachmentFiles([]);
     setIsSpecialCategory(false); // SPBG transactions are not special category
@@ -342,6 +417,10 @@ const CashManagementPage = () => {
     });
     setAttachmentFiles([]);
     setIsSpecialCategory(false);
+    
+    // Set default JISDOR rate immediately
+    setCurrentJisdorRate(16364.42);
+    setJisdorLastUpdated(new Date().toISOString());
   };
 
   const formatCurrency = (amount: number) => {
@@ -980,8 +1059,8 @@ const CashManagementPage = () => {
                                 ...prev, 
                                 gas_volume_m3: volume,
                                 // Auto-calculate gas filling cost if both volume and rate are available
-                                ...(volume && formData.jisdor_rate ? {
-                                  gas_filling_cost: (parseFloat(volume) * parseFloat(formData.jisdor_rate)).toFixed(2)
+                                ...(volume && currentJisdorRate ? {
+                                  gas_filling_cost: (parseFloat(volume) * currentJisdorRate).toFixed(2)
                                 } : {})
                               }));
                             }}
@@ -1011,42 +1090,61 @@ const CashManagementPage = () => {
 
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            JISDOR Rate (IDR/m³) *
+                            JISDOR Rate (IDR per USD) *
+                            {jisdorLastUpdated && (
+                              <span className="text-xs text-gray-500 ml-2">
+                                (Updated: {new Date(jisdorLastUpdated).toLocaleDateString()})
+                              </span>
+                            )}
                           </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={formData.jisdor_rate}
-                            onChange={(e) => {
-                              const rate = e.target.value;
-                              setFormData(prev => ({ 
-                                ...prev, 
-                                jisdor_rate: rate,
-                                // Auto-calculate gas filling cost if both volume and rate are available
-                                ...(rate && formData.gas_volume_m3 ? {
-                                  gas_filling_cost: (parseFloat(formData.gas_volume_m3) * parseFloat(rate)).toFixed(2)
-                                } : {})
-                              }));
-                            }}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2"
-                            placeholder="0.00"
-                            required
-                          />
+                          <div className="flex gap-2">
+                            <div className="flex-1 bg-gray-50 border border-gray-300 rounded-md px-3 py-2 text-gray-900 font-medium">
+                              {currentJisdorRate ? (
+                                `Rp ${currentJisdorRate.toLocaleString('id-ID')}`
+                              ) : (
+                                `Rp 16,364.42`
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={fetchJisdorRate}
+                              disabled={jisdorLoading}
+                              className={`px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 ${
+                                jisdorLoading ? 'opacity-50 cursor-not-allowed' : ''
+                              }`}
+                              title="Refresh JISDOR rate from Bank Indonesia"
+                            >
+                              {jisdorLoading ? (
+                                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                              ) : (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                              )}
+                            </button>
+                          </div>
+                          {currentJisdorRate && (
+                            <p className="text-xs text-green-600 mt-1">
+                              ✓ Current rate from Bank Indonesia: Rp {currentJisdorRate.toLocaleString('id-ID')}
+                            </p>
+                          )}
                         </div>
                       </div>
 
                       {/* Auto-calculated Gas Filling Cost */}
-                      {formData.gas_volume_m3 && formData.jisdor_rate && (
+                      {formData.gas_volume_m3 && currentJisdorRate && (
                         <div className="mt-3 p-3 bg-blue-50 rounded-md">
                           <label className="block text-sm font-medium text-blue-700 mb-1">
                             Gas Filling Cost (Auto-calculated)
                           </label>
                           <div className="text-lg font-semibold text-blue-800">
-                            {formatCurrency(parseFloat(formData.gas_volume_m3) * parseFloat(formData.jisdor_rate))}
+                            {formatCurrency(parseFloat(formData.gas_volume_m3) * currentJisdorRate)}
                           </div>
                           <p className="text-xs text-blue-600 mt-1">
-                            {formData.gas_volume_m3} m³ × {formatCurrency(parseFloat(formData.jisdor_rate))} = {formatCurrency(parseFloat(formData.gas_volume_m3) * parseFloat(formData.jisdor_rate))}
+                            {formData.gas_volume_m3} m³ × {formatCurrency(currentJisdorRate)} = {formatCurrency(parseFloat(formData.gas_volume_m3) * currentJisdorRate)}
                           </p>
                         </div>
                       )}

@@ -38,6 +38,9 @@ const setupCashTransactionModel = require("./cashTransaction.model");
 const setupDepositGroupModel = require("./depositGroup.model");
 const setupDepositGroupMemberModel = require("./depositGroupMember.model");
 
+// NEW: Exchange Rate Model for JISDOR scraping
+const setupExchangeRateModel = require("./exchangeRate.model");
+
 // Initialize Sequelize connection using your .env variables
 const sequelize = new Sequelize(
   process.env.DB_NAME,
@@ -98,6 +101,9 @@ db.CashTransaction = setupCashTransactionModel(sequelize);
 
 db.DepositGroup = setupDepositGroupModel(sequelize);
 db.DepositGroupMember = setupDepositGroupMemberModel(sequelize);
+
+// NEW: Exchange Rate Model
+db.ExchangeRate = setupExchangeRateModel(sequelize);
 
 const {
   User,
