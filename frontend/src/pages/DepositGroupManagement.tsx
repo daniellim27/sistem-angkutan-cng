@@ -13,33 +13,23 @@ interface DepositGroup {
   spbg_location?: string; // SPBG location for SPBG groups
   spbg_operator?: string; // SPBG operator/company name
   gas_type?: 'cng' | 'lng' | 'lpg'; // Type of gas handled
-}
-
-interface DepositGroupMember {
-  id: number;
-  member_name: string;
-  member_type: 'driver' | 'vehicle' | 'company';
-  member_id: number;
-  deposit_amount: number;
-  current_balance: number;
-  last_transaction_date?: string;
-  created_at: string;
-}
-
-interface DepositGroupWithMembers extends DepositGroup {
-  members: DepositGroupMember[];
-  total_deposits: number;
-  total_balance: number;
-  member_count: number;
+  // Additional fields from API response
+  balance: string;
+  target_quantity: string;
+  deposited_amount: string;
+  remaining_quantity: string;
+  unit: string;
+  status: string;
+  total_selisih_amount: string;
+  selisih_details: any;
+  selisih_status: string;
 }
 
 const DepositGroupManagement = () => {
-  const [groups, setGroups] = useState<DepositGroupWithMembers[]>([]);
+  const [groups, setGroups] = useState<DepositGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showMembersModal, setShowMembersModal] = useState(false);
-  const [selectedGroup, setSelectedGroup] = useState<DepositGroupWithMembers | null>(null);
   const [editingGroup, setEditingGroup] = useState<DepositGroup | null>(null);
 
   // Enhanced form data with SPBG fields
@@ -75,11 +65,19 @@ const DepositGroupManagement = () => {
     fetchGroups();
   }, []);
 
+  // Debug: Log groups state changes
+  useEffect(() => {
+    console.log('Groups state updated:', groups);
+  }, [groups]);
+
   const fetchGroups = async () => {
     try {
       setLoading(true);
       const response = await apiClient.get('/deposit-groups');
-      setGroups(response.data.data || []);
+      console.log('API Response:', response);
+      console.log('Response data:', response.data);
+      // The API returns an array directly, not wrapped in data property
+      setGroups(response.data || []);
     } catch (err) {
       setError('Failed to fetch deposit groups.');
       console.error(err);
@@ -93,9 +91,9 @@ const DepositGroupManagement = () => {
     
     try {
       if (editingGroup) {
-        await apiClient.put(`/deposit-groups/${editingGroup.id}`, formData);
+        await apiClient.put(`/api/web/deposit-groups/${editingGroup.id}`, formData);
       } else {
-        await apiClient.post('/deposit-groups', formData);
+        await apiClient.post('/api/web/deposit-groups', formData);
       }
       
       setShowCreateModal(false);
@@ -127,7 +125,7 @@ const DepositGroupManagement = () => {
     }
 
     try {
-      await apiClient.delete(`/deposit-groups/${id}`);
+      await apiClient.delete(`/api/web/deposit-groups/${id}`);
       fetchGroups();
     } catch (err) {
       setError('Failed to delete deposit group.');
@@ -152,16 +150,9 @@ const DepositGroupManagement = () => {
     setShowCreateModal(true);
   };
 
-  const openMembersModal = (group: DepositGroupWithMembers) => {
-    setSelectedGroup(group);
-    setShowMembersModal(true);
-  };
-
   const closeModal = () => {
     setShowCreateModal(false);
-    setShowMembersModal(false);
     setEditingGroup(null);
-    setSelectedGroup(null);
     resetForm();
   };
 
@@ -215,7 +206,7 @@ const DepositGroupManagement = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {groups.map((group) => (
-          <div key={group.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+          <div key={group.id} className="bg-white rounded-lg shadow-lg border-2 border-gray-200 hover:border-blue-300 hover:shadow-xl transition-all duration-200 overflow-hidden">
             {/* Group Type Badge */}
             <div className={`px-4 py-2 text-xs font-medium text-white ${
               group.group_type === 'spbg' ? 'bg-blue-600' : 'bg-gray-600'
@@ -223,18 +214,18 @@ const DepositGroupManagement = () => {
               {group.group_type === 'spbg' ? 'SPBG Group' : 'General Group'}
             </div>
 
-            <div className="p-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">{group.group_name}</h3>
+            <div className="p-6 border-t border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 border-b border-gray-200 pb-2">{group.group_name}</h3>
               
               {group.description && (
-                <p className="text-gray-600 text-sm mb-3">{group.description}</p>
+                <p className="text-gray-600 text-sm mb-4 p-2 bg-gray-50 rounded border border-gray-200">{group.description}</p>
               )}
 
               {/* SPBG-specific information display */}
               {group.group_type === 'spbg' && (
-                <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <h4 className="text-sm font-medium text-blue-900 mb-2">SPBG Information</h4>
-                  <div className="space-y-1 text-sm">
+                <div className="mb-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+                  <h4 className="text-sm font-medium text-blue-900 mb-3 border-b border-blue-300 pb-1">SPBG Information</h4>
+                  <div className="space-y-2 text-sm">
                     {group.spbg_location && (
                       <div className="flex items-center">
                         <span className="text-blue-700 font-medium w-20">Location:</span>
@@ -257,44 +248,71 @@ const DepositGroupManagement = () => {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-2 gap-4 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-600">
-                    {formatCurrency(group.total_deposits)}
+                    {formatCurrency(parseFloat(group.deposited_amount))}
                   </div>
                   <div className="text-xs text-gray-500">Total Deposits</div>
                 </div>
                 <div className="text-center">
                   <div className={`text-2xl font-bold ${
-                    group.total_balance >= 0 ? 'text-blue-600' : 'text-red-600'
+                    parseFloat(group.balance) >= 0 ? 'text-blue-600' : 'text-red-600'
                   }`}>
-                    {formatCurrency(group.total_balance)}
+                    {formatCurrency(parseFloat(group.balance))}
                   </div>
                   <div className="text-xs text-gray-500">Current Balance</div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
-                <span>{group.member_count} members</span>
+              {/* Additional SPBG Information */}
+              {group.group_type === 'spbg' && (
+                <div className="mb-4 p-4 bg-green-50 rounded-lg border-2 border-green-200">
+                  <h4 className="text-sm font-medium text-green-900 mb-3 border-b border-green-300 pb-1">Gas Station Details</h4>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="p-2 bg-white rounded border border-green-200">
+                      <span className="text-green-700 font-medium">Target:</span>
+                      <span className="ml-2 text-green-900 font-semibold">{group.target_quantity} {group.unit}</span>
+                    </div>
+                    <div className="p-2 bg-white rounded border border-green-200">
+                      <span className="text-green-700 font-medium">Remaining:</span>
+                      <span className="ml-2 text-green-900 font-semibold">{group.remaining_quantity} {group.unit}</span>
+                    </div>
+                    <div className="p-2 bg-white rounded border border-green-200">
+                      <span className="text-green-700 font-medium">Status:</span>
+                      <span className={`ml-2 px-2 py-1 text-xs rounded-full ${
+                        group.status === 'normal' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {group.status}
+                      </span>
+                    </div>
+                    <div className="p-2 bg-white rounded border border-green-200">
+                      <span className="text-green-700 font-medium">Selisih:</span>
+                      <span className="ml-2 text-green-900 font-semibold">{formatCurrency(parseFloat(group.total_selisih_amount))}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between text-sm text-gray-500 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
                 <span>Created {formatDate(group.created_at)}</span>
+                <span className={`px-3 py-1 text-xs rounded-full border ${
+                  group.status === 'normal' ? 'bg-green-100 text-green-800 border-green-300' : 'bg-yellow-100 text-yellow-800 border-yellow-300'
+                }`}>
+                  {group.status}
+                </span>
               </div>
 
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => openMembersModal(group)}
-                  className="flex-1 bg-gray-500 hover:bg-gray-600 text-white text-sm py-2 px-3 rounded"
-                >
-                  View Members
-                </button>
+              <div className="flex space-x-3 pt-3 border-t border-gray-200">
                 <button
                   onClick={() => handleEdit(group)}
-                  className="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded"
+                  className="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded border border-blue-600 hover:border-blue-700 transition-colors duration-200"
                 >
                   Edit
                 </button>
                 <button
                   onClick={() => handleDelete(group.id)}
-                  className="flex-1 bg-red-500 hover:bg-red-600 text-white text-sm py-2 px-3 rounded"
+                  className="flex-1 bg-red-500 hover:bg-red-600 text-white text-sm py-2 px-3 rounded border border-red-600 hover:border-red-700 transition-colors duration-200"
                 >
                   Delete
                 </button>
@@ -460,90 +478,6 @@ const DepositGroupManagement = () => {
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Members Modal */}
-      {showMembersModal && selectedGroup && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium text-gray-900">
-                  Members of {selectedGroup.group_name}
-                </h3>
-                <button
-                  onClick={closeModal}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Member Name
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Type
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Deposit Amount
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Current Balance
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Last Transaction
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {selectedGroup.members.map((member) => (
-                      <tr key={member.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {member.member_name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                            member.member_type === 'driver' ? 'bg-blue-100 text-blue-800' :
-                            member.member_type === 'vehicle' ? 'bg-green-100 text-green-800' :
-                            'bg-purple-100 text-purple-800'
-                          }`}>
-                            {member.member_type.charAt(0).toUpperCase() + member.member_type.slice(1)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                          {formatCurrency(member.deposit_amount)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                          <span className={`font-medium ${
-                            member.current_balance >= 0 ? 'text-blue-600' : 'text-red-600'
-                          }`}>
-                            {formatCurrency(member.current_balance)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {member.last_transaction_date ? formatDate(member.last_transaction_date) : 'Never'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {selectedGroup.members.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  <p>No members in this group yet.</p>
-                </div>
-              )}
             </div>
           </div>
         </div>
