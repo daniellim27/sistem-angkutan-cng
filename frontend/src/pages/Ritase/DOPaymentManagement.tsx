@@ -1,0 +1,3296 @@
+// src/pages/Ritase/DOPaymentManagement.tsx
+import React, { useState, useCallback, useEffect, useMemo } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
+import apiClient from "../../api/axiosConfig";
+import toast from "react-hot-toast";
+
+interface DOPaymentData {
+  delivery_order: {
+    id: number;
+    do_number: string;
+    customer_name: string;
+    item_name: string;
+    minimal_load_quantity: number;
+    actual_load_quantity?: number;
+    unit_price: number;
+    unit: string;
+    total_amount: number;
+    trip_allowance: number;
+    gaji: number;
+    ongkosan: number;
+    final_amount?: number;
+    load_location: string;
+    unload_location: string;
+    payment_status: string;
+    payment_confirmation_status: string;
+    status: string;
+    created_at: string;
+    completed_at?: string;
+    vehicle?: {
+      license_plate: string;
+      type: string;
+    };
+    driver?: {
+      username: string;
+      driverProfile?: {
+        full_name: string;
+      };
+    };
+    purchaseOrder?: {
+      po_number: string;
+      customer_name: string;
+      unit_price: number;
+    };
+  };
+  payment_summary: {
+    original_amount: number;
+    final_amount: number;
+    calculated_bill: number;
+    total_invoiced: number;
+    total_paid: number;
+    total_pph: number;
+    remaining_amount: number;
+    payment_percentage: number;
+    payment_status: string;
+    confirmation_status: string;
+  };
+  payments: Payment[];
+  invoices: Invoice[];
+  adjustments: PriceAdjustment[];
+  system_settings: {
+    default_pph_percentage: number;
+  };
+}
+
+interface Payment {
+  id: number;
+  payment_amount: number;
+  payment_date: string;
+  payment_type: string;
+  payment_reference?: string;
+  bank_account?: string;
+  notes?: string;
+  attachment_urls?: Array<string>;
+  created_at: string;
+}
+
+interface Invoice {
+  id: number;
+  invoice_number: string;
+  invoice_amount: number;
+  net_amount: number;
+  pph_amount: number;
+  pph_percentage: number;
+  invoice_date: string;
+  due_date?: string;
+  status: string;
+  notes?: string;
+}
+
+interface PriceAdjustment {
+  id: number;
+  adjustment_type: string;
+  original_amount: number;
+  adjustment_amount: number;
+  final_amount: number;
+  reason: string;
+  created_at: string;
+}
+
+interface NewInvoice {
+  invoice_number: string;
+  invoice_amount: number;
+  due_date: string;
+  pph_percentage: number;
+  notes: string;
+}
+
+interface NewPayment {
+  payment_amount: number;
+  payment_date: string;
+  payment_type: string;
+  invoice_id: number;
+  payment_reference: string;
+  bank_account: string;
+  notes: string;
+}
+
+interface NewAdjustment {
+  adjustment_type: string;
+  adjustment_amount: number;
+  reason: string;
+  final_amount?: number;
+  incident_mode?: "adjustment" | "final";
+}
+
+const DOPaymentManagement: React.FC = () => {
+  const { doId } = useParams<{ doId: string }>();
+  const navigate = useNavigate();
+
+  const [doData, setDOData] = useState<DOPaymentData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "invoices" | "payments" | "adjustments"
+  >("overview");
+  const [showInvoiceForm, setShowInvoiceForm] = useState(false);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [showAdjustmentForm, setShowAdjustmentForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Form states
+  const [newInvoice, setNewInvoice] = useState<NewInvoice>({
+    invoice_number: "",
+    invoice_amount: 0,
+    due_date: "",
+    pph_percentage: 0.5,
+    notes: "",
+  });
+
+  const [newPayment, setNewPayment] = useState<NewPayment>({
+    payment_amount: 0,
+    payment_date: new Date().toISOString().split("T")[0],
+    payment_type: "transfer",
+    invoice_id: 0,
+    payment_reference: "",
+    bank_account: "",
+    notes: "",
+  });
+
+  const [newAdjustment, setNewAdjustment] = useState<NewAdjustment>({
+    adjustment_type: "price_override",
+    adjustment_amount: 0,
+    reason: "",
+    final_amount: undefined,
+  });
+
+  const [showCreateConfirm, setShowCreateConfirm] = useState(false);
+
+  const safeReplace = (
+    value: string | null | undefined,
+    searchValue: string,
+    replaceValue: string
+  ): string => {
+    if (typeof value !== "string") return "";
+    return value.replace(searchValue, replaceValue);
+  };
+
+  const safeNumber = (value: string | number | null | undefined): number => {
+    if (value === null || value === undefined) return 0;
+    const num = Number(value);
+    return isNaN(num) ? 0 : num;
+  };
+
+  const formatCurrency = (
+    value: string | number | null | undefined
+  ): string => {
+    return `Rp ${safeNumber(value).toLocaleString("id-ID")}`;
+  };
+
+  const calculateUnitAwareAmount = (
+    quantity: number,
+    unit: string,
+    unitPrice: number
+  ): number => {
+    switch (unit) {
+      case "kilogram":
+        return quantity * unitPrice;
+      case "ton":
+        return quantity * unitPrice;
+      case "kubik":
+        return quantity * unitPrice;
+      default:
+        throw new Error(`Unknown unit: ${unit}`);
+    }
+  };
+
+  // ✅ Fixed: Dynamic unit formatting
+  const formatQuantityWithUnit = (
+    value: string | number | null | undefined,
+    unit: string
+  ): string => {
+    const num = safeNumber(value);
+    switch (unit) {
+      case "kilogram":
+        return `${num.toLocaleString("id-ID")} Kg`;
+      case "ton":
+        return `${num.toLocaleString("id-ID")} Ton`;
+      case "kubik":
+        return `${num.toLocaleString("id-ID")} m³`;
+      default:
+        return `${num.toLocaleString("id-ID")} ${unit}`;
+    }
+  };
+
+  // ✅ Fixed: Dynamic unit price formatting
+  const formatUnitPrice = (price: number, unit: string): string => {
+    switch (unit) {
+      case "ton":
+        return `${formatCurrency(price / 1000)}/kg (${formatCurrency(
+          price
+        )}/ton)`;
+      case "kilogram":
+        return `${formatCurrency(price)}/kg`;
+      case "kubik":
+        return `${formatCurrency(price)}/m³`;
+      default:
+        return `${formatCurrency(price)}/${unit}`;
+    }
+  };
+
+  const calculatePPH = (amount: number, percentage: number): number => {
+    return (amount * percentage) / 100;
+  };
+
+  const calculateNetAmount = (
+    grossAmount: number,
+    pphAmount: number
+  ): number => {
+    return grossAmount - pphAmount;
+  };
+
+  // Memoized check if everything's settled (lunas, all paid, no remaining)
+  const isFullySettled = useMemo(() => {
+    if (!doData || doData.invoices.length === 0) return false; // Don't lock if no invoices yet
+    const { payment_status } = doData.delivery_order;
+    const { remaining_amount } = doData.payment_summary;
+
+    return payment_status === "lunas" && remaining_amount <= 0;
+  }, [doData]);
+
+  const fetchDOPaymentData = useCallback(async () => {
+    if (!doId) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await apiClient.get(
+        `/ritase/delivery-orders/${doId}/payment`
+      );
+
+      const responseData = response.data.success
+        ? response.data.data
+        : response.data;
+      setDOData(responseData);
+
+      if (responseData.delivery_order) {
+        const do_item = responseData.delivery_order;
+        const quantity = safeNumber(
+          do_item.actual_load_quantity || do_item.minimal_load_quantity
+        );
+        const unitPrice = safeNumber(
+          do_item.purchaseOrder?.unit_price || do_item.unit_price
+        );
+        const unit = do_item.unit || "ton";
+
+        const calculatedAmount = calculateUnitAwareAmount(
+          quantity,
+          unit,
+          unitPrice
+        );
+
+        setNewInvoice((prev) => ({
+          ...prev,
+          invoice_amount: calculatedAmount,
+          pph_percentage:
+            responseData.system_settings?.default_pph_percentage || 0.5,
+          invoice_number: `INV/${
+            safeReplace(do_item?.do_number, "DO-", "") || "NEW"
+          }`,
+        }));
+      }
+    } catch (err: any) {
+      setError(
+        err.response?.data?.message || "Failed to fetch DO payment data"
+      );
+      console.error("Error fetching DO payment data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [doId]);
+
+  useEffect(() => {
+    fetchDOPaymentData();
+  }, [fetchDOPaymentData]);
+
+  const handleConfirmForBilling = async () => {
+    if (!doData?.delivery_order) {
+      toast.error("Delivery Order data not found!");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+
+      await apiClient.patch(
+        `/payments/delivery-orders/${doData.delivery_order.id}/confirm`,
+        {
+          final_amount:
+            (doData.delivery_order.actual_load_quantity ||
+              doData.delivery_order.minimal_load_quantity) *
+              doData.delivery_order.unit_price ||
+            doData.delivery_order.final_amount,
+          notes: "Confirmed for payment processing",
+        }
+      );
+
+      toast.success("Delivery Order confirmed for billing successfully!");
+
+      await fetchDOPaymentData();
+      // Refresh the page
+      navigate(`/ritase/delivery-orders/${doData.delivery_order.id}/payment`);
+    } catch (err: any) {
+      const errorMsg =
+        err.response?.data?.message ||
+        "Failed to confirm Delivery Order for billing";
+      toast.error(errorMsg);
+      console.error("Confirmation error:", err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCreateInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newInvoice.invoice_amount > remainingAmount) {
+      toast.error(
+        `Amount exceeds remaining: max ${formatCurrency(remainingAmount)}`
+      );
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await apiClient.post(
+        `/ritase/delivery-orders/${doId}/invoices`,
+        newInvoice
+      );
+
+      setShowInvoiceForm(false);
+      setNewInvoice({
+        invoice_number: "",
+        invoice_amount: 0,
+        due_date: "",
+        pph_percentage: 0.5,
+        notes: "",
+      });
+      await fetchDOPaymentData();
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Failed to create invoice");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRecordPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!doId) return;
+
+    if (newPayment.payment_amount <= 0) {
+      toast.error("Payment amount must be greater than zero");
+      return;
+    }
+
+    // set the invoice id to the auto filled invoice (because one do only have 1 invoice)
+    if (doData?.invoices.length === 1) {
+      newPayment.invoice_id = doData.invoices[0].id;
+    }
+
+    try {
+      setSubmitting(true);
+      await apiClient.post(`payments/delivery-orders/${doId}`, newPayment);
+      toast.success("Payment recorded!");
+
+      setShowPaymentForm(false);
+      setNewPayment({
+        payment_amount: 0,
+        payment_date: new Date().toISOString().split("T")[0],
+        payment_type: "transfer",
+        invoice_id: 0,
+        payment_reference: "",
+        bank_account: "",
+        notes: "",
+      });
+      await fetchDOPaymentData();
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Failed to record payment");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    const statusMap = {
+      awaiting_confirmation: "AWAITING CONFIRMATION",
+      confirmed: "CONFIRMED",
+      lunas: "LUNAS",
+      deposit: "PARTIAL",
+      proses_tagihan: "PROSES TAGIHAN",
+      partial: "PARTIAL",
+      unpaid: "BELUM LUNAS",
+      overpaid: "OVERPAID",
+    };
+    return (
+      statusMap[status as keyof typeof statusMap] ||
+      status.replace("_", " ").toUpperCase()
+    );
+  };
+
+  const getStatusColor = (status: string) => {
+    const colors = {
+      awaiting_confirmation: "bg-yellow-100 text-yellow-800 border-yellow-300",
+      confirmed: "bg-blue-100 text-blue-800 border-blue-300",
+      lunas: "bg-green-100 text-green-800 border-green-300",
+      deposit: "bg-orange-100 text-orange-800 border-orange-300",
+      proses_tagihan: "bg-purple-100 text-purple-800 border-purple-300",
+      partial: "bg-amber-100 text-amber-800 border-amber-300",
+      unpaid: "bg-red-100 text-red-800 border-red-300",
+      overpaid: "bg-cyan-100 text-cyan-800 border-cyan-300",
+    };
+    return (
+      colors[status as keyof typeof colors] ||
+      "bg-gray-100 text-gray-800 border-gray-300"
+    );
+  };
+
+  const getPaymentTypeIcon = (type: string) => {
+    const icons = {
+      cash: "💵",
+      transfer: "🏦",
+      check: "📝",
+      giro: "🎫",
+    };
+    return icons[type as keyof typeof icons] || "💳";
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading payment management...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !doData) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+        <div className="flex">
+          <div className="flex-shrink-0">
+            <svg
+              className="h-5 w-5 text-red-400"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </div>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-red-800">
+              Error Loading Payment Data
+            </h3>
+            <div className="mt-2 text-sm text-red-700">
+              <p>{error || "Delivery Order payment data not found"}</p>
+            </div>
+            <div className="mt-4">
+              <button
+                onClick={() => navigate("/ritase/comprehensive")}
+                className="bg-red-100 px-4 py-2 rounded-md text-red-800 hover:bg-red-200 transition-colors"
+              >
+                ← Back to Ritase Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const do_item = doData.delivery_order;
+  const paymentSummary = doData.payment_summary;
+
+  // Calculate variance and billable amount
+  const billableQuantity = safeNumber(
+    do_item.actual_load_quantity || do_item.minimal_load_quantity
+  );
+  const unitPrice = safeNumber(
+    do_item.purchaseOrder?.unit_price || do_item.unit_price
+  );
+  const unit = do_item.unit || "ton"; // Fallback to ton
+
+  const totalInvoiced = doData.invoices.reduce(
+    (sum, inv) => sum + inv.invoice_amount,
+    0
+  );
+  const remainingAmount =
+    (do_item.final_amount || do_item.ongkosan || 0) - totalInvoiced;
+
+  const remainingPayment =
+    paymentSummary.total_invoiced - (paymentSummary.total_paid || 0);
+
+  const canConfirmBilling = () => {
+    const confirmationStatus =
+      do_item?.payment_confirmation_status || "pending";
+    const deliveryStatus = do_item?.status || "pending";
+
+    return (
+      deliveryStatus === "completed" &&
+      ["pending", "awaiting_confirmation"].includes(confirmationStatus)
+    );
+  };
+
+  const canCreateInvoice = () => {
+    return (
+      do_item?.payment_confirmation_status === "confirmed" &&
+      !isFullySettled &&
+      remainingAmount > 0
+    );
+  };
+  const canRecordPayment = () => {
+    return (
+      do_item?.payment_confirmation_status === "confirmed" &&
+      !isFullySettled &&
+      doData.invoices.length > 0 &&
+      remainingPayment > 0
+    );
+  };
+  const canAdjust = () => {
+    return do_item?.payment_confirmation_status === "confirmed";
+  };
+
+  const canDoActions = () => {
+    const confirmationStatus =
+      do_item?.payment_confirmation_status || "pending";
+    return (
+      confirmationStatus === "confirmed" &&
+      !isFullySettled &&
+      remainingPayment > 0
+    );
+  };
+
+  const calculatedBillableAmount = calculateUnitAwareAmount(
+    billableQuantity,
+    unit,
+    unitPrice
+  );
+  const paymentVariance =
+    paymentSummary.total_paid - paymentSummary.calculated_bill;
+  const isOverpaid = paymentVariance > 0;
+
+  return (
+    <div className="space-y-6 pb-8">
+      {/* ✅ Header with Navigation */}
+      <div className="flex justify-between items-start">
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            <svg
+              className="h-5 w-5 mr-2"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+            Back
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Payment Management
+            </h1>
+            <p className="text-gray-600">
+              {do_item.do_number} • {do_item.customer_name}
+            </p>
+
+            {/* Confirmation status indicator */}
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-sm text-gray-500">
+                Confirmation Status:
+              </span>
+              <span
+                className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  paymentSummary?.confirmation_status === "confirmed"
+                    ? "bg-green-100 text-green-800"
+                    : paymentSummary?.confirmation_status ===
+                      "awaiting_confirmation"
+                    ? "bg-yellow-100 text-yellow-800"
+                    : "bg-gray-100 text-gray-800"
+                }`}
+              >
+                {paymentSummary?.confirmation_status
+                  ?.replace("_", " ")
+                  .toUpperCase() || "PENDING"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ✅ ENHANCED: Smart action buttons in header */}
+        <div className="flex items-center space-x-3">
+          {/* Confirmation button if needed */}
+          {canConfirmBilling() && (
+            <button
+              onClick={handleConfirmForBilling}
+              disabled={submitting}
+              className="bg-yellow-600 text-white px-6 py-2 rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50 flex items-center gap-2 shadow-md"
+            >
+              {submitting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Confirming...
+                </>
+              ) : (
+                <>
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  Confirm for Billing
+                </>
+              )}
+            </button>
+          )}
+          {/* Quick Status */}
+          <span
+            className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(
+              paymentSummary?.payment_status || "unknown"
+            )}`}
+          >
+            {getStatusText(paymentSummary?.payment_status || "unknown")}
+          </span>
+        </div>
+      </div>
+
+      {/* ✅ DO Overview Card */}
+      <div className="bg-gradient-to-r from-purple-600 to-purple-700 shadow-xl rounded-lg overflow-hidden">
+        <div className="px-6 py-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Basic Info */}
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-xl font-semibold text-white mb-2">
+                  DO Information
+                </h2>
+                <div className="bg-white/10 rounded-lg p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-purple-100">Vehicle:</span>
+                    <span className="text-white font-medium">
+                      {do_item.vehicle?.license_plate}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-purple-100">Driver:</span>
+                    <span className="text-white font-medium">
+                      {do_item.driver?.driverProfile?.full_name ||
+                        do_item.driver?.username}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-purple-100">Item Name:</span>
+                    <span className="text-white font-medium">
+                      {do_item.item_name || "N/A"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-purple-100">Actual Quantity:</span>
+                    <span className="text-white font-medium">
+                      {formatQuantityWithUnit(billableQuantity, unit)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-purple-100">Unit Price:</span>
+                    <span className="text-white font-medium">
+                      {formatUnitPrice(unitPrice, unit)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Financial Summary */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-xl font-semibold text-white mb-2">
+                  Financial Summary
+                </h3>
+                <div className="bg-white/10 rounded-lg p-4 space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-purple-100">Calculated Bill:</span>
+                    <span className="text-white font-bold">
+                      {formatCurrency(paymentSummary.calculated_bill)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-purple-100">Total Paid:</span>
+                    <span className="text-white font-bold">
+                      {formatCurrency(paymentSummary.total_paid)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-purple-100">Remaining:</span>
+                    <span className="text-white font-bold">
+                      {formatCurrency(paymentSummary.remaining_amount)}
+                    </span>
+                  </div>
+
+                  {/* Variance Alert */}
+                  {Math.abs(paymentVariance) > 1000 && (
+                    <div
+                      className={`mt-3 p-2 rounded-lg text-sm ${
+                        isOverpaid
+                          ? "bg-blue-400/20 text-blue-100"
+                          : "bg-red-400/20 text-red-100"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>
+                          {isOverpaid ? "💰 Overpaid" : "⚠️ Underpaid"}
+                        </span>
+                        <span className="font-bold">
+                          {paymentVariance >= 0 ? "+" : ""}
+                          {formatCurrency(Math.abs(paymentVariance))}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* ✅ ENHANCED: Better progress bar with proper colors */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-xl font-semibold text-white mb-2">
+                  Payment Progress
+                </h3>
+                <div className="bg-white/10 rounded-lg p-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-purple-100">Completion</span>
+                    <span className="text-white font-bold">
+                      {Math.min(paymentSummary.payment_percentage, 100).toFixed(
+                        1
+                      )}
+                      %
+                    </span>
+                  </div>
+
+                  {/* 🔥 Enhanced Progress Bar */}
+                  <div className="w-full bg-white/20 rounded-full h-4 mb-3 overflow-hidden">
+                    <div
+                      className={`h-4 rounded-full transition-all duration-500 ${
+                        paymentSummary.payment_percentage >= 100
+                          ? "bg-green-400"
+                          : paymentSummary.payment_percentage > 0
+                          ? "bg-blue-400"
+                          : "bg-gray-400"
+                      }`}
+                      style={{
+                        width: `${Math.min(
+                          Math.max(paymentSummary.payment_percentage, 0),
+                          100
+                        )}%`,
+                      }}
+                    ></div>
+                  </div>
+
+                  {/* Payment Status Indicator */}
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center space-x-2">
+                      <div
+                        className={`w-2 h-2 rounded-full ${
+                          paymentSummary.remaining_amount === 0
+                            ? "bg-green-400"
+                            : paymentSummary.remaining_amount < 0
+                            ? "bg-blue-400"
+                            : "bg-yellow-400"
+                        }`}
+                      ></div>
+                      <span className="text-purple-100">
+                        {paymentSummary.remaining_amount === 0
+                          ? "Fully Paid"
+                          : paymentSummary.remaining_amount < 0
+                          ? "Overpaid"
+                          : "Pending"}
+                      </span>
+                    </div>
+                    <span className="text-white font-medium">
+                      {paymentSummary.remaining_amount === 0
+                        ? "✅"
+                        : paymentSummary.remaining_amount < 0
+                        ? "💰"
+                        : "⏳"}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs mt-3">
+                    <div>
+                      <span className="text-purple-100">Invoices:</span>
+                      <div className="text-white font-medium">
+                        {doData.invoices.length}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-purple-100">Payments:</span>
+                      <div className="text-white font-medium">
+                        {doData.payments.length}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ✅ Confirmation Alert */}
+      {canConfirmBilling() && (
+        <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl p-6 shadow-sm">
+          <div className="flex items-start justify-between">
+            <div className="flex items-start">
+              <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mr-4">
+                <svg
+                  className="h-6 w-6 text-yellow-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                  />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-yellow-800 mb-2">
+                  🚨 Action Required: Confirm DO for Payment Processing
+                </h3>
+                <div className="text-yellow-700 space-y-1">
+                  <p className="font-medium">
+                    This Delivery Order is ready for payment processing but
+                    needs confirmation first.
+                  </p>
+                  <div className="text-sm space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span>
+                        DO Status:{" "}
+                        <strong>{do_item.status?.toUpperCase()}</strong>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                      <span>
+                        Confirmation:{" "}
+                        <strong>
+                          {paymentSummary?.confirmation_status
+                            ?.replace("_", " ")
+                            .toUpperCase()}
+                        </strong>
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-sm mt-2 text-yellow-600">
+                    ⚠️ You won't be able to create invoices or record payments
+                    until this DO is confirmed.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={handleConfirmForBilling}
+              disabled={submitting}
+              className="bg-yellow-600 text-white px-8 py-3 rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50 font-semibold shadow-lg flex items-center gap-2"
+            >
+              {submitting ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  Confirming...
+                </>
+              ) : (
+                <>
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  Confirm Now
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ ENHANCED: Success confirmation message */}
+      {canDoActions() && (
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+              <svg
+                className="h-5 w-5 text-green-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h4 className="font-semibold text-green-800">
+                ✅ DO Confirmed for Payment Processing
+              </h4>
+              <p className="text-sm text-green-700">
+                You can now create invoices, record payments, and make
+                adjustments.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Navigation Tabs */}
+      <div className="bg-white shadow-md rounded-lg overflow-hidden">
+        <div className="border-b border-gray-200">
+          <nav className="flex space-x-8 px-6" aria-label="Tabs">
+            {[
+              { key: "overview", label: "Overview", count: null },
+              {
+                key: "invoices",
+                label: "Invoices",
+                count: doData.invoices.length,
+              },
+              {
+                key: "payments",
+                label: "Payments",
+                count: doData.payments.length,
+              },
+              {
+                key: "adjustments",
+                label: "Adjustments",
+                count: doData.adjustments.length,
+              },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key as any)}
+                className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+                  activeTab === tab.key
+                    ? "border-purple-500 text-purple-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+              >
+                <span>{tab.label}</span>
+                {tab.count !== null && (
+                  <span
+                    className={`px-2 py-1 rounded-full text-xs ${
+                      activeTab === tab.key
+                        ? "bg-purple-100 text-purple-600"
+                        : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                )}
+                {/* Lock icon for disabled actions */}
+                {tab.key !== "overview" && !canCreateInvoice && (
+                  <svg
+                    className="w-3 h-3 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                    />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {/* ✅ Tab Content */}
+        <div className="p-6">
+          {/* Overview Tab */}
+          {activeTab === "overview" && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-semibold">Payment Overview</h3>
+              {/* Quick Actions */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                {/* Create Invoice Card */}
+                <div
+                  className={`p-6 border-2 border-dashed rounded-lg transition-all
+                    ${
+                      canCreateInvoice()
+                        ? "border-blue-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer"
+                        : "border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed pointer-events-none"
+                    }
+                  `}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    if (!canCreateInvoice()) return;
+                    setShowInvoiceForm(true);
+                  }}
+                  aria-disabled={!canCreateInvoice()}
+                >
+                  <div className="text-center">
+                    <div className="relative">
+                      <svg
+                        className={`h-12 w-12 mx-auto mb-3 ${
+                          canCreateInvoice() ? "text-blue-500" : "text-gray-400"
+                        }`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                        />
+                      </svg>
+                      {!canCreateInvoice() && (
+                        <div className="absolute -top-1 -right-1 w-6 h-6 bg-gray-500 rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-3 h-3 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    <h4
+                      className={`font-medium ${
+                        canCreateInvoice() ? "text-gray-900" : "text-gray-500"
+                      }`}
+                    >
+                      Create Invoice
+                    </h4>
+                    <p
+                      className={`text-sm ${
+                        canCreateInvoice() ? "text-gray-600" : "text-gray-400"
+                      }`}
+                    >
+                      {isFullySettled
+                        ? "DO fully settled"
+                        : !canDoActions()
+                        ? "Tidak dapat membuat invoice"
+                        : doData.invoices.length > 0
+                        ? "Sudah ada Invoice"
+                        : "Generate new invoice"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Record Payment Card */}
+                <div
+                  className={`p-6 border-2 border-dashed rounded-lg transition-all
+                    ${
+                      canRecordPayment()
+                        ? "border-green-300 hover:border-green-400 hover:bg-green-50 cursor-pointer"
+                        : "border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed pointer-events-none"
+                    }
+                  `}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    if (!canRecordPayment()) return;
+                    setShowPaymentForm(true);
+                  }}
+                  aria-disabled={!canRecordPayment()}
+                >
+                  <div className="text-center">
+                    <svg
+                      className={`h-12 w-12 mx-auto mb-3 ${
+                        canRecordPayment() ? "text-green-500" : "text-gray-400"
+                      }`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
+                      />
+                    </svg>
+                    <h4
+                      className={`font-medium ${
+                        canRecordPayment() ? "text-gray-900" : "text-gray-500"
+                      }`}
+                    >
+                      Record Payment
+                    </h4>
+                    <p
+                      className={`text-sm ${
+                        canRecordPayment() ? "text-gray-600" : "text-gray-400"
+                      }`}
+                    >
+                      {isFullySettled
+                        ? "DO fully settled"
+                        : !canRecordPayment()
+                        ? doData.invoices.length === 0
+                          ? "Create invoice first"
+                          : "Can't record payment"
+                        : "Add new payment"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Price Adjustment Card */}
+                <div
+                  className={`p-6 border-2 border-dashed rounded-lg transition-all
+                    ${
+                      canAdjust() &&
+                      doData.adjustments.length === 0 &&
+                      !isFullySettled
+                        ? "border-yellow-300 hover:border-yellow-400 hover:bg-yellow-50 cursor-pointer"
+                        : doData.adjustments.length > 0 &&
+                          canAdjust() &&
+                          !isFullySettled
+                        ? "border-yellow-400 bg-yellow-50 cursor-pointer"
+                        : "border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed pointer-events-none"
+                    }
+                  `}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    if (!canAdjust() || isFullySettled) return;
+                    if (doData.adjustments.length === 0) {
+                      setShowAdjustmentForm(true); // Create
+                    } else {
+                      // Prefill form with existing adjustment for edit
+                      const adj = doData.adjustments[0];
+                      setNewAdjustment({
+                        adjustment_type: adj.adjustment_type,
+                        adjustment_amount: adj.adjustment_amount,
+                        reason: adj.reason,
+                      });
+                      setShowAdjustmentForm(true); // Edit
+                    }
+                  }}
+                  aria-disabled={!canAdjust()}
+                >
+                  <div className="text-center">
+                    <div className="relative">
+                      <svg
+                        className={`h-12 w-12 mx-auto mb-3 ${
+                          canAdjust() && !isFullySettled
+                            ? doData.adjustments.length === 0
+                              ? "text-yellow-500"
+                              : "text-yellow-700"
+                            : "text-gray-400"
+                        }`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                        />
+                      </svg>
+                      {!canAdjust() && isFullySettled && (
+                        <div className="absolute -top-1 -right-1 w-6 h-6 bg-gray-500 rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-3 h-3 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    <h4
+                      className={`font-medium ${
+                        canAdjust()
+                          ? doData.adjustments.length === 0
+                            ? "text-gray-900"
+                            : "text-yellow-800"
+                          : "text-gray-500"
+                      }`}
+                    >
+                      {doData.adjustments.length === 0
+                        ? "Price Adjustment"
+                        : "Edit Adjustment"}
+                    </h4>
+                    <p
+                      className={`text-sm ${
+                        canAdjust()
+                          ? doData.adjustments.length === 0
+                            ? "text-gray-600"
+                            : "text-yellow-700"
+                          : "text-gray-400"
+                      }`}
+                    >
+                      {isFullySettled
+                        ? "DO fully settled"
+                        : !canAdjust()
+                        ? "Requires confirmation"
+                        : doData.adjustments.length === 0
+                        ? "Modify pricing"
+                        : "Edit existing adjustment"}
+                    </p>
+                    {doData.adjustments.length > 0 && canAdjust() && (
+                      <div className="mt-2 text-xs text-yellow-700">
+                        Adjustment already exists. Click to edit.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent Activity */}
+              <div>
+                <h4 className="text-md font-medium mb-4">Recent Activity</h4>
+                <div className="space-y-3">
+                  {[
+                    ...doData.payments.map((payment) => ({
+                      type: "payment",
+                      data: payment,
+                      timestamp: payment.created_at,
+                    })),
+                    ...doData.invoices.map((invoice) => ({
+                      type: "invoice",
+                      data: invoice,
+                      timestamp: invoice.invoice_date,
+                    })),
+                    ...doData.adjustments.map((adjustment) => ({
+                      type: "adjustment",
+                      data: adjustment,
+                      timestamp: adjustment.created_at,
+                    })),
+                  ]
+                    .sort(
+                      (a, b) =>
+                        new Date(b.timestamp).getTime() -
+                        new Date(a.timestamp).getTime()
+                    )
+                    .slice(0, 5)
+                    .map((activity, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg"
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-white ${
+                            activity.type === "payment"
+                              ? "bg-green-500"
+                              : activity.type === "invoice"
+                              ? "bg-blue-500"
+                              : "bg-yellow-500"
+                          }`}
+                        >
+                          {activity.type === "payment"
+                            ? "💰"
+                            : activity.type === "invoice"
+                            ? "📄"
+                            : "⚡"}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">
+                            {activity.type === "payment" &&
+                              `Payment recorded: ${formatCurrency(
+                                (activity.data as Payment).payment_amount
+                              )}`}
+                            {activity.type === "invoice" &&
+                              `Invoice created: ${
+                                (activity.data as Invoice).invoice_number
+                              }`}
+                            {activity.type === "adjustment" &&
+                              `Price adjustment: ${
+                                (activity.data as PriceAdjustment)
+                                  .adjustment_type
+                              }`}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {new Date(activity.timestamp).toLocaleDateString(
+                              "id-ID",
+                              {
+                                year: "numeric",
+                                month: "long",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              }
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Invoices Tab */}
+          {activeTab === "invoices" && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold">Invoice Management</h3>
+                <div className="relative group">
+                  <button
+                    onClick={() => {
+                      if (isFullySettled) {
+                        toast("DO fully settled—can't create more invoices!");
+                        return;
+                      }
+                      if (!canDoActions()) {
+                        toast.error("Please confirm DO for billing first!");
+                        return;
+                      }
+                      if (remainingAmount <= 0) {
+                        toast.error(
+                          "No remaining amount to invoice! All billed: " +
+                            formatCurrency(totalInvoiced)
+                        );
+                        return;
+                      }
+                      if (doData.invoices.length > 0) {
+                        setShowCreateConfirm(true);
+                      } else {
+                        setShowInvoiceForm(true);
+                      }
+                    }}
+                    disabled={
+                      !canDoActions() || isFullySettled || remainingAmount <= 0
+                    }
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isFullySettled ? (
+                      <>
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                          />
+                        </svg>
+                        Locked - Fully Settled
+                      </>
+                    ) : (
+                      "+ Create Invoice"
+                    )}
+                  </button>
+                  {/* Tooltip for disabled button */}
+                  {(!canCreateInvoice() ||
+                    isFullySettled ||
+                    remainingAmount <= 0) && (
+                    <div className="absolute left-1/2 transform -translate-x-1/2 mt-2 w-56 bg-gray-800 text-white text-xs rounded px-3 py-2 opacity-0 group-hover:opacity-100 pointer-events-none z-10 transition-opacity">
+                      {isFullySettled
+                        ? "DO sudah lunas/settled. Tidak bisa membuat invoice baru."
+                        : !canCreateInvoice()
+                        ? "Konfirmasi DO untuk billing terlebih dahulu."
+                        : "Sisa amount sudah 0, tidak bisa membuat invoice baru."}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {!canCreateInvoice() && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center gap-3">
+                    <svg
+                      className="w-5 h-5 text-gray-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                      />
+                    </svg>
+                    <span className="text-gray-600">
+                      Invoice management is locked. DO belum dikonfirmasi atau
+                      sudah ada invoice.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {doData.invoices.length === 0 ? (
+                <div className="text-center py-12">
+                  <svg
+                    className="h-16 w-16 text-gray-400 mx-auto mb-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    No Invoices Yet
+                  </h3>
+                  <p className="text-gray-500 mb-4">
+                    Create your first invoice to start the payment process.
+                  </p>
+                  <button
+                    onClick={() => setShowInvoiceForm(true)}
+                    disabled={
+                      paymentSummary.confirmation_status !== "confirmed" ||
+                      isFullySettled ||
+                      remainingAmount <= 0
+                    }
+                    className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  >
+                    Create First Invoice
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {doData.invoices.map((invoice) => (
+                    <div
+                      key={invoice.id}
+                      className={`border border-gray-200 rounded-lg p-6 transition-shadow ${
+                        isFullySettled
+                          ? "opacity-60 cursor-not-allowed pointer-events-none"
+                          : "hover:shadow-md cursor-pointer hover:border-blue-300"
+                      }`}
+                      onClick={() =>
+                        !isFullySettled &&
+                        navigate(
+                          `/ritase/delivery-orders/${doId}/invoices/${invoice.id}`
+                        )
+                      }
+                      tabIndex={isFullySettled ? -1 : 0}
+                      aria-disabled={isFullySettled}
+                      title={
+                        isFullySettled
+                          ? "DO sudah lunas/settled"
+                          : "Lihat detail invoice"
+                      }
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h4 className="font-semibold text-gray-900">
+                            {invoice.invoice_number}
+                          </h4>
+                          <p className="text-sm text-gray-600">
+                            {new Date(invoice.invoice_date).toLocaleDateString(
+                              "id-ID"
+                            )}
+                          </p>
+                        </div>
+                        <span
+                          className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(
+                            invoice.status
+                          )}`}
+                        >
+                          {invoice.status.toUpperCase()}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Gross Amount:</span>
+                          <span className="font-medium">
+                            {formatCurrency(invoice.invoice_amount)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">
+                            PPH ({invoice.pph_percentage}%):
+                          </span>
+                          <span className="font-medium text-gray-600">
+                            {formatCurrency(invoice.pph_amount)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between font-semibold border-t pt-2">
+                          <span>Net Amount:</span>
+                          <span>{formatCurrency(invoice.net_amount)}</span>
+                        </div>
+                      </div>
+
+                      {invoice.due_date && (
+                        <div className="mt-3 text-xs text-gray-500">
+                          Due:{" "}
+                          {new Date(invoice.due_date).toLocaleDateString(
+                            "id-ID"
+                          )}
+                          {new Date(invoice.due_date) < new Date() &&
+                            invoice.status !== "paid" && (
+                              <span className="ml-2 text-red-600 font-medium">
+                                OVERDUE
+                              </span>
+                            )}
+                        </div>
+                      )}
+
+                      {invoice.notes && (
+                        <div className="mt-3 p-2 bg-gray-50 rounded text-xs">
+                          <strong>Notes:</strong> {invoice.notes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Payments Tab */}
+          {activeTab === "payments" && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold">Payment Records</h3>
+                <div className="relative group">
+                  <button
+                    onClick={() => {
+                      if (isFullySettled) {
+                        toast.error(
+                          "DO fully settled—can't record more payments!"
+                        );
+                        return;
+                      }
+                      if (!canRecordPayment()) {
+                        toast.error("Please confirm DO for billing first!");
+                        return;
+                      }
+                      if (doData.invoices.length === 0) {
+                        toast.error(
+                          "Create an invoice first before recording payment!"
+                        );
+                        return;
+                      }
+                      setShowPaymentForm(true);
+                    }}
+                    disabled={
+                      !canRecordPayment() ||
+                      doData.invoices.length === 0 ||
+                      isFullySettled
+                    }
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isFullySettled ? (
+                      <>
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                          />
+                        </svg>
+                        Locked - Fully Settled
+                      </>
+                    ) : (
+                      <>
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                          />
+                        </svg>
+                        Record Payment
+                      </>
+                    )}
+                  </button>
+                  {/* Tooltip for disabled button */}
+                  {(!canRecordPayment() ||
+                    doData.invoices.length === 0 ||
+                    isFullySettled) && (
+                    <div className="absolute left-1/2 transform -translate-x-1/2 mt-2 w-56 bg-gray-800 text-white text-xs rounded px-3 py-2 opacity-0 group-hover:opacity-100 pointer-events-none z-10 transition-opacity">
+                      {isFullySettled
+                        ? "DO sudah lunas/settled. Tidak bisa record payment baru."
+                        : !canRecordPayment()
+                        ? "Konfirmasi DO untuk billing terlebih dahulu."
+                        : "Buat invoice dulu sebelum record payment."}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Disabled state warnings */}
+              {!canRecordPayment() && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center gap-3">
+                    <svg
+                      className="w-5 h-5 text-gray-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                      />
+                    </svg>
+                    <div>
+                      <p className="font-medium text-gray-700">
+                        Payment Recording Locked
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        Please confirm DO for billing to enable payment
+                        recording.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Invoice requirement warning */}
+              {canCreateInvoice() && doData.invoices.length === 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center gap-3">
+                    <svg
+                      className="w-5 h-5 text-blue-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <div>
+                      <p className="font-medium text-blue-700">
+                        Invoice Required
+                      </p>
+                      <p className="text-sm text-blue-600">
+                        Create an invoice first before recording payments.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowInvoiceForm(true)}
+                      className="ml-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                    >
+                      Create Invoice
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* No payments yet */}
+              {doData.payments.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="relative">
+                    <svg
+                      className={`h-16 w-16 mx-auto mb-4 ${
+                        canRecordPayment() && doData.invoices.length > 0
+                          ? "text-gray-400"
+                          : "text-gray-300"
+                      }`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
+                      />
+                    </svg>
+                    {/* Lock overlay for disabled state */}
+                    {(!canRecordPayment() || doData.invoices.length === 0) && (
+                      <div className="absolute top-4 right-1/2 transform translate-x-1/2">
+                        <div className="w-8 h-8 bg-gray-500 rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-4 h-4 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    No Payments Recorded
+                  </h3>
+                  <p className="text-gray-500 mb-4">
+                    {!canRecordPayment()
+                      ? "Payment recording is locked until DO is confirmed for billing."
+                      : doData.invoices.length === 0
+                      ? "Create an invoice first to enable payment recording."
+                      : "Record payments received from the customer."}
+                  </p>
+                  <button
+                    onClick={() => {
+                      if (isFullySettled) {
+                        toast.error(
+                          "DO fully settled—can't record more payments!"
+                        );
+                        return;
+                      }
+                      if (!canRecordPayment()) {
+                        toast.error("Please confirm DO for billing first!");
+                        return;
+                      }
+                      if (doData.invoices.length === 0) {
+                        toast.error(
+                          "Create an invoice first before recording payment!"
+                        );
+                        return;
+                      }
+                      setShowPaymentForm(true);
+                    }}
+                    disabled={
+                      !canRecordPayment() ||
+                      doData.invoices.length === 0 ||
+                      isFullySettled
+                    }
+                    className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                  >
+                    {isFullySettled
+                      ? "DO Fully Settled"
+                      : !canRecordPayment()
+                      ? "Locked - Confirm DO First"
+                      : doData.invoices.length === 0
+                      ? "Create Invoice First"
+                      : "Record First Payment"}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Payment summary stats */}
+                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">
+                          {doData.payments.length}
+                        </div>
+                        <div className="text-sm text-green-700">
+                          Total Payments
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">
+                          {formatCurrency(
+                            doData.payments.reduce(
+                              (sum, p) => sum + p.payment_amount,
+                              0
+                            )
+                          )}
+                        </div>
+                        <div className="text-sm text-green-700">
+                          Total Received
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">
+                          {formatCurrency(
+                            paymentSummary.total_invoiced -
+                              doData.payments.reduce(
+                                (sum, p) => sum + p.payment_amount,
+                                0
+                              )
+                          )}
+                        </div>
+                        <div className="text-sm text-green-700">
+                          Outstanding
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payment cards */}
+                  {doData.payments.map((payment) => (
+                    <div
+                      key={payment.id}
+                      className={`border border-gray-200 rounded-xl p-6 transition-all duration-200 bg-white ${
+                        isFullySettled
+                          ? "opacity-60 cursor-not-allowed pointer-events-none"
+                          : "hover:shadow-lg"
+                      }`}
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center space-x-4">
+                          <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                            <div className="text-2xl">
+                              {getPaymentTypeIcon(payment.payment_type)}
+                            </div>
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-xl text-gray-900">
+                              {formatCurrency(payment.payment_amount)}
+                            </h4>
+                            <p className="text-sm text-gray-600">
+                              {payment.payment_type.charAt(0).toUpperCase() +
+                                payment.payment_type.slice(1)}{" "}
+                              •{" "}
+                              {new Date(
+                                payment.payment_date
+                              ).toLocaleDateString("id-ID")}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm text-gray-500">
+                            Recorded:{" "}
+                            {new Date(payment.created_at).toLocaleDateString(
+                              "id-ID"
+                            )}
+                          </div>
+                          <div className="mt-1">
+                            <span className="inline-flex px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                              ✅ Confirmed
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-4">
+                        {payment.payment_reference && (
+                          <div className="bg-gray-50 p-3 rounded-lg">
+                            <span className="text-gray-600 font-medium">
+                              Reference:
+                            </span>
+                            <p className="font-semibold text-gray-900 mt-1">
+                              {payment.payment_reference}
+                            </p>
+                          </div>
+                        )}
+                        {payment.bank_account && (
+                          <div className="bg-gray-50 p-3 rounded-lg">
+                            <span className="text-gray-600 font-medium">
+                              Bank Account:
+                            </span>
+                            <p className="font-semibold text-gray-900 mt-1">
+                              {payment.bank_account}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {payment.notes && (
+                        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                          <div className="font-medium text-blue-800 mb-1">
+                            Payment Notes:
+                          </div>
+                          <p className="text-blue-700">{payment.notes}</p>
+                        </div>
+                      )}
+
+                      {payment.attachment_urls &&
+                      payment.attachment_urls.length > 0 ? (
+                        <div className="mt-4">
+                          <div className="font-medium text-gray-700 mb-2">
+                            Attachments:
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {payment.attachment_urls.map((url, index) => (
+                              <a
+                                key={index}
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors text-sm"
+                              >
+                                <svg
+                                  className="h-4 w-4 mr-2"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                                  />
+                                </svg>
+                                View Attachment {index + 1}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-4 text-sm text-gray-500">
+                          No attachments available
+                        </div>
+                      )}
+
+                      <div className="mt-4 flex justify-end gap-2">
+                        <button
+                          onClick={() => {
+                            if (isFullySettled) return;
+                            // Handle edit payment
+                            console.log("Edit payment:", payment.id);
+                          }}
+                          disabled={isFullySettled}
+                          className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors disabled:opacity-50"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (isFullySettled) return;
+                            // Handle delete payment
+                            console.log("Delete payment:", payment.id);
+                          }}
+                          disabled={isFullySettled}
+                          className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors disabled:opacity-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Adjustments Tab */}
+          {activeTab === "adjustments" && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold">Price Adjustments</h3>
+                <div className="relative group">
+                  <button
+                    onClick={() => {
+                      if (isFullySettled) {
+                        toast.error("DO fully settled—can't edit adjustment!");
+                        return;
+                      }
+                      if (!canAdjust()) {
+                        toast.error("Please confirm DO for billing first!");
+                        return;
+                      }
+                      // Prefill form jika sudah ada adjustment
+                      if (doData.adjustments.length > 0) {
+                        const adj = doData.adjustments[0];
+                        setNewAdjustment({
+                          adjustment_type: adj.adjustment_type,
+                          adjustment_amount: adj.adjustment_amount,
+                          reason: adj.reason,
+                        });
+                      }
+                      setShowAdjustmentForm(true);
+                    }}
+                    disabled={!canAdjust() || isFullySettled}
+                    className="bg-yellow-600 text-white px-4 py-2 rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {!canAdjust() || isFullySettled ? (
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                        />
+                      </svg>
+                    ) : (
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                        />
+                      </svg>
+                    )}
+                    {doData.adjustments.length > 0
+                      ? "Edit Adjustment"
+                      : "+ Create Adjustment"}
+                  </button>
+                  {/* Tooltip for disabled button */}
+                  {(!canAdjust() || isFullySettled) && (
+                    <div className="absolute left-1/2 transform -translate-x-1/2 mt-2 w-56 bg-gray-800 text-white text-xs rounded px-3 py-2 opacity-0 group-hover:opacity-100 pointer-events-none z-10 transition-opacity">
+                      {isFullySettled
+                        ? "DO sudah lunas/settled. Tidak bisa edit adjustment."
+                        : "Konfirmasi DO untuk billing terlebih dahulu."}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {(!canAdjust() || isFullySettled) && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center gap-3">
+                    <svg
+                      className="w-5 h-5 text-gray-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                      />
+                    </svg>
+                    <div>
+                      <p className="font-medium text-gray-700">
+                        Price Adjustments Locked
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        DO payment has been fully completed or DO haven't been
+                        confirmed for billing.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {doData.adjustments.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="relative">
+                    <svg
+                      className={`h-16 w-16 mx-auto mb-4 ${
+                        canAdjust() ? "text-gray-400" : "text-gray-300"
+                      }`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                      />
+                    </svg>
+                    {/* Lock overlay for disabled state */}
+                    {!canAdjust() && (
+                      <div className="absolute top-4 right-1/2 transform translate-x-1/2">
+                        <div className="w-8 h-8 bg-gray-500 rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-4 h-4 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    No Adjustments
+                  </h3>
+                  <p className="text-gray-500 mb-4">
+                    {!canAdjust() || isFullySettled
+                      ? "Price adjustments are locked until DO is confirmed for billing atau sudah lunas."
+                      : "Create adjustments for special cases like accidents or additional charges."}
+                  </p>
+                  <button
+                    onClick={() => {
+                      if (!canAdjust()) {
+                        toast.error(
+                          isFullySettled
+                            ? "DO fully settled—can't create more adjustments!"
+                            : "The DO is completed or Please confirm DO for billing first!"
+                        );
+                        return;
+                      }
+                      setShowAdjustmentForm(true);
+                    }}
+                    disabled={!canAdjust() || isFullySettled}
+                    className="bg-yellow-600 text-white px-6 py-3 rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {!canAdjust() || isFullySettled
+                      ? "Locked"
+                      : "Create First Adjustment"}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Adjustment summary stats */}
+                  <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-yellow-600">
+                          {doData.adjustments.length}
+                        </div>
+                        <div className="text-sm text-yellow-700">
+                          Total Adjustments
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-yellow-600">
+                          {formatCurrency(
+                            doData.adjustments.reduce(
+                              (sum, adj) => sum + adj.adjustment_amount,
+                              0
+                            )
+                          )}
+                        </div>
+                        <div className="text-sm text-yellow-700">
+                          Total Adjustments
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-yellow-600">
+                          {formatCurrency(
+                            doData.adjustments.reduce(
+                              (sum, adj) => sum + adj.final_amount,
+                              0
+                            )
+                          )}
+                        </div>
+                        <div className="text-sm text-yellow-700">
+                          Final Amount
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Adjustment card (hanya satu) */}
+                  {doData.adjustments.map((adjustment) => (
+                    <div
+                      key={adjustment.id}
+                      className={`border border-gray-200 rounded-xl p-6 transition-all duration-200 bg-white ${
+                        isFullySettled
+                          ? "opacity-60 cursor-not-allowed pointer-events-none"
+                          : "hover:shadow-lg"
+                      }`}
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center space-x-4">
+                          <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
+                            <svg
+                              className="w-6 h-6 text-yellow-600"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                              />
+                            </svg>
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-lg text-gray-900 capitalize">
+                              {safeReplace(
+                                adjustment?.adjustment_type,
+                                "_",
+                                " "
+                              ) || "Unknown"}
+                            </h4>
+                            <p className="text-sm text-gray-600">
+                              {new Date(
+                                adjustment.created_at
+                              ).toLocaleDateString("id-ID")}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span
+                            className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                              adjustment.adjustment_amount > 0
+                                ? "bg-green-100 text-green-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {adjustment.adjustment_amount > 0
+                              ? "📈 Increase"
+                              : "📉 Decrease"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
+                        <div className="bg-gray-50 p-4 rounded-lg text-center">
+                          <span className="text-gray-600 font-medium block mb-2">
+                            Original Amount
+                          </span>
+                          <p className="font-bold text-xl text-gray-900">
+                            {formatCurrency(paymentSummary.calculated_bill)}
+                          </p>
+                        </div>
+                        <div
+                          className={`p-4 rounded-lg text-center ${
+                            adjustment.adjustment_amount > 0
+                              ? "bg-green-50"
+                              : "bg-red-50"
+                          }`}
+                        >
+                          <span className="text-gray-600 font-medium block mb-2">
+                            Adjustment
+                          </span>
+                          <p
+                            className={`font-bold text-xl ${
+                              adjustment.adjustment_amount > 0
+                                ? "text-green-600"
+                                : "text-red-600"
+                            }`}
+                          >
+                            {adjustment.adjustment_amount > 0 ? "+" : ""}
+                            {formatCurrency(adjustment.adjustment_amount)}
+                          </p>
+                        </div>
+                        <div className="bg-blue-50 p-4 rounded-lg text-center">
+                          <span className="text-gray-600 font-medium block mb-2">
+                            Final Amount
+                          </span>
+                          <p className="font-bold text-xl text-blue-600">
+                            {formatCurrency(adjustment.final_amount)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <div className="font-medium text-yellow-800 mb-2">
+                          Adjustment Reason:
+                        </div>
+                        <p className="text-yellow-700 text-sm leading-relaxed">
+                          {adjustment.reason}
+                        </p>
+                      </div>
+
+                      {/* Action buttons for adjustment (disabled if fully settled) */}
+                      <div className="mt-4 flex justify-end gap-2">
+                        <button
+                          onClick={() => {
+                            if (isFullySettled) return;
+                            // Prefill form for edit
+                            setNewAdjustment({
+                              adjustment_type: adjustment.adjustment_type,
+                              adjustment_amount: adjustment.adjustment_amount,
+                              reason: adjustment.reason,
+                            });
+                            setShowAdjustmentForm(true);
+                          }}
+                          disabled={isFullySettled}
+                          className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors disabled:opacity-50"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (isFullySettled) return;
+                            if (
+                              window.confirm(
+                                "Are you sure you want to delete this adjustment? This action cannot be undone."
+                              )
+                            ) {
+                              try {
+                                await apiClient.delete(
+                                  `/ritase/delivery-orders/${doId}/adjustment/${adjustment.id}`
+                                );
+                                toast.success("Adjustment deleted!");
+                                await fetchDOPaymentData();
+                              } catch (err: any) {
+                                toast.error(
+                                  err.response?.data?.message ||
+                                    "Failed to delete adjustment"
+                                );
+                              }
+                            }
+                          }}
+                          disabled={isFullySettled}
+                          className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors disabled:opacity-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ✅ CREATE INVOICE MODAL */}
+      {showInvoiceForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold">Create Invoice</h3>
+                <button
+                  onClick={() => setShowInvoiceForm(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleCreateInvoice} className="p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Invoice Number
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newInvoice.invoice_number}
+                    onChange={(e) =>
+                      setNewInvoice((prev) => ({
+                        ...prev,
+                        invoice_number: e.target.value,
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="INV/2024/001"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Due Date
+                  </label>
+                  <input
+                    type="date"
+                    value={newInvoice.due_date}
+                    onChange={(e) =>
+                      setNewInvoice((prev) => ({
+                        ...prev,
+                        due_date: e.target.value,
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Invoice Amount
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  step="0.01"
+                  value={newInvoice.invoice_amount}
+                  onChange={(e) =>
+                    setNewInvoice((prev) => ({
+                      ...prev,
+                      invoice_amount: parseFloat(e.target.value) || 0,
+                    }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="text-sm text-gray-500 mt-1">
+                  Calculated: {formatCurrency(calculatedBillableAmount)} | Max
+                  invoice amount: {formatCurrency(remainingAmount)}
+                </p>{" "}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  PPH Percentage (%)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={newInvoice.pph_percentage}
+                  onChange={(e) =>
+                    setNewInvoice((prev) => ({
+                      ...prev,
+                      pph_percentage: parseFloat(e.target.value) || 0,
+                    }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              {/* Real-time Calculation */}
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="font-medium text-blue-800 mb-2">
+                  Invoice Calculation
+                </h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>Gross Amount:</span>
+                    <span className="font-medium">
+                      {formatCurrency(newInvoice.invoice_amount)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>PPH ({newInvoice.pph_percentage}%):</span>
+                    <span className="font-medium text-red-600">
+                      -
+                      {formatCurrency(
+                        calculatePPH(
+                          newInvoice.invoice_amount,
+                          newInvoice.pph_percentage
+                        )
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex justify-between font-semibold border-t border-blue-200 pt-1">
+                    <span>Net Amount:</span>
+                    <span>
+                      {formatCurrency(
+                        calculateNetAmount(
+                          newInvoice.invoice_amount,
+                          calculatePPH(
+                            newInvoice.invoice_amount,
+                            newInvoice.pph_percentage
+                          )
+                        )
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Notes
+                </label>
+                <textarea
+                  rows={3}
+                  value={newInvoice.notes}
+                  onChange={(e) =>
+                    setNewInvoice((prev) => ({
+                      ...prev,
+                      notes: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Additional notes for this invoice..."
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setShowInvoiceForm(false)}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {submitting ? "Creating..." : "Create Invoice"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showCreateConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold mb-4">
+              Existing Invoices Detected
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Sudah ada {doData.invoices.length} invoice existing dengan total
+              amount {formatCurrency(totalInvoiced)}. Sisa amount yang bisa
+              ditagih: {formatCurrency(remainingAmount)}.
+            </p>
+            <p className="text-sm text-gray-500 mb-6">
+              Yakin mau bikin invoice baru? Pastikan tidak over-bill!
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowCreateConfirm(false)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowCreateConfirm(false);
+                  setShowInvoiceForm(true);
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ RECORD PAYMENT MODAL */}
+      {showPaymentForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold">Record Payment</h3>
+                <button
+                  onClick={() => setShowPaymentForm(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleRecordPayment} className="p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Payment Amount
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    step="0.01"
+                    value={newPayment.payment_amount}
+                    onChange={(e) =>
+                      setNewPayment((prev) => ({
+                        ...prev,
+                        payment_amount: parseFloat(e.target.value) || 0,
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    Remaining: {formatCurrency(paymentSummary.remaining_amount)}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Payment Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={newPayment.payment_date}
+                    onChange={(e) =>
+                      setNewPayment((prev) => ({
+                        ...prev,
+                        payment_date: e.target.value,
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Method
+                </label>
+                <select
+                  value={newPayment.payment_type}
+                  onChange={(e) =>
+                    setNewPayment((prev) => ({
+                      ...prev,
+                      payment_type: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                >
+                  <option value="transfer">Bank Transfer</option>
+                  <option value="cash">Cash</option>
+                  <option value="check">Check</option>
+                  <option value="giro">Giro</option>
+                </select>
+              </div>
+
+              <div>
+                {/* Invoice is auto filled and read-only (because 1 do can only have 1 invoice) */}
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Invoice Number
+                </label>
+                <input
+                  type="text"
+                  value={doData.invoices[0]?.invoice_number || ""}
+                  readOnly
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
+                  placeholder="Auto-filled from existing invoice"
+                />
+                <p className="text-sm text-gray-500 mt-1">
+                  Invoice Net Amount:{" "}
+                  {formatCurrency(doData.invoices[0]?.net_amount || 0)}
+                </p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Total Paid: {formatCurrency(paymentSummary.total_paid || 0)}
+                </p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Remaining Amount:{" "}
+                  {formatCurrency(paymentSummary.remaining_amount || 0)}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Payment Reference
+                  </label>
+                  <input
+                    type="text"
+                    value={newPayment.payment_reference}
+                    onChange={(e) =>
+                      setNewPayment((prev) => ({
+                        ...prev,
+                        payment_reference: e.target.value,
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    placeholder="Transfer ID, Check number, etc."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Bank Account
+                  </label>
+                  <input
+                    type="text"
+                    value={newPayment.bank_account}
+                    onChange={(e) =>
+                      setNewPayment((prev) => ({
+                        ...prev,
+                        bank_account: e.target.value,
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    placeholder="Account number or name"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Notes
+                </label>
+                <textarea
+                  rows={3}
+                  value={newPayment.notes}
+                  onChange={(e) =>
+                    setNewPayment((prev) => ({
+                      ...prev,
+                      notes: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  placeholder="Additional payment details..."
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentForm(false)}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  {submitting ? "Recording..." : "Record Payment"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ CREATE/EDIT ADJUSTMENT MODAL */}
+      {showAdjustmentForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold">
+                  {doData.adjustments.length > 0
+                    ? "Edit Price Adjustment"
+                    : "Create Price Adjustment"}
+                </h3>
+                <button
+                  onClick={() => setShowAdjustmentForm(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!doId) return;
+
+                // ✅ ENHANCED VALIDATION
+                const currentAmount = doData.payment_summary.calculated_bill;
+                const finalAmount =
+                  newAdjustment.adjustment_type === "price_override"
+                    ? newAdjustment.final_amount ?? 0
+                    : newAdjustment.adjustment_type === "incident" &&
+                      newAdjustment.incident_mode === "final"
+                    ? newAdjustment.final_amount ?? 0
+                    : currentAmount + newAdjustment.adjustment_amount;
+
+                // Prevent negative final amounts for penalty and incident
+                if (
+                  ["penalty", "incident"].includes(
+                    newAdjustment.adjustment_type
+                  ) &&
+                  finalAmount < 0
+                ) {
+                  toast.error(
+                    `Final amount cannot be negative! Current: ${formatCurrency(
+                      currentAmount
+                    )}`
+                  );
+                  return;
+                }
+
+                setSubmitting(true);
+                try {
+                  const isOverride =
+                    newAdjustment.adjustment_type === "price_override";
+                  const isIncidentFinalMode =
+                    newAdjustment.adjustment_type === "incident" &&
+                    newAdjustment.incident_mode === "final";
+
+                  let adjustedAmount = newAdjustment.adjustment_amount;
+
+                  // ✅ ENHANCED LOGIC FOR DIFFERENT TYPES
+                  if (isOverride || isIncidentFinalMode) {
+                    // For override and incident final mode: already calculated as delta
+                    adjustedAmount = newAdjustment.adjustment_amount;
+                  } else {
+                    // For others: ensure correct sign
+                    const isNegativeType = ["penalty", "incident"].includes(
+                      newAdjustment.adjustment_type
+                    );
+                    adjustedAmount = isNegativeType
+                      ? -Math.abs(adjustedAmount)
+                      : Math.abs(adjustedAmount);
+                  }
+
+                  const adjustedPayload = {
+                    ...newAdjustment,
+                    adjustment_amount: adjustedAmount,
+                  };
+
+                  if (doData.adjustments.length > 0) {
+                    const adjustmentId = doData.adjustments[0].id;
+                    await apiClient.patch(
+                      `/ritase/delivery-orders/${doId}/adjustment/${adjustmentId}`,
+                      adjustedPayload
+                    );
+                    toast.success("Adjustment updated!");
+                  } else {
+                    await apiClient.post(
+                      `/ritase/delivery-orders/${doId}/adjustment`,
+                      adjustedPayload
+                    );
+                    toast.success("Adjustment created!");
+                  }
+
+                  setShowAdjustmentForm(false);
+                  setNewAdjustment({
+                    adjustment_type: "price_override",
+                    adjustment_amount: 0,
+                    final_amount: doData.delivery_order.total_amount,
+                    reason: "",
+                    incident_mode: "adjustment",
+                  });
+                  await fetchDOPaymentData();
+                } catch (err: any) {
+                  toast.error(
+                    err.response?.data?.message ||
+                      (doData.adjustments.length > 0
+                        ? "Failed to update adjustment"
+                        : "Failed to create adjustment")
+                  );
+                } finally {
+                  setSubmitting(false);
+                }
+              }}
+              className="p-6 space-y-6"
+            >
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Adjustment Type
+                </label>
+                <select
+                  value={newAdjustment.adjustment_type}
+                  onChange={(e) => {
+                    const type = e.target.value;
+                    const isOverride = type === "price_override";
+                    setNewAdjustment((prev) => ({
+                      ...prev,
+                      adjustment_type: type,
+                      adjustment_amount: 0,
+                      final_amount: isOverride
+                        ? doData.payment_summary.calculated_bill
+                        : undefined,
+                      incident_mode:
+                        type === "incident" ? "adjustment" : undefined,
+                    }));
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                >
+                  <option value="price_override">Price Override</option>
+                  <option value="uj_tambahan">UJ Tambahan</option>
+                  <option value="penalty">Penalty</option>
+                  <option value="bonus">Bonus</option>
+                  <option value="incident">Incident (Kecelakaan)</option>
+                </select>
+              </div>
+
+              {/* INCIDENT MODE TOGGLE WITH PROPER TYPING */}
+              {newAdjustment.adjustment_type === "incident" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Input Mode
+                  </label>
+                  <div className="flex space-x-4">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="incident_mode"
+                        value="adjustment"
+                        checked={newAdjustment.incident_mode === "adjustment"}
+                        onChange={(e) =>
+                          setNewAdjustment((prev) => ({
+                            ...prev,
+                            incident_mode: e.target.value as
+                              | "adjustment"
+                              | "final",
+                            adjustment_amount: 0,
+                            final_amount: undefined,
+                          }))
+                        }
+                        className="mr-2"
+                      />
+                      Adjustment Amount
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="incident_mode"
+                        value="final"
+                        checked={newAdjustment.incident_mode === "final"}
+                        onChange={(e) =>
+                          setNewAdjustment((prev) => ({
+                            ...prev,
+                            incident_mode: e.target.value as
+                              | "adjustment"
+                              | "final",
+                            adjustment_amount: 0,
+                            final_amount:
+                              doData.payment_summary.calculated_bill,
+                          }))
+                        }
+                        className="mr-2"
+                      />
+                      Final Amount
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {/* ENHANCED INPUT LOGIC */}
+              {newAdjustment.adjustment_type === "price_override" ||
+              (newAdjustment.adjustment_type === "incident" &&
+                newAdjustment.incident_mode === "final") ? (
+                // FINAL AMOUNT MODE (Price Override + Incident Final Mode)
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Final Amount
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    step="0.01"
+                    min="0"
+                    value={newAdjustment.final_amount ?? ""}
+                    onChange={(e) => {
+                      const inputValue = e.target.value;
+                      const finalValue =
+                        inputValue === "" ? null : parseFloat(inputValue);
+
+                      const baseAmount =
+                        newAdjustment.adjustment_type === "price_override"
+                          ? doData.delivery_order.total_amount // Use original for override
+                          : doData.payment_summary.calculated_bill; // Use current for incident
+
+                      const computedAdjustment =
+                        finalValue == null ? 0 : finalValue - baseAmount;
+
+                      setNewAdjustment((prev) => ({
+                        ...prev,
+                        final_amount: finalValue ?? undefined,
+                        adjustment_amount: computedAdjustment,
+                      }));
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    Current:{" "}
+                    {formatCurrency(doData.payment_summary.calculated_bill)}
+                  </p>
+
+                  <label className="block text-sm font-medium text-gray-700 mb-2 mt-4">
+                    Adjustment Amount (Auto-Calculated)
+                  </label>
+                  <input
+                    type="number"
+                    value={newAdjustment.adjustment_amount}
+                    readOnly
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                  />
+                </div>
+              ) : (
+                // ADJUSTMENT AMOUNT MODE (UJ Tambahan, Bonus, Penalty, Incident Adjustment Mode)
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {newAdjustment.adjustment_type === "penalty" ||
+                    (newAdjustment.adjustment_type === "incident" &&
+                      newAdjustment.incident_mode === "adjustment")
+                      ? "Deduction Amount"
+                      : "Additional Amount"}
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    step="0.01"
+                    min="0"
+                    value={Math.abs(newAdjustment.adjustment_amount)}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value) || 0;
+                      const currentAmount =
+                        doData.payment_summary.calculated_bill;
+
+                      // ✅ VALIDATION: Prevent negative final amounts
+                      const isNegativeType = ["penalty", "incident"].includes(
+                        newAdjustment.adjustment_type
+                      );
+                      if (isNegativeType && value > currentAmount) {
+                        toast.error(
+                          `Cannot deduct more than current amount! Current: ${formatCurrency(
+                            currentAmount
+                          )}`
+                        );
+                        return;
+                      }
+
+                      setNewAdjustment((prev) => ({
+                        ...prev,
+                        adjustment_amount: value,
+                      }));
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    Current:{" "}
+                    {formatCurrency(doData.payment_summary.calculated_bill)}
+                    {["penalty", "incident"].includes(
+                      newAdjustment.adjustment_type
+                    ) && (
+                      <span className="text-red-600 ml-2">
+                        (Will be subtracted)
+                      </span>
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Reason for Adjustment
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={newAdjustment.reason}
+                  onChange={(e) =>
+                    setNewAdjustment((prev) => ({
+                      ...prev,
+                      reason: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                  placeholder="Explain why this adjustment is necessary..."
+                />
+              </div>
+
+              {/* ✅ ENHANCED PREVIEW */}
+              <div className="bg-yellow-50 p-4 rounded-lg">
+                <h4 className="font-medium text-yellow-800 mb-2">
+                  Adjustment Preview
+                </h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>Current Amount:</span>
+                    <span className="font-medium">
+                      {formatCurrency(doData.payment_summary.calculated_bill)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Adjustment Amount:</span>
+                    <span
+                      className={`font-medium ${
+                        newAdjustment.adjustment_amount < 0
+                          ? "text-red-600"
+                          : "text-green-600"
+                      }`}
+                    >
+                      {newAdjustment.adjustment_type === "penalty" ||
+                      (newAdjustment.adjustment_type === "incident" &&
+                        newAdjustment.incident_mode === "adjustment")
+                        ? formatCurrency(
+                            -Math.abs(newAdjustment.adjustment_amount)
+                          )
+                        : formatCurrency(newAdjustment.adjustment_amount)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between font-semibold border-t border-yellow-200 pt-1">
+                    <span>Final Amount:</span>
+                    <span className="font-medium text-blue-600">
+                      {(() => {
+                        if (
+                          newAdjustment.adjustment_type === "price_override" ||
+                          (newAdjustment.adjustment_type === "incident" &&
+                            newAdjustment.incident_mode === "final")
+                        ) {
+                          return formatCurrency(
+                            newAdjustment.final_amount || 0
+                          );
+                        } else {
+                          const currentAmount =
+                            doData.payment_summary.calculated_bill;
+                          const isNegativeType = [
+                            "penalty",
+                            "incident",
+                          ].includes(newAdjustment.adjustment_type);
+                          const adjustmentAmount = isNegativeType
+                            ? -Math.abs(newAdjustment.adjustment_amount)
+                            : Math.abs(newAdjustment.adjustment_amount);
+                          return formatCurrency(
+                            currentAmount + adjustmentAmount
+                          );
+                        }
+                      })()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAdjustmentForm(false)}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-6 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50"
+                >
+                  {submitting
+                    ? doData.adjustments.length > 0
+                      ? "Updating..."
+                      : "Creating..."
+                    : doData.adjustments.length > 0
+                    ? "Update Adjustment"
+                    : "Create Adjustment"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Quick Actions Floating Bar */}
+      <div className="fixed bottom-6 right-6 space-y-3">
+        <Link
+          to={`/delivery-orders/${doId}`}
+          className="block w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
+          title="View DO Details"
+        >
+          <svg
+            className="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+        </Link>
+
+        <button
+          onClick={() => window.print()}
+          className="block w-12 h-12 bg-green-600 text-white rounded-full shadow-lg hover:bg-green-700 transition-colors flex items-center justify-center"
+          title="Print Payment Summary"
+        >
+          <svg
+            className="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+            />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default DOPaymentManagement;
