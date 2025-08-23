@@ -44,14 +44,6 @@ const webDepositGroupRoutes = require("./routes/web/depositGroup.routes");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// CORS: Allow all origins for debugging
-app.use(
-  cors({
-    origin: "*",
-    credentials: true,
-  })
-);
-
 // Setup middleware (cors, json, etc)
 setupMiddleware(app);
 

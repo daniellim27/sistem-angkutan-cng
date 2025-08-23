@@ -30,14 +30,14 @@ const PaymentsOverview: React.FC = () => {
 
   useEffect(() => {
     fetchOverviewData();
-  }, []);
+  }, [spbgFilter]);
 
   const fetchOverviewData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await paymentsApi.getOverviewStats();
+      const response = await paymentsApi.getOverviewStats(spbgFilter);
       setStats(response.data.data);
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to fetch overview data");
