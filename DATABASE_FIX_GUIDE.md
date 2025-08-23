@@ -33,10 +33,6 @@ Since none of the common passwords work, you need to reset the postgres user pas
    postgres --single -D "..\..\..\pgsql_data" postgres
    ```
 
-3. **Reset the password** (in single-user mode):
-   ```sql
-   ALTER USER postgres PASSWORD 'Scorpion12.3';
-   \q
    ```
 
 **Option B: Find and Edit pg_hba.conf (Alternative)**
@@ -65,7 +61,7 @@ Since none of the common passwords work, you need to reset the postgres user pas
    psql -U postgres -h localhost
    
    # Reset password:
-   ALTER USER postgres PASSWORD 'Scorpion12.3';
+  
    
    # Exit and revert pg_hba.conf back to 'md5'
    ```

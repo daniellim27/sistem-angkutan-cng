@@ -255,7 +255,7 @@ this.pool = new Pool({
 
 If you encounter migration issues:
 1. Check this guide first
-2. Run `npm run migrate:status` and share the output
+2. Run `  ` and share the output
 3. Check server logs for detailed error messages
 4. Ask for help with specific error messages, not just "it doesn't work"
 

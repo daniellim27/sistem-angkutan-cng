@@ -483,7 +483,6 @@ DepositGroup.hasMany(PurchaseOrder, {
   as: "purchaseOrders",
 });
 
-<<<<<<< HEAD
 // DriverLocation Associations (GPS Tracking)
 // User (Driver) to DriverLocation (One-to-Many)
 User.hasMany(DriverLocation, {
@@ -514,8 +513,6 @@ DriverLocation.belongsTo(DeliveryOrder, {
   foreignKey: "delivery_order_id",
   as: "deliveryOrder",
 });
-=======
->>>>>>> origin/main
 
 
 module.exports = db;

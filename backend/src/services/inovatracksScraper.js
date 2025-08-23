@@ -647,13 +647,17 @@ class InovatracksScraper {
         include: ['driver']
       });
       
-      // If not found, try to find by license plate or other identifier
+      // If not found, try to find by license plate
       if (!vehicle) {
+        // Extract license plate from device ID (e.g., "BE8408AADWarunggunung, Kabupaten Lebak" -> "BE8408AAD")
+        const licensePlateMatch = deviceId.match(/^([A-Z]{1,2}\d{1,4}[A-Z]{1,3})/);
+        const extractedPlate = licensePlateMatch ? licensePlateMatch[1] : deviceId;
+        
         vehicle = await Vehicle.findOne({
           where: {
             [Op.or]: [
-              { license_plate: { [Op.iLike]: `%${deviceId}%` } },
-              { id: deviceId } // If device ID is the vehicle ID
+              { license_plate: { [Op.iLike]: `%${extractedPlate}%` } },
+              { license_plate: { [Op.iLike]: `%${deviceId}%` } }
             ]
           },
           include: ['driver']
