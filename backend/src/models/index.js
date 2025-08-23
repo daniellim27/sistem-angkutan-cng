@@ -41,6 +41,9 @@ const setupDepositGroupMemberModel = require("./depositGroupMember.model");
 // NEW: Exchange Rate Model for JISDOR scraping
 const setupExchangeRateModel = require("./exchangeRate.model");
 
+// NEW: IoT Raw Data Model
+const setupIotRawDataModel = require("./iotRawData.model");
+
 // Initialize Sequelize connection using your .env variables
 const sequelize = new Sequelize(
   process.env.DB_NAME,
@@ -98,6 +101,8 @@ db.TireInstance = setupTireInstanceModel(sequelize);
 
 db.CashCategory = setupCashCategoryModel(sequelize);
 db.CashTransaction = setupCashTransactionModel(sequelize);
+
+db.IotRawData = setupIotRawDataModel(sequelize);
 
 db.DepositGroup = setupDepositGroupModel(sequelize);
 db.DepositGroupMember = setupDepositGroupMemberModel(sequelize);
@@ -484,6 +489,14 @@ DepositGroup.hasMany(PurchaseOrder, {
   as: "purchaseOrders",
 });
 
-
+// === IoT Data Associations ===
+DeliveryOrder.hasMany(IotRawData, {
+  foreignKey: "delivery_order_id",
+  as: "iotData",
+});
+IotRawData.belongsTo(DeliveryOrder, {
+  foreignKey: "delivery_order_id",
+  as: "deliveryOrder",
+});
 
 module.exports = db;

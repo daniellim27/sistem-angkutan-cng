@@ -24,6 +24,9 @@ const driverExpenseRoutes = require("./routes/driverExpense.routes");
 const vehicleRoutes = require("./routes/vehicle.routes");
 const driverRoutes = require("./routes/driver.routes");
 
+// === Import IoT Routes ===
+const iotRoutes = require("./routes/iot.routes");
+
 // === Import Web Routes (NEW) ===
 const webPurchaseOrderRoutes = require("./routes/web/purchaseOrder.routes");
 const webDeliveryOrderRoutes = require("./routes/web/deliveryOrder.routes");
@@ -90,6 +93,12 @@ app.get("/", (req, res) => {
         payments: "/api/web/payments",
         exchange_rates: "/api/web/exchange-rates",
       },
+      iot: {
+        data: "/api/v1/iot/data",
+        latest: "/api/v1/iot/data/:delivery_order_id/latest",
+        history: "/api/v1/iot/data/:delivery_order_id/history",
+        sensor_data: "/api/web/delivery-orders/:id/sensordata",
+      },
     },
   });
 });
@@ -104,6 +113,9 @@ app.use("/api/delivery-orders", deliveryOrderRoutes);
 app.use("/api/big-delivery-orders", bigDeliveryOrderRoutes);
 app.use("/api/driver-expenses", driverExpenseRoutes);
 app.use("/api/drivers", driverRoutes);
+
+// === IoT Routes ===
+app.use("/api/v1/iot", iotRoutes);
 
 // Static uploads
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
