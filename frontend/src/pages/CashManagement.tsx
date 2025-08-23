@@ -30,6 +30,7 @@ interface CashTransaction {
   gas_volume_m3?: number;
   calculation_method?: 'jisdor' | 'fixed';
   jisdor_rate?: number;
+  gas_filling_cost?: number;
 }
 
 interface CashSummary {
@@ -124,7 +125,8 @@ const CashManagementPage = () => {
     spbg_location: '',
     gas_volume_m3: '',
     calculation_method: 'jisdor' as 'jisdor' | 'fixed',
-    jisdor_rate: ''
+    jisdor_rate: '',
+    gas_filling_cost: ''
   });
 
   const [accounts, setAccounts] = useState<string[]>([]);
@@ -218,6 +220,17 @@ const CashManagementPage = () => {
       return; // Exit early
     }
 
+    // For SPBG transactions, calculate amount from gas filling cost
+    if (formData.category_id === 'spbg') {
+      if (formData.gas_volume_m3 && formData.jisdor_rate) {
+        const calculatedAmount = parseFloat(formData.gas_volume_m3) * parseFloat(formData.jisdor_rate);
+        setFormData(prev => ({ ...prev, amount: calculatedAmount.toString() }));
+      } else {
+        setError('For SPBG transactions, Gas Volume and JISDOR Rate are required to calculate amount.');
+        return;
+      }
+    }
+
     const submissionData = new FormData();
 
     // Append other fields
@@ -259,14 +272,38 @@ const CashManagementPage = () => {
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setFormData(prev => ({ ...prev, category_id: value }));
-    setIsSpecialCategory(value === 'inventory_redirect' || value === 'service_redirect');
+    
+    // Handle special categories
+    if (value === 'inventory_redirect' || value === 'service_redirect') {
+      setIsSpecialCategory(true);
+    } else if (value === 'spbg') {
+      // For SPBG transactions, set default values and clear regular fields
+      setFormData(prev => ({
+        ...prev,
+        category_id: value,
+        amount: '', // Clear amount for SPBG transactions
+        description: '', // Clear description for SPBG transactions
+        spbg_location: '',
+        gas_volume_m3: '',
+        calculation_method: 'jisdor',
+        jisdor_rate: '',
+        gas_filling_cost: ''
+      }));
+      setIsSpecialCategory(false);
+    } else {
+      setIsSpecialCategory(false);
+    }
   };
 
   const handleEdit = (transaction: CashTransaction) => {
     setEditingTransaction(transaction);
+    
+    // Check if this is an SPBG transaction
+    const isSPBG = transaction.spbg_location || transaction.gas_volume_m3 || transaction.calculation_method;
+    
     setFormData({
       transaction_type: transaction.transaction_type,
-      category_id: transaction.category_id?.toString() || '',
+      category_id: isSPBG ? 'spbg' : (transaction.category_id?.toString() || ''),
       amount: transaction.amount.toString(),
       description: transaction.description,
       reference_number: transaction.reference_number || '',
@@ -277,9 +314,12 @@ const CashManagementPage = () => {
       spbg_location: transaction.spbg_location || '',
       gas_volume_m3: transaction.gas_volume_m3?.toString() || '',
       calculation_method: transaction.calculation_method || 'jisdor',
-      jisdor_rate: transaction.jisdor_rate?.toString() || ''
+      jisdor_rate: transaction.jisdor_rate?.toString() || '',
+      gas_filling_cost: transaction.gas_filling_cost?.toString() || ''
     });
+    
     setAttachmentFiles([]);
+    setIsSpecialCategory(false); // SPBG transactions are not special category
     setShowModal(true);
   };
 
@@ -311,9 +351,11 @@ const CashManagementPage = () => {
       spbg_location: '',
       gas_volume_m3: '',
       calculation_method: 'jisdor',
-      jisdor_rate: ''
+      jisdor_rate: '',
+      gas_filling_cost: ''
     });
     setAttachmentFiles([]);
+    setIsSpecialCategory(false);
   };
 
   const formatCurrency = (amount: number) => {
@@ -869,6 +911,9 @@ const CashManagementPage = () => {
                         </option>
                       ))}
                     
+                    {/* SPBG Option */}
+                    <option value="spbg">SPBG</option>
+                    
                     {formData.transaction_type === 'kredit' && (
                       <option value="inventory_redirect">Inventory (Pembelian Stok)</option>
                     )}
@@ -878,7 +923,8 @@ const CashManagementPage = () => {
                   </select>
                 </div>
 
-                {!isSpecialCategory && (
+                {/* Regular Transaction Fields - Show when NOT SPBG */}
+                {!isSpecialCategory && formData.category_id !== 'spbg' && (
                   <>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -934,19 +980,232 @@ const CashManagementPage = () => {
                         required={!isSpecialCategory}
                       />
                     </div>
-                    
-                    {/* <div>
+                  </>
+                )}
+
+                {/* SPBG Transaction Fields - Show when SPBG is selected */}
+                {formData.category_id === 'spbg' && (
+                  <>
+                    <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Foto Nota (Opsional)
+                        Tanggal Transaksi *
                       </label>
                       <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileChange}
-                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        type="date"
+                        value={formData.transaction_date}
+                        onChange={(e) => setFormData(prev => ({ ...prev, transaction_date: e.target.value }))}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2"
+                        required
                       />
-                    </div> */}
+                    </div>
 
+                    <div className="border-t pt-4 mt-4">
+                      <h4 className="text-md font-medium text-gray-700 mb-3">⛽ SPBG Transaction Details</h4>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            SPBG Location *
+                          </label>
+                          <select
+                            value={formData.spbg_location}
+                            onChange={(e) => setFormData(prev => ({ ...prev, spbg_location: e.target.value }))}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2"
+                            required
+                          >
+                            <option value="">Select SPBG Location</option>
+                            {spbgLocations.map(location => (
+                              <option key={location.value} value={location.value}>
+                                {location.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Gas Volume (m³) *
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={formData.gas_volume_m3}
+                            onChange={(e) => {
+                              const volume = e.target.value;
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                gas_volume_m3: volume,
+                                // Auto-calculate gas filling cost if both volume and rate are available
+                                ...(volume && formData.jisdor_rate ? {
+                                  gas_filling_cost: (parseFloat(volume) * parseFloat(formData.jisdor_rate)).toFixed(2)
+                                } : {})
+                              }));
+                            }}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2"
+                            placeholder="0.00"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Calculation Method *
+                          </label>
+                          <select
+                            value={formData.calculation_method}
+                            onChange={(e) => setFormData(prev => ({ 
+                              ...prev, 
+                              calculation_method: e.target.value as 'jisdor' | 'fixed' 
+                            }))}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2"
+                            required
+                          >
+                            <option value="jisdor">JISDOR Rate</option>
+                            <option value="fixed">Fixed Rate</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            JISDOR Rate (IDR/m³) *
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={formData.jisdor_rate}
+                            onChange={(e) => {
+                              const rate = e.target.value;
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                jisdor_rate: rate,
+                                // Auto-calculate gas filling cost if both volume and rate are available
+                                ...(rate && formData.gas_volume_m3 ? {
+                                  gas_filling_cost: (parseFloat(formData.gas_volume_m3) * parseFloat(rate)).toFixed(2)
+                                } : {})
+                              }));
+                            }}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2"
+                            placeholder="0.00"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      {/* Auto-calculated Gas Filling Cost */}
+                      {formData.gas_volume_m3 && formData.jisdor_rate && (
+                        <div className="mt-3 p-3 bg-blue-50 rounded-md">
+                          <label className="block text-sm font-medium text-blue-700 mb-1">
+                            Gas Filling Cost (Auto-calculated)
+                          </label>
+                          <div className="text-lg font-semibold text-blue-800">
+                            {formatCurrency(parseFloat(formData.gas_volume_m3) * parseFloat(formData.jisdor_rate))}
+                          </div>
+                          <p className="text-xs text-blue-600 mt-1">
+                            {formData.gas_volume_m3} m³ × {formatCurrency(parseFloat(formData.jisdor_rate))} = {formatCurrency(parseFloat(formData.gas_volume_m3) * parseFloat(formData.jisdor_rate))}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* SPBG Description */}
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          SPBG Transaction Description *
+                        </label>
+                        <textarea
+                          value={formData.description}
+                          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                          className="w-full border border-gray-300 rounded-md px-3 py-2"
+                          rows={3}
+                          placeholder="Describe the SPBG transaction (e.g., Gas filling at Jakarta SPBG, Deposit top-up, etc.)"
+                          required
+                        />
+                      </div>
+
+                      {/* SPBG Reference Number */}
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          SPBG Reference Number
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.reference_number}
+                          onChange={(e) => setFormData(prev => ({ ...prev, reference_number: e.target.value }))}
+                          className="w-full border border-gray-300 rounded-md px-3 py-2"
+                          placeholder="SPBG receipt number, invoice number, etc."
+                        />
+                      </div>
+
+                      {/* SPBG File Upload */}
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Upload SPBG Documents</label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            id="fileInput"
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            onChange={handleFileChange}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => document.getElementById('fileInput')?.click()}
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded flex items-center"
+                          >
+                            <span>+</span> <span className="ml-1">Tambah Dokumen SPBG</span>
+                          </button>
+                          {attachmentFiles.length > 0 && (
+                            <div className="mt-2">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">New Files</label>
+                              <ul className="space-y-1">
+                                {attachmentFiles.map((file, index) => (
+                                  <li key={index} className="text-sm text-gray-600 flex justify-between">
+                                    <span>{file.name}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveFile(index)}
+                                      className="text-red-500 hover:text-red-700"
+                                    >
+                                      ×
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Show existing attachments */}
+                      {editingTransaction?.attachment_urls && 
+                        editingTransaction.attachment_urls.length > 0 && (
+                          <div className="mt-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Existing Files</label>
+                            <ul className="space-y-1">
+                              {editingTransaction.attachment_urls.map((url, index) => (
+                                <li key={index}>
+                                  <a
+                                    href={`${process.env.REACT_APP_BACKEND_URL}/${url}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-500 hover:underline"
+                                  >
+                                    Dokumen SPBG {index + 1}
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                    </div>
+                  </>
+                )}
+
+                {/* File Upload Section - Show for regular transactions */}
+                {!isSpecialCategory && formData.category_id !== 'spbg' && (
+                  <>
                     <div className="mt-2">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Upload Nota</label>
                       <div className="flex items-center space-x-2">
@@ -1008,40 +1267,78 @@ const CashManagementPage = () => {
                           </ul>
                         </div>
                       )}
-                    {/* Show new files being uploaded */}
-                    {attachmentFiles.length > 0 && (
-                      <div className="mt-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">New Files</label>
-                        <ul className="space-y-1">
-                          {attachmentFiles.map((file, index) => (
-                            <li key={index} className="text-sm text-gray-600">
-                              {file.name}
-                            </li>
-                          ))}
-                        </ul>
+
+                    {/* No. Nota Section for Regular Transactions */}
+                    {formData.no_nota.map((nota, index) => (
+                      <div key={index}>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          No. Nota {index + 1}
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={nota}
+                            onChange={(e) => {
+                              const newNotas = [...formData.no_nota];
+                              newNotas[index] = e.target.value;
+                              setFormData({ ...formData, no_nota: newNotas });
+                            }}
+                            className="flex-1 border border-gray-300 rounded-md px-3 py-2"
+                            placeholder="Masukkan nomor nota"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newNotas = [...formData.no_nota];
+                              newNotas.splice(index, 1);
+                              setFormData({ ...formData, no_nota: newNotas });
+                            }}
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm"
+                          >
+                            ×
+                          </button>
+                        </div>
                       </div>
-                    )}
+                    ))}
                   </>
                 )}
 
-                {formData.no_nota.map((nota, index) => (
-                  <div key={index}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      No. Nota {index + 1}
-                    </label>
-                    <input
-                      type="text"
-                      value={nota}
-                      onChange={(e) => {
-                        const newNotas = [...formData.no_nota];
-                        newNotas[index] = e.target.value;
-                        setFormData({ ...formData, no_nota: newNotas });
-                      }}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2"
-                      placeholder="Masukkan nomor nota"
-                    />
-                  </div>
-                ))}
+                                 {/* No. Nota Section for SPBG Transactions */}
+                 {formData.category_id === 'spbg' && (
+                   <>
+                     {formData.no_nota.map((nota, index) => (
+                       <div key={index}>
+                         <label className="block text-sm font-medium text-gray-700 mb-1">
+                           No. Dokumen SPBG {index + 1}
+                         </label>
+                         <div className="flex gap-2">
+                           <input
+                             type="text"
+                             value={nota}
+                             onChange={(e) => {
+                               const newNotas = [...formData.no_nota];
+                               newNotas[index] = e.target.value;
+                               setFormData({ ...formData, no_nota: newNotas });
+                             }}
+                             className="flex-1 border border-gray-300 rounded-md px-3 py-2"
+                             placeholder="Masukkan nomor dokumen SPBG"
+                           />
+                           <button
+                             type="button"
+                             onClick={() => {
+                               const newNotas = [...formData.no_nota];
+                               newNotas.splice(index, 1);
+                               setFormData({ ...formData, no_nota: newNotas });
+                             }}
+                             className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded text-sm"
+                           >
+                             ×
+                           </button>
+                         </div>
+                       </div>
+                     ))}
+                   </>
+                 )}
 
                 {isSpecialCategory && (
                   <div className="bg-blue-50 p-3 rounded-md text-blue-800">

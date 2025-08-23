@@ -295,6 +295,12 @@ exports.createCashTransaction = async (req, res, next) => {
       reference_number,
       transaction_date,
       account,
+      // === SPBG FIELDS ===
+      spbg_location,
+      gas_volume_m3,
+      calculation_method,
+      jisdor_rate,
+      gas_filling_cost,
     } = req.body;
 
     // Handle multiple file uploads
@@ -330,6 +336,24 @@ exports.createCashTransaction = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Description is required' });
     }
 
+    // === SPBG VALIDATION ===
+    if (gas_volume_m3 && parseFloat(gas_volume_m3) < 0) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: 'Gas volume must be greater than or equal to 0' });
+    }
+    if (jisdor_rate && parseFloat(jisdor_rate) < 0) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: 'JISDOR rate must be greater than or equal to 0' });
+    }
+    if (gas_filling_cost && parseFloat(gas_filling_cost) < 0) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: 'Gas filling cost must be greater than or equal to 0' });
+    }
+    if (calculation_method && !['jisdor', 'fixed'].includes(calculation_method)) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: 'Invalid calculation method. Must be "jisdor" or "fixed"' });
+    }
+
     const cashTransaction = await CashTransaction.create({
       transaction_type,
       category_id: category_id || null,
@@ -340,6 +364,12 @@ exports.createCashTransaction = async (req, res, next) => {
       account,
       attachment_urls: attachment_urls.length > 0 ? attachment_urls : null,
       no_nota: no_nota || null, // Parse if stringified
+      // === SPBG FIELDS ===
+      spbg_location: spbg_location || null,
+      gas_volume_m3: gas_volume_m3 ? parseFloat(gas_volume_m3) : null,
+      calculation_method: calculation_method || null,
+      jisdor_rate: jisdor_rate ? parseFloat(jisdor_rate) : null,
+      gas_filling_cost: gas_filling_cost ? parseFloat(gas_filling_cost) : null,
     }, { transaction });
 
     const createdTransaction = await CashTransaction.findByPk(cashTransaction.id, {
@@ -402,7 +432,6 @@ exports.getCashTransactionById = async (req, res, next) => {
 };
 
 // Update cash transaction
-// Update cash transaction
 exports.updateCashTransaction = async (req, res) => {
   const { id } = req.params;
   const {
@@ -413,6 +442,12 @@ exports.updateCashTransaction = async (req, res) => {
     reference_number,
     transaction_date,
     account,
+    // === SPBG FIELDS ===
+    spbg_location,
+    gas_volume_m3,
+    calculation_method,
+    jisdor_rate,
+    gas_filling_cost,
   } = req.body;
 
   let updatedNoNota = [];
@@ -454,6 +489,20 @@ exports.updateCashTransaction = async (req, res) => {
     const newNoNota = JSON.parse(req.body.no_nota || '[]');
     cashTransaction.no_nota = [...existingNoNota, ...newNoNota];
 
+    // === SPBG VALIDATION ===
+    if (gas_volume_m3 !== undefined && parseFloat(gas_volume_m3) < 0) {
+      return res.status(400).json({ message: 'Gas volume must be greater than or equal to 0' });
+    }
+    if (jisdor_rate !== undefined && parseFloat(jisdor_rate) < 0) {
+      return res.status(400).json({ message: 'JISDOR rate must be greater than or equal to 0' });
+    }
+    if (gas_filling_cost !== undefined && parseFloat(gas_filling_cost) < 0) {
+      return res.status(400).json({ message: 'Gas filling cost must be greater than or equal to 0' });
+    }
+    if (calculation_method !== undefined && !['jisdor', 'fixed'].includes(calculation_method)) {
+      return res.status(400).json({ message: 'Invalid calculation method. Must be "jisdor" or "fixed"' });
+    }
+
     await cashTransaction.update({
       transaction_type: transaction_type || cashTransaction.transaction_type,
       category_id: categoryId,
@@ -463,7 +512,13 @@ exports.updateCashTransaction = async (req, res) => {
       transaction_date: transaction_date || cashTransaction.transaction_date,
       account: account || cashTransaction.account,
       no_nota: updatedNoNota !== undefined ? updatedNoNota : cashTransaction.no_nota,// Same logic
-      attachment_urls: cashTransaction.attachment_urls
+      attachment_urls: cashTransaction.attachment_urls,
+      // === SPBG FIELDS ===
+      spbg_location: spbg_location !== undefined ? spbg_location : cashTransaction.spbg_location,
+      gas_volume_m3: gas_volume_m3 !== undefined ? parseFloat(gas_volume_m3) : cashTransaction.gas_volume_m3,
+      calculation_method: calculation_method !== undefined ? calculation_method : cashTransaction.calculation_method,
+      jisdor_rate: jisdor_rate !== undefined ? parseFloat(jisdor_rate) : cashTransaction.jisdor_rate,
+      gas_filling_cost: gas_filling_cost !== undefined ? parseFloat(gas_filling_cost) : cashTransaction.gas_filling_cost,
     });
 
     return res.status(200).json({ message: 'Transaction updated successfully', data: cashTransaction });

@@ -64,15 +64,38 @@ module.exports = {
   // },
   // Create new deposit group
   // src/controllers/web/depositGroup.controller.js
-  // src/controllers/web/depositGroup.controller.js
   async createGroup(req, res) {
     try {
-       const { group_name, target_quantity, deposited_amount, unit, delivery_order_ids = [], purchase_order_id } = req.body;
+       const { 
+         group_name, 
+         target_quantity, 
+         deposited_amount, 
+         unit, 
+         delivery_order_ids = [], 
+         purchase_order_id,
+         // === SPBG FIELDS ===
+         group_type,
+         spbg_location,
+         spbg_operator,
+         gas_type
+       } = req.body;
       
       // *** FIX STARTS HERE ***
       // The initial balance of the group should be the amount that was deposited.
       const balance = deposited_amount; 
       const remaining_quantity = target_quantity; // Initial remaining = target
+      
+      // === SPBG VALIDATION ===
+      if (group_type && !['general', 'spbg'].includes(group_type)) {
+        return res.status(400).json({ 
+          error: "Invalid group type. Must be 'general' or 'spbg'" 
+        });
+      }
+      if (gas_type && !['cng', 'lng', 'lpg'].includes(gas_type)) {
+        return res.status(400).json({ 
+          error: "Invalid gas type. Must be 'cng', 'lng', or 'lpg'" 
+        });
+      }
       
       const group = await DepositGroup.create({
         group_name, 
@@ -81,7 +104,12 @@ module.exports = {
         deposited_amount, 
         remaining_quantity, 
         unit, 
-        status: 'active'
+        status: 'active',
+        // === SPBG FIELDS ===
+        group_type: group_type || 'general',
+        spbg_location: spbg_location || null,
+        spbg_operator: spbg_operator || null,
+        gas_type: gas_type || null
       });
 
       let doIdsToAdd = delivery_order_ids;
@@ -334,15 +362,41 @@ async getGroupDetails(req, res) {
   async updateGroup(req, res) {
     try {
       const { id } = req.params;
-      const { group_name, balance } = req.body;
+      const { 
+        group_name, 
+        balance,
+        // === SPBG FIELDS ===
+        group_type,
+        spbg_location,
+        spbg_operator,
+        gas_type
+      } = req.body;
       
       const group = await DepositGroup.findByPk(id);
       if (!group) {
         return res.status(404).json({ error: "Group not found" });
       }
       
+      // === SPBG VALIDATION ===
+      if (group_type && !['general', 'spbg'].includes(group_type)) {
+        return res.status(400).json({ 
+          error: "Invalid group type. Must be 'general' or 'spbg'" 
+        });
+      }
+      if (gas_type && !['cng', 'lng', 'lpg'].includes(gas_type)) {
+        return res.status(400).json({ 
+          error: "Invalid gas type. Must be 'cng', 'lng', or 'lpg'" 
+        });
+      }
+      
       if (group_name) group.group_name = group_name;
       if (balance !== undefined) group.balance = parseFloat(balance);
+      
+      // === SPBG FIELDS UPDATE ===
+      if (group_type !== undefined) group.group_type = group_type;
+      if (spbg_location !== undefined) group.spbg_location = spbg_location;
+      if (spbg_operator !== undefined) group.spbg_operator = spbg_operator;
+      if (gas_type !== undefined) group.gas_type = gas_type;
       
       await group.save();
       res.json(group);
