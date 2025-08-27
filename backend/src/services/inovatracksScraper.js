@@ -584,7 +584,7 @@ class InovatracksScraper {
   }
 
   /**
-   * Save GPS data to database
+   * Save GPS data to database and update/create vehicles
    */
   async saveGPSData(gpsData) {
     try {
@@ -592,9 +592,23 @@ class InovatracksScraper {
       
       for (const data of gpsData) {
         // Find the driver/vehicle based on device ID
-        const vehicle = await this.findVehicleByDeviceId(data.deviceId);
+        let vehicle = await this.findVehicleByDeviceId(data.deviceId);
+        
+        // Extract clean plate number from device ID
+        const cleanPlateNumber = this.extractPlateNumber(data.deviceId);
+        
+        if (!vehicle && cleanPlateNumber) {
+          // Try to create or update vehicle record with the plate number
+          vehicle = await this.createOrUpdateVehicleFromGPS(data.deviceId, cleanPlateNumber);
+        }
         
         if (vehicle) {
+          // Update vehicle's GPS timestamp and device_id if needed
+          await vehicle.update({
+            device_id: data.deviceId,
+            last_gps_update: new Date(data.timestamp)
+          });
+          
           await DriverLocation.create({
             driver_id: vehicle.driver_id,
             vehicle_id: vehicle.id,
@@ -606,7 +620,7 @@ class InovatracksScraper {
             status: data.status
           });
           
-          console.log(`✅ Saved location for vehicle ${data.deviceName || data.deviceId}`);
+          console.log(`✅ Saved location for vehicle ${data.deviceName || data.deviceId} (ID: ${vehicle.id})`);
         } else {
           // Save GPS data even without vehicle match for tracking purposes
           console.log(`⚠️ Vehicle not found for device ID: ${data.deviceId}, saving GPS data anyway...`);
@@ -635,6 +649,77 @@ class InovatracksScraper {
   }
 
   /**
+   * Extract clean plate number from device ID
+   */
+  extractPlateNumber(deviceId) {
+    try {
+      // Extract license plate from device ID (e.g., "BE8408AADWarunggunung, Kabupaten Lebak" -> "BE8408AAD")
+      // Common Indonesian plate formats: AA 1234 ABC, A 1234 ABC, AA 123 A, etc.
+      const licensePlateMatch = deviceId.match(/^([A-Z]{1,2}\s?\d{1,4}\s?[A-Z]{1,3})/);
+      
+      if (licensePlateMatch) {
+        // Remove spaces and return clean plate number
+        return licensePlateMatch[1].replace(/\s/g, '');
+      }
+      
+      // Fallback: try to extract any alphanumeric sequence at the beginning
+      const alphaNumMatch = deviceId.match(/^([A-Z0-9]+)/);
+      return alphaNumMatch ? alphaNumMatch[1] : null;
+    } catch (error) {
+      console.error('Error extracting plate number:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Create or update vehicle from GPS data
+   */
+  async createOrUpdateVehicleFromGPS(deviceId, plateNumber) {
+    try {
+      const { Vehicle } = require('../models');
+      
+      console.log(`🚗 Attempting to create/update vehicle with plate: ${plateNumber} (device: ${deviceId})`);
+      
+      // Check if vehicle already exists with this plate number
+      let vehicle = await Vehicle.findOne({
+        where: {
+          [Op.or]: [
+            { license_plate: { [Op.iLike]: `%${plateNumber}%` } },
+            { device_id: deviceId }
+          ]
+        }
+      });
+      
+      if (vehicle) {
+        // Update existing vehicle with device_id if not set
+        if (!vehicle.device_id) {
+          await vehicle.update({ device_id: deviceId });
+          console.log(`✅ Updated existing vehicle ${vehicle.license_plate} with device ID: ${deviceId}`);
+        }
+        return vehicle;
+      } else {
+        // Create new vehicle record
+        vehicle = await Vehicle.create({
+          license_plate: plateNumber,
+          device_id: deviceId,
+          type: 'Unknown', // Default type
+          status: 'available',
+          capacity: null,
+          tire_count: 6, // Default tire count
+          spare_tire_count: 2, // Default spare count
+          last_gps_update: new Date()
+        });
+        
+        console.log(`✅ Created new vehicle from GPS data: ${plateNumber} (ID: ${vehicle.id})`);
+        return vehicle;
+      }
+    } catch (error) {
+      console.error(`❌ Error creating/updating vehicle for plate ${plateNumber}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Find vehicle by device ID (you'll need to add device_id field to vehicles table)
    */
   async findVehicleByDeviceId(deviceId) {
@@ -649,19 +734,20 @@ class InovatracksScraper {
       
       // If not found, try to find by license plate
       if (!vehicle) {
-        // Extract license plate from device ID (e.g., "BE8408AADWarunggunung, Kabupaten Lebak" -> "BE8408AAD")
-        const licensePlateMatch = deviceId.match(/^([A-Z]{1,2}\d{1,4}[A-Z]{1,3})/);
-        const extractedPlate = licensePlateMatch ? licensePlateMatch[1] : deviceId;
+        // Extract license plate from device ID
+        const extractedPlate = this.extractPlateNumber(deviceId);
         
-        vehicle = await Vehicle.findOne({
-          where: {
-            [Op.or]: [
-              { license_plate: { [Op.iLike]: `%${extractedPlate}%` } },
-              { license_plate: { [Op.iLike]: `%${deviceId}%` } }
-            ]
-          },
-          include: ['driver']
-        });
+        if (extractedPlate) {
+          vehicle = await Vehicle.findOne({
+            where: {
+              [Op.or]: [
+                { license_plate: { [Op.iLike]: `%${extractedPlate}%` } },
+                { license_plate: { [Op.iLike]: `%${deviceId}%` } }
+              ]
+            },
+            include: ['driver']
+          });
+        }
       }
       
       return vehicle;

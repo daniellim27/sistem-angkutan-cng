@@ -40,16 +40,7 @@ interface CashSummary {
 }
 
 // SPBG locations for filtering
-const spbgLocations = [
-  { value: 'jakarta', label: 'Jakarta' },
-  { value: 'bandung', label: 'Bandung' },
-  { value: 'surabaya', label: 'Surabaya' },
-  { value: 'semarang', label: 'Semarang' },
-  { value: 'yogyakarta', label: 'Yogyakarta' },
-  { value: 'medan', label: 'Medan' },
-  { value: 'palembang', label: 'Palembang' },
-  { value: 'makassar', label: 'Makassar' }
-];
+const spbgLocations: { value: string; label: string }[] = [];
 
 // Helper functions
 const isSPBGTransaction = (transaction: CashTransaction) => {

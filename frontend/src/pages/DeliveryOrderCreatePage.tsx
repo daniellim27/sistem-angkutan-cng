@@ -63,22 +63,10 @@ const DeliveryOrderCreatePage = () => {
   });
 
   // SPBG locations for selection
-  const spbgLocations = [
-    { value: 'jakarta', label: 'Jakarta' },
-    { value: 'bandung', label: 'Bandung' },
-    { value: 'surabaya', label: 'Surabaya' },
-    { value: 'semarang', label: 'Semarang' },
-    { value: 'yogyakarta', label: 'Yogyakarta' },
-    { value: 'medan', label: 'Medan' },
-    { value: 'palembang', label: 'Palembang' },
-    { value: 'makassar', label: 'Makassar' }
-  ];
+  const spbgLocations: { value: string; label: string }[] = [];
 
   // Gas calculation methods
-  const calculationMethods = [
-    { value: 'jisdor', label: 'JISDOR Rate (Dynamic)' },
-    { value: 'fixed', label: 'Fixed Rate (Standard)' }
-  ];
+  const calculationMethods: { value: string; label: string }[] = [];
 
   useEffect(() => {
     if (poId) {

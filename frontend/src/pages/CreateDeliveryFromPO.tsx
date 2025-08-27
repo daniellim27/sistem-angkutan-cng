@@ -72,6 +72,12 @@ interface Vehicle {
   driver_status: string | null;
 }
 
+interface LocationData {
+  location: string;
+  latitude: string;
+  longitude: string;
+}
+
 interface DOFormData {
   do_name: string;
   item_name: string; // Added from incoming - for item selection
@@ -81,6 +87,9 @@ interface DOFormData {
   trip_allowance: string;
   gaji: string;
   ongkosan: string;
+  load_locations: LocationData[];
+  unload_locations: LocationData[];
+  // Keep the old single location fields for backward compatibility
   load_location: string;
   unload_location: string;
   load_latitude: string;
@@ -190,6 +199,9 @@ const CreateDeliveryFromPO: React.FC = () => {
       trip_allowance: "",
       gaji: "",
       ongkosan: "",
+      load_locations: [{ location: "", latitude: "", longitude: "" }],
+      unload_locations: [{ location: "", latitude: "", longitude: "" }],
+      // Keep the old single location fields for backward compatibility
       load_location: "",
       unload_location: "",
       load_latitude: "",
@@ -211,28 +223,17 @@ const CreateDeliveryFromPO: React.FC = () => {
   const [showMap, setShowMap] = useState<boolean>(true);
   const [markers, setMarkers] = useState<MarkerType[]>([]);
   const [currentFormIndex, setCurrentFormIndex] = useState<number>(0);
+  const [currentLocationIndex, setCurrentLocationIndex] = useState<number>(0); // Track which location in the array
   const [linkProcessing, setLinkProcessing] = useState<{
     load: boolean;
     unload: boolean;
   }>({ load: false, unload: false });
 
   // SPBG locations for selection
-  const spbgLocations = [
-    { value: 'jakarta', label: 'Jakarta' },
-    { value: 'bandung', label: 'Bandung' },
-    { value: 'surabaya', label: 'Surabaya' },
-    { value: 'semarang', label: 'Semarang' },
-    { value: 'yogyakarta', label: 'Yogyakarta' },
-    { value: 'medan', label: 'Medan' },
-    { value: 'palembang', label: 'Palembang' },
-    { value: 'makassar', label: 'Makassar' }
-  ];
+  const spbgLocations: { value: string; label: string }[] = [];
 
   // Gas calculation methods
-  const calculationMethods = [
-    { value: 'jisdor', label: 'JISDOR Rate (Dynamic)' },
-    { value: 'fixed', label: 'Fixed Rate (Standard)' }
-  ];
+  const calculationMethods: { value: string; label: string }[] = [];
 
   // Default map center
   const defaultCenter = { lat: -6.2088, lng: 106.8456 };
@@ -276,30 +277,47 @@ const CreateDeliveryFromPO: React.FC = () => {
   // Location setting function
   const setLocationWithType = (lat: number, lng: number, address: string, type: "load" | "unload") => {
     const newFormDataList = [...formDataList];
+    
     if (type === "load") {
-      newFormDataList[currentFormIndex] = {
-        ...newFormDataList[currentFormIndex],
-        load_location: address,
-        load_latitude: lat.toString(),
-        load_longitude: lng.toString(),
+      // Update the specific location in the load_locations array
+      newFormDataList[currentFormIndex].load_locations[currentLocationIndex] = {
+        location: address,
+        latitude: lat.toString(),
+        longitude: lng.toString(),
       };
+      
+      // Update backward compatibility fields if it's the first location
+      if (currentLocationIndex === 0) {
+        newFormDataList[currentFormIndex].load_location = address;
+        newFormDataList[currentFormIndex].load_latitude = lat.toString();
+        newFormDataList[currentFormIndex].load_longitude = lng.toString();
+      }
     } else {
-      newFormDataList[currentFormIndex] = {
-        ...newFormDataList[currentFormIndex],
-        unload_location: address,
-        unload_latitude: lat.toString(),
-        unload_longitude: lng.toString(),
+      // Update the specific location in the unload_locations array
+      newFormDataList[currentFormIndex].unload_locations[currentLocationIndex] = {
+        location: address,
+        latitude: lat.toString(),
+        longitude: lng.toString(),
       };
+      
+      // Update backward compatibility fields if it's the first location
+      if (currentLocationIndex === 0) {
+        newFormDataList[currentFormIndex].unload_location = address;
+        newFormDataList[currentFormIndex].unload_latitude = lat.toString();
+        newFormDataList[currentFormIndex].unload_longitude = lng.toString();
+      }
     }
+    
     setFormDataList(newFormDataList);
 
-    // Update markers
+    // Update markers with location index info
     setMarkers(prev => {
-      const filtered = prev.filter(m => m.type !== type);
+      const markerKey = `${type}-${currentFormIndex}-${currentLocationIndex}`;
+      const filtered = prev.filter(m => m.title !== markerKey);
       return [...filtered, {
         lat,
         lng,
-        title: type === "load" ? "Load Location" : "Unload Location",
+        title: `${type === "load" ? "Load" : "Unload"} Location ${currentLocationIndex + 1} (Form ${currentFormIndex + 1})`,
         type
       }];
     });
@@ -348,6 +366,17 @@ const CreateDeliveryFromPO: React.FC = () => {
         trip_allowance: "",
         gaji: "",
         ongkosan: "",
+        load_locations: [{ 
+          location: details.load_location || "", 
+          latitude: details.load_latitude?.toString() || "", 
+          longitude: details.load_longitude?.toString() || "" 
+        }],
+        unload_locations: [{ 
+          location: details.unload_location || "", 
+          latitude: details.unload_latitude?.toString() || "", 
+          longitude: details.unload_longitude?.toString() || "" 
+        }],
+        // Keep the old single location fields for backward compatibility
         load_location: details.load_location || "",
         unload_location: details.unload_location || "",
         load_latitude: details.load_latitude?.toString() || "",
@@ -475,6 +504,33 @@ const CreateDeliveryFromPO: React.FC = () => {
     }
   };
 
+  const handleLocationChange = (
+    formIndex: number,
+    locationType: 'load' | 'unload',
+    locationIndex: number,
+    field: 'location' | 'latitude' | 'longitude',
+    value: string
+  ) => {
+    const newFormDataList = [...formDataList];
+    const locationsArray = locationType === 'load' ? 'load_locations' : 'unload_locations';
+    newFormDataList[formIndex][locationsArray][locationIndex][field] = value;
+    
+    // Update the old single location fields for backward compatibility (use first location)
+    if (locationIndex === 0) {
+      if (locationType === 'load') {
+        if (field === 'location') newFormDataList[formIndex].load_location = value;
+        if (field === 'latitude') newFormDataList[formIndex].load_latitude = value;
+        if (field === 'longitude') newFormDataList[formIndex].load_longitude = value;
+      } else {
+        if (field === 'location') newFormDataList[formIndex].unload_location = value;
+        if (field === 'latitude') newFormDataList[formIndex].unload_latitude = value;
+        if (field === 'longitude') newFormDataList[formIndex].unload_longitude = value;
+      }
+    }
+    
+    setFormDataList(newFormDataList);
+  };
+
   const addForm = () => {
     setFormDataList([
       ...formDataList,
@@ -487,6 +543,17 @@ const CreateDeliveryFromPO: React.FC = () => {
         trip_allowance: "",
         gaji: "",
         ongkosan: "",
+        load_locations: [{ 
+          location: poDetails?.load_location || "", 
+          latitude: poDetails?.load_latitude?.toString() || "", 
+          longitude: poDetails?.load_longitude?.toString() || "" 
+        }],
+        unload_locations: [{ 
+          location: poDetails?.unload_location || "", 
+          latitude: poDetails?.unload_latitude?.toString() || "", 
+          longitude: poDetails?.unload_longitude?.toString() || "" 
+        }],
+        // Keep the old single location fields for backward compatibility
         load_location: poDetails?.load_location || "",
         unload_location: poDetails?.unload_location || "",
         load_latitude: poDetails?.load_latitude?.toString() || "",
@@ -515,6 +582,44 @@ const CreateDeliveryFromPO: React.FC = () => {
 
   const removeForm = (index: number) => {
     setFormDataList(formDataList.filter((_, i) => i !== index));
+  };
+
+  // Functions for managing load locations
+  const addLoadLocation = (formIndex: number) => {
+    const newFormDataList = [...formDataList];
+    newFormDataList[formIndex].load_locations.push({
+      location: "",
+      latitude: "",
+      longitude: ""
+    });
+    setFormDataList(newFormDataList);
+  };
+
+  const removeLoadLocation = (formIndex: number, locationIndex: number) => {
+    const newFormDataList = [...formDataList];
+    if (newFormDataList[formIndex].load_locations.length > 1) {
+      newFormDataList[formIndex].load_locations.splice(locationIndex, 1);
+      setFormDataList(newFormDataList);
+    }
+  };
+
+  // Functions for managing unload locations
+  const addUnloadLocation = (formIndex: number) => {
+    const newFormDataList = [...formDataList];
+    newFormDataList[formIndex].unload_locations.push({
+      location: "",
+      latitude: "",
+      longitude: ""
+    });
+    setFormDataList(newFormDataList);
+  };
+
+  const removeUnloadLocation = (formIndex: number, locationIndex: number) => {
+    const newFormDataList = [...formDataList];
+    if (newFormDataList[formIndex].unload_locations.length > 1) {
+      newFormDataList[formIndex].unload_locations.splice(locationIndex, 1);
+      setFormDataList(newFormDataList);
+    }
   };
 
   const getSelectedVehicle = (vehicleId: string): Vehicle | undefined =>
@@ -1206,109 +1311,179 @@ const CreateDeliveryFromPO: React.FC = () => {
                 )}
 
                 <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Load Location *
-                  </label>
-                  <textarea
-                    name="load_location"
-                    value={formData.load_location}
-                    onChange={(e) => handleInputChange(index, e)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    rows={3}
-                    required
-                    placeholder="Enter or select on map"
-                  />
-                  <div className="mt-2">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Load Locations *
+                    </label>
                     <button
                       type="button"
-                      onClick={() =>
-                        handleProcessLocationLink(
-                          "load",
-                          formData.load_location
-                        )
-                      }
-                      disabled={linkProcessing.load}
-                      className="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded w-full"
+                      onClick={() => addLoadLocation(index)}
+                      className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 py-1 rounded"
                     >
-                      {linkProcessing.load
-                        ? "Processing..."
-                        : "📌 Extract from Google Maps Link"}
+                      + Add Load Location
                     </button>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Paste Google Maps link or address. Shortened links will
-                      open in browser.
-                    </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCurrentFormIndex(index);
-                      setSelectedLocationType("load");
-                    }}
-                    className={`mt-2 px-3 py-1 rounded text-sm w-full ${
-                      selectedLocationType === "load" && currentFormIndex === index
-                        ? "bg-blue-500 text-white animate-pulse"
-                        : "bg-gray-200 hover:bg-gray-300"
-                    }`}
-                  >
-                    {showMap &&
-                      (selectedLocationType === "load" && currentFormIndex === index
-                        ? "Click on map..."
-                        : "Set Load Location")}
-                  </button>
+                  
+                  {formData.load_locations.map((loadLocation, locationIndex) => (
+                    <div key={locationIndex} className="mb-3 border-l-4 border-blue-300 pl-3">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-medium text-gray-600">
+                          Load Location {locationIndex + 1}
+                        </span>
+                        {formData.load_locations.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeLoadLocation(index, locationIndex)}
+                            className="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      
+                      <textarea
+                        value={loadLocation.location}
+                        onChange={(e) => handleLocationChange(index, 'load', locationIndex, 'location', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md mb-2"
+                        rows={3}
+                        required={locationIndex === 0}
+                        placeholder="Enter or select on map"
+                      />
+                      
+                      <div className="mb-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleProcessLocationLink(
+                              "load",
+                              loadLocation.location
+                            )
+                          }
+                          disabled={linkProcessing.load}
+                          className="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded w-full"
+                        >
+                          {linkProcessing.load
+                            ? "Processing..."
+                            : "📌 Extract from Google Maps Link"}
+                        </button>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Paste Google Maps link or address. Shortened links will
+                          open in browser.
+                        </p>
+                      </div>
+                      
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurrentFormIndex(index);
+                          setCurrentLocationIndex(locationIndex);
+                          setSelectedLocationType("load");
+                        }}
+                        className={`px-3 py-1 rounded text-sm w-full ${
+                          selectedLocationType === "load" && 
+                          currentFormIndex === index && 
+                          currentLocationIndex === locationIndex
+                            ? "bg-blue-500 text-white animate-pulse"
+                            : "bg-gray-200 hover:bg-gray-300"
+                        }`}
+                      >
+                        {showMap &&
+                          (selectedLocationType === "load" && 
+                           currentFormIndex === index && 
+                           currentLocationIndex === locationIndex
+                            ? "Click on map..."
+                            : "Set Load Location")}
+                      </button>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Unload Location *
-                  </label>
-                  <textarea
-                    name="unload_location"
-                    value={formData.unload_location}
-                    onChange={(e) => handleInputChange(index, e)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    rows={3}
-                    required
-                    placeholder="Enter or select on map"
-                  />
-                  <div className="mt-2">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Unload Locations *
+                    </label>
                     <button
                       type="button"
-                      onClick={() =>
-                        handleProcessLocationLink(
-                          "unload",
-                          formData.unload_location
-                        )
-                      }
-                      disabled={linkProcessing.unload}
-                      className="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded w-full"
+                      onClick={() => addUnloadLocation(index)}
+                      className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1 rounded"
                     >
-                      {linkProcessing.unload
-                        ? "Processing..."
-                        : "📌 Extract from Google Maps Link"}
+                      + Add Unload Location
                     </button>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Paste Google Maps link or address. Shortened links will
-                      open in browser.
-                    </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCurrentFormIndex(index);
-                      setSelectedLocationType("unload");
-                    }}
-                    className={`mt-2 px-3 py-1 rounded text-sm w-full ${
-                      selectedLocationType === "unload" && currentFormIndex === index
-                        ? "bg-red-500 text-white animate-pulse"
-                        : "bg-gray-200 hover:bg-gray-300"
-                    }`}
-                  >
-                    {showMap &&
-                      (selectedLocationType === "unload" && currentFormIndex === index
-                        ? "Click on map..."
-                        : "Set Unload Location")}
-                  </button>
+                  
+                  {formData.unload_locations.map((unloadLocation, locationIndex) => (
+                    <div key={locationIndex} className="mb-3 border-l-4 border-red-300 pl-3">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-medium text-gray-600">
+                          Unload Location {locationIndex + 1}
+                        </span>
+                        {formData.unload_locations.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeUnloadLocation(index, locationIndex)}
+                            className="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      
+                      <textarea
+                        value={unloadLocation.location}
+                        onChange={(e) => handleLocationChange(index, 'unload', locationIndex, 'location', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md mb-2"
+                        rows={3}
+                        required={locationIndex === 0}
+                        placeholder="Enter or select on map"
+                      />
+                      
+                      <div className="mb-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleProcessLocationLink(
+                              "unload",
+                              unloadLocation.location
+                            )
+                          }
+                          disabled={linkProcessing.unload}
+                          className="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded w-full"
+                        >
+                          {linkProcessing.unload
+                            ? "Processing..."
+                            : "📌 Extract from Google Maps Link"}
+                        </button>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Paste Google Maps link or address. Shortened links will
+                          open in browser.
+                        </p>
+                      </div>
+                      
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurrentFormIndex(index);
+                          setCurrentLocationIndex(locationIndex);
+                          setSelectedLocationType("unload");
+                        }}
+                        className={`px-3 py-1 rounded text-sm w-full ${
+                          selectedLocationType === "unload" && 
+                          currentFormIndex === index && 
+                          currentLocationIndex === locationIndex
+                            ? "bg-red-500 text-white animate-pulse"
+                            : "bg-gray-200 hover:bg-gray-300"
+                        }`}
+                      >
+                        {showMap &&
+                          (selectedLocationType === "unload" && 
+                           currentFormIndex === index && 
+                           currentLocationIndex === locationIndex
+                            ? "Click on map..."
+                            : "Set Unload Location")}
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}

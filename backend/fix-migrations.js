@@ -27,10 +27,9 @@ async function fixMigrations() {
     const result = await pool.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'users'
+        WHERE table_schema = 'public' S0s0S0s0S0s0S0s0S0s0S0s0S0s0S0s0S0s0S0s0S0s0S0s0S0s0S0s0s0S0s0S0
       );
-    `);
+    `);``
 
     if (result.rows[0].exists) {
       console.log('✅ Users table exists - marking init.sql as completed');

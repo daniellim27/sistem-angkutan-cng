@@ -28,15 +28,15 @@ interface DeliveryOrderData {
   gas_filling_cost?: number;
 }
 
-const STATUS_OPTIONS = [
-  { value: "assigned", label: "Ditugaskan" },
-  { value: "otw_to_load_location", label: "Menuju Lokasi Muat" },
-  { value: "at_load_location", label: "Di Lokasi Muat" },
-  { value: "otw_to_unload_location", label: "Menuju Lokasi Bongkar" },
-  { value: "at_unload_location", label: "Di Lokasi Bongkar" },
-  { value: "otw_to_base", label: "Perjalanan Pulang" },
-  { value: "completed", label: "Selesai" },
-  { value: "cancelled", label: "Dibatalkan" },
+const STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'assigned', label: 'Assigned' },
+  { value: 'otw_to_load_location', label: 'On the way to Load Location' },
+  { value: 'at_load_location', label: 'At Load Location' },
+  { value: 'otw_to_unload_location', label: 'On the way to Unload Location' },
+  { value: 'at_unload_location', label: 'At Unload Location' },
+  { value: 'otw_to_base', label: 'On the way to Base' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' }
 ];
 
 const EditDeliveryOrder: React.FC = () => {
@@ -54,22 +54,24 @@ const EditDeliveryOrder: React.FC = () => {
   const [cancellationReason, setCancellationReason] = useState("");
 
   // SPBG locations for selection
-  const spbgLocations = [
+  const spbgLocations: { value: string; label: string }[] = [
     { value: '', label: 'Select SPBG Location' },
-    { value: 'jakarta', label: 'Jakarta' },
-    { value: 'bandung', label: 'Bandung' },
-    { value: 'surabaya', label: 'Surabaya' },
-    { value: 'semarang', label: 'Semarang' },
-    { value: 'yogyakarta', label: 'Yogyakarta' },
-    { value: 'medan', label: 'Medan' },
-    { value: 'palembang', label: 'Palembang' },
-    { value: 'makassar', label: 'Makassar' }
+    { value: 'jakarta_utara', label: 'SPBG Jakarta Utara' },
+    { value: 'jakarta_timur', label: 'SPBG Jakarta Timur' },
+    { value: 'jakarta_selatan', label: 'SPBG Jakarta Selatan' },
+    { value: 'jakarta_barat', label: 'SPBG Jakarta Barat' },
+    { value: 'tangerang', label: 'SPBG Tangerang' },
+    { value: 'bekasi', label: 'SPBG Bekasi' },
+    { value: 'depok', label: 'SPBG Depok' },
+    { value: 'bogor', label: 'SPBG Bogor' },
+    { value: 'cikampek', label: 'SPBG Cikampek' },
+    { value: 'bandung', label: 'SPBG Bandung' }
   ];
 
   // Gas calculation methods
-  const calculationMethods = [
-    { value: 'jisdor', label: 'JISDOR Rate (Dynamic)' },
-    { value: 'fixed', label: 'Fixed Rate (Standard)' }
+  const calculationMethods: { value: string; label: string }[] = [
+    { value: 'jisdor', label: 'JISDOR Rate' },
+    { value: 'fixed', label: 'Fixed Rate (7,800 IDR per m³)' }
   ];
 
   // Helper function to get SPBG location label

@@ -53,23 +53,10 @@ const DepositGroupManagement = () => {
   });
 
   // SPBG locations for selection
-  const spbgLocations = [
-    { value: 'jakarta', label: 'Jakarta' },
-    { value: 'bandung', label: 'Bandung' },
-    { value: 'surabaya', label: 'Surabaya' },
-    { value: 'semarang', label: 'Semarang' },
-    { value: 'yogyakarta', label: 'Yogyakarta' },
-    { value: 'medan', label: 'Medan' },
-    { value: 'palembang', label: 'Palembang' },
-    { value: 'makassar', label: 'Makassar' }
-  ];
+  const spbgLocations: { value: string; label: string }[] = [];
 
   // Gas types for SPBG groups
-  const gasTypes = [
-    { value: 'cng', label: 'CNG (Compressed Natural Gas)' },
-    { value: 'lng', label: 'LNG (Liquefied Natural Gas)' },
-    { value: 'lpg', label: 'LPG (Liquefied Petroleum Gas)' }
-  ];
+  const gasTypes: { value: string; label: string }[] = [];
 
   useEffect(() => {
     fetchGroups();

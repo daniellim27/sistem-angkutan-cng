@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import LiveTrackingMap from '../components/LiveTrackingMap';
+import TrackingDeliveryList from '../components/TrackingDeliveryList';
 
 // Interface for active vehicle info
 interface ActiveVehicle {
@@ -68,7 +69,6 @@ const getVehicleTrailColor = (index: number): string => {
 
 const LiveTracking: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState<'all' | 'delivery'>('all');
-  const [deliveryOrderId, setDeliveryOrderId] = useState<string>('');
   const [activeVehicles, setActiveVehicles] = useState<ActiveVehicle[]>([]);
   const [vehicleTrails, setVehicleTrails] = useState<VehicleTrail[]>([]);
 
@@ -125,22 +125,6 @@ const LiveTracking: React.FC = () => {
 
           {/* Tab Content - Filters */}
           <div className="p-4">
-            {selectedTab === 'delivery' && (
-              <div className="flex items-center space-x-4">
-                <label className="text-sm font-medium text-gray-700">Delivery Order ID:</label>
-                <input
-                  type="number"
-                  value={deliveryOrderId}
-                  onChange={(e) => setDeliveryOrderId(e.target.value)}
-                  placeholder="Enter delivery order ID"
-                  className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-                <span className="text-sm text-gray-500">
-                  Enter a delivery order ID to track its specific route and vehicle
-                </span>
-              </div>
-            )}
-
             {selectedTab === 'all' && (
               <div className="text-sm text-gray-600">
                 Showing all active vehicles with GPS tracking enabled. The map updates automatically every 30 seconds.
@@ -149,17 +133,22 @@ const LiveTracking: React.FC = () => {
           </div>
         </div>
 
-        {/* Live Tracking Map */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <LiveTrackingMap
-            deliveryOrderId={selectedTab === 'delivery' && deliveryOrderId ? parseInt(deliveryOrderId) : undefined}
-            autoRefresh={true}
-            refreshInterval={30000} // 30 seconds
-            className="h-[600px]"
-            onActiveVehiclesUpdate={handleActiveVehiclesUpdate}
-            onTrailsUpdate={handleTrailsUpdate}
-          />
-        </div>
+        {/* Tab Content */}
+        {selectedTab === 'all' && (
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <LiveTrackingMap
+              autoRefresh={true}
+              refreshInterval={30000} // 30 seconds
+              className="h-[600px]"
+              onActiveVehiclesUpdate={handleActiveVehiclesUpdate}
+              onTrailsUpdate={handleTrailsUpdate}
+            />
+          </div>
+        )}
+
+        {selectedTab === 'delivery' && (
+          <TrackingDeliveryList className="space-y-6" />
+        )}
       </div>
     </div>
   );

@@ -60,7 +60,7 @@ module.exports = (sequelize) => {
       // NEW: Tire configuration fields
       tire_count: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         defaultValue: 6,
         validate: {
           min: {
@@ -75,7 +75,7 @@ module.exports = (sequelize) => {
       },
       spare_tire_count: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         defaultValue: 2,
         validate: {
           min: {

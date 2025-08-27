@@ -322,7 +322,7 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
         // Fetch specific delivery tracking
         const response = await apiClient.get(`/tracking/delivery/${deliveryOrderId}`, {
           signal: trackingAbortController.current.signal,
-          timeout: 10000 // 10 second timeout
+          timeout: 20000 // 20 second timeout
         });
         if (response.data.success && response.data.data.currentLocation) {
           setSelectedVehicle(response.data.data.currentLocation);
@@ -337,7 +337,7 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
         // Fetch all active vehicles and find the selected one
         const response = await apiClient.get('/tracking/vehicles/active', {
           signal: trackingAbortController.current.signal,
-          timeout: 10000
+          timeout: 20000
         });
         if (response.data.success) {
           const allVehicles = response.data.data;
@@ -367,7 +367,7 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
         // Fetch all active vehicles
         const response = await apiClient.get('/tracking/vehicles/active', {
           signal: trackingAbortController.current.signal,
-          timeout: 10000
+          timeout: 20000
         });
         if (response.data.success) {
           setVehicles(response.data.data);
@@ -385,7 +385,7 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
       if (timeSinceLastUpdate > 60000) { // Only every minute
         const statsResponse = await apiClient.get('/tracking/stats', {
           signal: trackingAbortController.current.signal,
-          timeout: 5000
+          timeout: 15000
         });
         if (statsResponse.data.success) {
           setTrackingStats(statsResponse.data.data);
@@ -397,7 +397,15 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     } catch (err: any) {
       if (err.name !== 'CanceledError' && err.code !== 'ERR_CANCELED') {
         console.error('Error fetching tracking data:', err);
-        setError(err.response?.data?.message || 'Failed to fetch tracking data');
+        
+        // Handle timeout errors specifically
+        if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+          setError('Request timed out. The tracking server may be experiencing high load. Please try again.');
+        } else if (err.code === 'NETWORK_ERROR') {
+          setError('Network connection error. Please check your internet connection.');
+        } else {
+          setError(err.response?.data?.message || 'Failed to fetch tracking data. Please try again.');
+        }
       }
     } finally {
       setLoading(false);

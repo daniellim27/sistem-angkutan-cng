@@ -39,16 +39,7 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
   const [error, setError] = useState<string | null>(null);
 
   // SPBG locations for display
-  const spbgLocations = [
-    { value: 'jakarta', label: 'Jakarta' },
-    { value: 'bandung', label: 'Bandung' },
-    { value: 'surabaya', label: 'Surabaya' },
-    { value: 'semarang', label: 'Semarang' },
-    { value: 'yogyakarta', label: 'Yogyakarta' },
-    { value: 'medan', label: 'Medan' },
-    { value: 'palembang', label: 'Palembang' },
-    { value: 'makassar', label: 'Makassar' }
-  ];
+  const spbgLocations: { value: string; label: string }[] = [];
 
   useEffect(() => {
     if (id) {

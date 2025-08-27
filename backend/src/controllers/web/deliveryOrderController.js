@@ -378,7 +378,14 @@ exports.getAllDeliveryOrders = async (req, res, next) => {
     const offset = (page - 1) * limit;
 
     let whereClause = {};
-    if (status) whereClause.status = status;
+    if (status) {
+      // Handle comma-separated status values
+      if (typeof status === 'string' && status.includes(',')) {
+        whereClause.status = { [Op.in]: status.split(',').map(s => s.trim()) };
+      } else {
+        whereClause.status = status;
+      }
+    }
     if (driver_id) whereClause.driver_id = driver_id;
     if (vehicle_id) whereClause.vehicle_id = vehicle_id;
     if (po_id) whereClause.purchase_order_id = po_id;
