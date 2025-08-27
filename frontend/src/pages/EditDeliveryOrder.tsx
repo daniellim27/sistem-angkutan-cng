@@ -14,6 +14,8 @@ interface DeliveryOrderData {
   total_amount: number;
   load_location: string;
   unload_location: string;
+  load_locations?: string[];
+  unload_locations?: string[];
   status: string;
   notes?: string;
   driver_name?: string;
@@ -100,6 +102,59 @@ const EditDeliveryOrder: React.FC = () => {
     return cost;
   };
 
+  // Location management functions
+  const addLoadLocation = () => {
+    setFormData(prev => ({
+      ...prev,
+      load_locations: [...prev.load_locations, ""]
+    }));
+  };
+
+  const removeLoadLocation = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      load_locations: prev.load_locations.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateLoadLocation = (index: number, value: string) => {
+    setFormData(prev => {
+      const newLoadLocations = prev.load_locations.map((loc, i) => i === index ? value : loc);
+      return {
+        ...prev,
+        load_locations: newLoadLocations,
+        // Keep original field in sync for backward compatibility
+        load_location: newLoadLocations[0] || ""
+      };
+    });
+  };
+
+  const addUnloadLocation = () => {
+    setFormData(prev => ({
+      ...prev,
+      unload_locations: [...prev.unload_locations, ""]
+    }));
+  };
+
+  const removeUnloadLocation = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      unload_locations: prev.unload_locations.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateUnloadLocation = (index: number, value: string) => {
+    setFormData(prev => {
+      const newUnloadLocations = prev.unload_locations.map((loc, i) => i === index ? value : loc);
+      return {
+        ...prev,
+        unload_locations: newUnloadLocations,
+        // Keep original field in sync for backward compatibility
+        unload_location: newUnloadLocations[0] || ""
+      };
+    });
+  };
+
   // Form state
   const [formData, setFormData] = useState({
     customer_name: "",
@@ -110,6 +165,8 @@ const EditDeliveryOrder: React.FC = () => {
     unit_price: 0,
     load_location: "",
     unload_location: "",
+    load_locations: [""] as string[],
+    unload_locations: [""] as string[],
     notes: "",
     trip_allowance: 0,
     gaji: 0,
@@ -145,6 +202,8 @@ const EditDeliveryOrder: React.FC = () => {
         unit_price: data.unit_price || 0,
         load_location: data.load_location || "",
         unload_location: data.unload_location || "",
+        load_locations: data.load_locations && data.load_locations.length > 0 ? data.load_locations : [data.load_location || ""],
+        unload_locations: data.unload_locations && data.unload_locations.length > 0 ? data.unload_locations : [data.unload_location || ""],
         notes: data.notes || "",
         trip_allowance: data.trip_allowance || 0,
         gaji: data.gaji || 0,
@@ -206,7 +265,18 @@ const EditDeliveryOrder: React.FC = () => {
       setSaving(true);
       setError(null);
 
-      await apiClient.put(`/delivery-orders/${id}`, formData);
+      // Prepare data with both individual and array fields for compatibility
+      const submissionData = {
+        ...formData,
+        // Keep original fields for backward compatibility
+        load_location: formData.load_locations[0] || "",
+        unload_location: formData.unload_locations[0] || "",
+        // Add new array fields
+        load_locations: formData.load_locations.filter(loc => loc.trim() !== ""),
+        unload_locations: formData.unload_locations.filter(loc => loc.trim() !== "")
+      };
+
+      await apiClient.put(`/delivery-orders/${id}`, submissionData);
 
       navigate("/delivery-orders", {
         state: { message: "Delivery Order updated successfully!" },
@@ -635,34 +705,82 @@ const EditDeliveryOrder: React.FC = () => {
           )}
         </div>
 
-        {/* Load Location */}
+        {/* Load Locations */}
         <div className="mt-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Load Location
-          </label>
-          <input
-            type="text"
-            name="load_location"
-            value={formData.load_location}
-            onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            required
-          />
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Load Locations
+            </label>
+            <button
+              type="button"
+              onClick={addLoadLocation}
+              className="text-sm bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              + Add Location
+            </button>
+          </div>
+          <div className="space-y-3">
+            {formData.load_locations.map((location, index) => (
+              <div key={index} className="flex gap-2">
+                <input
+                  type="text"
+                  value={location}
+                  onChange={(e) => updateLoadLocation(index, e.target.value)}
+                  placeholder={`Load location ${index + 1}`}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required={index === 0}
+                />
+                {formData.load_locations.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeLoadLocation(index)}
+                    className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Unload Location */}
+        {/* Unload Locations */}
         <div className="mt-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Unload Location
-          </label>
-          <input
-            type="text"
-            name="unload_location"
-            value={formData.unload_location}
-            onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            required
-          />
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Unload Locations
+            </label>
+            <button
+              type="button"
+              onClick={addUnloadLocation}
+              className="text-sm bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              + Add Location
+            </button>
+          </div>
+          <div className="space-y-3">
+            {formData.unload_locations.map((location, index) => (
+              <div key={index} className="flex gap-2">
+                <input
+                  type="text"
+                  value={location}
+                  onChange={(e) => updateUnloadLocation(index, e.target.value)}
+                  placeholder={`Unload location ${index + 1}`}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required={index === 0}
+                />
+                {formData.unload_locations.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeUnloadLocation(index)}
+                    className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Notes */}

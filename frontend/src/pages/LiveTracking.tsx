@@ -93,7 +93,6 @@ const LiveTracking: React.FC = () => {
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Live GPS Tracking</h1>
-          <p className="text-gray-600">Real-time vehicle tracking powered by Inovatracks</p>
         </div>
 
         {/* Navigation Tabs */}
