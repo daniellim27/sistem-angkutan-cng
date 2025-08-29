@@ -44,14 +44,17 @@ exports.getAllVehicles = async (req, res, next) => {
       offset: offset
     });
 
-    // Enhanced vehicle data with driver information
+    // Enhanced vehicle data with driver information and GPS tracking
     const enhancedVehicles = result.rows.map(vehicle => {
       const vehicleData = vehicle.toJSON();
       return {
         ...vehicleData,
         driver_name: vehicle.driver?.driverProfile?.full_name || null,
         driver_phone: vehicle.driver?.driverProfile?.phone || null,
-        driver_status: vehicle.driver?.driverProfile?.status || null
+        driver_status: vehicle.driver?.driverProfile?.status || null,
+        has_gps_tracking: !!vehicleData.device_id,
+        gps_last_update: vehicleData.last_gps_update,
+        tracked_plate: vehicleData.device_id ? exports.extractPlateFromDeviceId(vehicleData.device_id) : null
       };
     });
 
@@ -106,7 +109,10 @@ exports.getVehicleById = async (req, res, next) => {
       ...vehicleData,
       driver_name: vehicle.driver?.driverProfile?.full_name || null,
       driver_phone: vehicle.driver?.driverProfile?.phone || null,
-      driver_status: vehicle.driver?.driverProfile?.status || null
+      driver_status: vehicle.driver?.driverProfile?.status || null,
+      has_gps_tracking: !!vehicleData.device_id,
+      gps_last_update: vehicleData.last_gps_update,
+      tracked_plate: vehicleData.device_id ? exports.extractPlateFromDeviceId(vehicleData.device_id) : null
     };
 
     res.json({
@@ -127,32 +133,38 @@ exports.createVehicle = async (req, res, next) => {
     const vehicle = await Vehicle.create(req.body, { transaction });
     
     // Get tire positions for this vehicle type using the model method
-    const tirePositions = vehicle.getTirePositions();
-    
-    // Create empty tire slots for each position
-    const { VehicleTire } = require('../models');
-    const tireSlots = tirePositions.map(position => ({
-      vehicle_id: vehicle.id,
-      position: position,
-      status: 'empty', // Mark as empty initially
-      current_pressure: 0,
-      recommended_pressure: 35,
-      tread_depth: 0,
-      temperature: 25.0,
-      condition: 'good'
-    }));
+    // Only create tire positions if tire_count is specified
+    let tireSlots = [];
+    if (vehicle.tire_count && vehicle.spare_tire_count !== null) {
+      const tirePositions = vehicle.getTirePositions();
+      
+      // Create empty tire slots for each position
+      const { VehicleTire } = require('../models');
+      tireSlots = tirePositions.map(position => ({
+        vehicle_id: vehicle.id,
+        position: position,
+        status: 'empty', // Mark as empty initially
+        current_pressure: 0,
+        recommended_pressure: 35,
+        tread_depth: 0,
+        temperature: 25.0,
+        condition: 'good'
+      }));
+    }
     
     // Create all tire slots
-    await VehicleTire.bulkCreate(tireSlots, { transaction });
+    if (tireSlots.length > 0) {
+      await VehicleTire.bulkCreate(tireSlots, { transaction });
+    }
     
     await transaction.commit();
     
     res.status(201).json({
       success: true,
-      message: 'Vehicle created successfully with tire positions',
+      message: tireSlots.length > 0 ? 'Vehicle created successfully with tire positions' : 'Vehicle created successfully',
       data: {
         ...vehicle.toJSON(),
-        tire_positions: tirePositions
+        tire_positions: tireSlots.length > 0 ? vehicle.getTirePositions() : []
       }
     });
   } catch (err) {
@@ -385,5 +397,28 @@ exports.getServiceHistory = async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+};
+
+// Helper function to extract plate number from device ID
+exports.extractPlateFromDeviceId = (deviceId) => {
+  try {
+    if (!deviceId) return null;
+    
+    // Extract license plate from device ID (e.g., "BE8408AADWarunggunung, Kabupaten Lebak" -> "BE8408AAD")
+    // Common Indonesian plate formats: AA 1234 ABC, A 1234 ABC, AA 123 A, etc.
+    const licensePlateMatch = deviceId.match(/^([A-Z]{1,2}\s?\d{1,4}\s?[A-Z]{1,3})/);
+    
+    if (licensePlateMatch) {
+      // Remove spaces and return clean plate number
+      return licensePlateMatch[1].replace(/\s/g, '');
+    }
+    
+    // Fallback: try to extract any alphanumeric sequence at the beginning
+    const alphaNumMatch = deviceId.match(/^([A-Z0-9]+)/);
+    return alphaNumMatch ? alphaNumMatch[1] : deviceId.substring(0, 15); // Limit length
+  } catch (error) {
+    console.error('Error extracting plate number:', error);
+    return null;
   }
 };

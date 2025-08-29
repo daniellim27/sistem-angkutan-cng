@@ -38,12 +38,8 @@ const setupCashTransactionModel = require("./cashTransaction.model");
 const setupDepositGroupModel = require("./depositGroup.model");
 const setupDepositGroupMemberModel = require("./depositGroupMember.model");
 
-// NEW: Exchange Rate Model for JISDOR scraping
-const setupExchangeRateModel = require("./exchangeRate.model");
-
-// NEW: IoT Raw Data Model
-const setupIotRawDataModel = require("./iotRawData.model");
-
+// GPS Tracking Model
+const setupDriverLocationModel = require("./driverLocation.model");
 // Initialize Sequelize connection using your .env variables
 const sequelize = new Sequelize(
   process.env.DB_NAME,
@@ -102,14 +98,11 @@ db.TireInstance = setupTireInstanceModel(sequelize);
 db.CashCategory = setupCashCategoryModel(sequelize);
 db.CashTransaction = setupCashTransactionModel(sequelize);
 
-db.IotRawData = setupIotRawDataModel(sequelize);
-
 db.DepositGroup = setupDepositGroupModel(sequelize);
 db.DepositGroupMember = setupDepositGroupMemberModel(sequelize);
 
-// NEW: Exchange Rate Model
-db.ExchangeRate = setupExchangeRateModel(sequelize);
-
+// GPS Tracking Model
+db.DriverLocation = setupDriverLocationModel(sequelize);
 const {
   User,
   DriverProfile,
@@ -139,6 +132,7 @@ const {
   SystemSettings,
   DepositGroup,
   DepositGroupMember,
+  DriverLocation,
 } = db;
 
 // User <-> Profile Associations (One-to-One)
@@ -489,14 +483,36 @@ DepositGroup.hasMany(PurchaseOrder, {
   as: "purchaseOrders",
 });
 
-// === IoT Data Associations ===
-DeliveryOrder.hasMany(IotRawData, {
-  foreignKey: "delivery_order_id",
-  as: "iotData",
+// DriverLocation Associations (GPS Tracking)
+// User (Driver) to DriverLocation (One-to-Many)
+User.hasMany(DriverLocation, {
+  foreignKey: "driver_id",
+  as: "locations",
 });
-IotRawData.belongsTo(DeliveryOrder, {
+DriverLocation.belongsTo(User, {
+  foreignKey: "driver_id",
+  as: "driver",
+});
+
+// Vehicle to DriverLocation (One-to-Many)
+Vehicle.hasMany(DriverLocation, {
+  foreignKey: "vehicle_id",
+  as: "locations",
+});
+DriverLocation.belongsTo(Vehicle, {
+  foreignKey: "vehicle_id",
+  as: "vehicle",
+});
+
+// DeliveryOrder to DriverLocation (One-to-Many)
+DeliveryOrder.hasMany(DriverLocation, {
+  foreignKey: "delivery_order_id",
+  as: "trackingData",
+});
+DriverLocation.belongsTo(DeliveryOrder, {
   foreignKey: "delivery_order_id",
   as: "deliveryOrder",
 });
+
 
 module.exports = db;

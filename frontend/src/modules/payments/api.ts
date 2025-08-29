@@ -11,7 +11,11 @@ export const paymentsApi = {
   }) => apiClient.get("/payments/delivery-orders", { params }),
 
   // Get payment overview stats
-  getOverviewStats: () => apiClient.get("/payments/overview"),
+  getOverviewStats: (params?: {
+    spbg_only?: boolean;
+    spbg_location?: string;
+    gas_filling_only?: boolean;
+  }) => apiClient.get("/payments/overview", { params }),
 
   // Get delivery orders pending payment
   fetchDeliveryOrders: (params?: {
@@ -19,6 +23,10 @@ export const paymentsApi = {
     customer?: string;
     page?: number;
     limit?: number;
+    // SPBG Filter Parameters
+    spbg_only?: boolean;
+    spbg_location?: string;
+    gas_filling_only?: boolean;
   }) => apiClient.get("/payments/delivery-orders", { params }),
 
   // Get invoices with filtering and pagination
@@ -29,6 +37,10 @@ export const paymentsApi = {
     limit?: number;
     sort?: string;
     order?: string;
+    // SPBG Filter Parameters
+    spbg_only?: boolean;
+    spbg_location?: string;
+    gas_filling_only?: boolean;
   }) => apiClient.get("/payments/invoices", { params }),
 
   confirmForBilling: (doId: number, body = {}) =>
@@ -72,6 +84,10 @@ export const paymentsApi = {
     customer?: string;
     po_id?: number;
     limit?: number;
+    // SPBG Filter Parameters
+    spbg_only?: boolean;
+    spbg_location?: string;
+    gas_filling_only?: boolean;
   }) => apiClient.get("/payments/delivery-orders/bulk-eligible", { params }),
 
   // Create bulk invoice

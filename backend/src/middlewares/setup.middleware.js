@@ -2,10 +2,30 @@ const cors = require("cors");
 const express = require("express");
 
 module.exports = (app) => {
-  // Enable CORS for all origins and specifically for frontend on port 3001
+  // Enable CORS for development including ngrok
   app.use(
     cors({
-      origin: ["http://localhost:3001", "http://localhost:3000", "*"], // Explicitly allow port 3001
+      origin: function (origin, callback) {
+        // Allow requests with no origin (mobile apps, Postman, etc.)
+        if (!origin) return callback(null, true);
+
+        // Allow localhost and local network
+        if (origin.includes("localhost") || origin.includes("192.168.43.105")) {
+          return callback(null, true);
+        }
+
+        // Allow ngrok domains
+        if (origin.includes("ngrok-free.app") || origin.includes("ngrok.io")) {
+          return callback(null, true);
+        }
+
+        // Allow expo domains
+        if (origin.includes("exp.direct")) {
+          return callback(null, true);
+        }
+
+        callback(null, true); // Allow all origins in development
+      },
       methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
       allowedHeaders: [
         "Content-Type",

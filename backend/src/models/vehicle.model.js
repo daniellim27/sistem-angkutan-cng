@@ -60,7 +60,7 @@ module.exports = (sequelize) => {
       // NEW: Tire configuration fields
       tire_count: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         defaultValue: 6,
         validate: {
           min: {
@@ -75,7 +75,7 @@ module.exports = (sequelize) => {
       },
       spare_tire_count: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         defaultValue: 2,
         validate: {
           min: {
@@ -178,6 +178,26 @@ module.exports = (sequelize) => {
         validate: {
           isDate: {
             msg: "Tax due date must be a valid date",
+          },
+        },
+      },
+      // GPS Tracking fields
+      device_id: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        validate: {
+          len: {
+            args: [0, 100],
+            msg: "Device ID must not exceed 100 characters",
+          },
+        },
+      },
+      last_gps_update: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        validate: {
+          isDate: {
+            msg: "Last GPS update must be a valid date",
           },
         },
       },

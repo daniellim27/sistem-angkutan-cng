@@ -175,10 +175,6 @@ module.exports = {
         limit = 20,
         sort = "created_at",
         order = "DESC",
-        // SPBG Filter Parameters
-        spbg_only,
-        spbg_location,
-        gas_filling_only
       } = req.query;
 
       const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -196,26 +192,6 @@ module.exports = {
         doWhereClause.customer_name = {
           [Op.iLike]: `%${customer}%`,
         };
-      }
-
-      // SPBG Filtering for Delivery Orders
-      if (spbg_only === 'true' || spbg_only === true) {
-        doWhereClause[Op.or] = [
-          { spbg_location: { [Op.not]: null } },
-          { gas_volume_m3: { [Op.not]: null } },
-          { calculation_method: { [Op.not]: null } }
-        ];
-      }
-
-      if (spbg_location && spbg_location !== '') {
-        doWhereClause.spbg_location = spbg_location;
-      }
-
-      if (gas_filling_only === 'true' || gas_filling_only === true) {
-        doWhereClause[Op.and] = [
-          { gas_volume_m3: { [Op.not]: null } },
-          { gas_volume_m3: { [Op.gt]: 0 } }
-        ];
       }
 
       const { count, rows } = await DeliveryOrderInvoices.findAndCountAll({
@@ -734,15 +710,7 @@ module.exports = {
   async getBulkEligibleDOs(req, res, next) {
     try {
       const { Op } = require("sequelize");
-      const { 
-        customer, 
-        po_id, 
-        limit = 100,
-        // SPBG Filter Parameters
-        spbg_only,
-        spbg_location,
-        gas_filling_only
-      } = req.query;
+      const { customer, po_id, limit = 100 } = req.query;
 
       let whereClause = {
         status: "completed",
@@ -772,26 +740,6 @@ module.exports = {
       // Filter by PO
       if (po_id) {
         whereClause.purchase_order_id = po_id;
-      }
-
-      // SPBG Filtering
-      if (spbg_only === 'true' || spbg_only === true) {
-        whereClause[Op.or] = [
-          { spbg_location: { [Op.not]: null } },
-          { gas_volume_m3: { [Op.not]: null } },
-          { calculation_method: { [Op.not]: null } }
-        ];
-      }
-
-      if (spbg_location && spbg_location !== '') {
-        whereClause.spbg_location = spbg_location;
-      }
-
-      if (gas_filling_only === 'true' || gas_filling_only === true) {
-        whereClause[Op.and] = [
-          { gas_volume_m3: { [Op.not]: null } },
-          { gas_volume_m3: { [Op.gt]: 0 } }
-        ];
       }
 
       const deliveryOrders = await DeliveryOrder.findAll({
@@ -1193,71 +1141,45 @@ module.exports = {
     try {
       const { Op } = require("sequelize");
       const { sequelize } = require("../../models");
-      const { 
-        // SPBG Filter Parameters - TEMPORARILY DISABLED
-        spbg_only,
-        spbg_location,
-        gas_filling_only
-      } = req.query;
 
-      // TEMPORARILY DISABLE SPBG FILTERING TO DEBUG GROUP BY ISSUE
-      console.log("🔍 DEBUG: SPBG filters received:", { spbg_only, spbg_location, gas_filling_only });
-
-      console.log("🔍 DEBUG: Starting outstandingQuery...");
       // Total outstanding (proses_tagihan + awaiting_confirmation)
       const outstandingQuery = await DeliveryOrder.sum("final_amount", {
         where: {
           payment_status: {
             [Op.in]: ["proses_tagihan", "awaiting_confirmation"],
           },
-          final_amount: { [Op.not]: null }
-          // SPBG filters temporarily removed
+          final_amount: { [Op.not]: null },
         },
       });
-      console.log("🔍 DEBUG: outstandingQuery completed:", outstandingQuery);
 
-      console.log("🔍 DEBUG: Starting paidQuery...");
-      // Total paid (lunas) - Use raw SQL to avoid automatic JOIN issues
-      const [paidResult] = await sequelize.query(
-        'SELECT COALESCE(SUM(payment_amount), 0) as total_paid FROM delivery_order_payments',
-        { type: sequelize.QueryTypes.SELECT }
-      );
-      const paidQuery = paidResult.total_paid;
-      console.log("🔍 DEBUG: paidQuery completed:", paidQuery);
+      // Total paid (lunas)
+      const paidQuery = await DeliveryOrderPayments.sum("payment_amount");
 
-      console.log("🔍 DEBUG: Starting pendingInvoices...");
-      // Pending invoices count - Simple query without SPBG filters
+      // Pending invoices count
       const pendingInvoices = await DeliveryOrderInvoices.count({
         where: {
-          status: { [Op.in]: ["issued", "sent"] }
-        }
+          status: { [Op.in]: ["issued", "sent"] },
+        },
       });
-      console.log("🔍 DEBUG: pendingInvoices completed:", pendingInvoices);
 
-      console.log("🔍 DEBUG: Starting pendingDeliveries...");
       // ✅ ADD: Pending deliveries count (NEW)
       const pendingDeliveries = await DeliveryOrder.count({
         where: {
           payment_status: {
             [Op.in]: ["proses_tagihan", "awaiting_confirmation"],
-          }
-          // SPBG filters temporarily removed
+          },
         },
       });
-      console.log("🔍 DEBUG: pendingDeliveries completed:", pendingDeliveries);
 
-      console.log("🔍 DEBUG: Starting overdueInvoices...");
-      // Overdue invoices (past due_date and not paid) - Simple query without SPBG filters
+      // Overdue invoices (past due_date and not paid)
       const overdueInvoices = await DeliveryOrderInvoices.count({
         where: {
           due_date: { [Op.lt]: new Date() },
-          status: { [Op.ne]: "paid" }
-        }
+          status: { [Op.ne]: "paid" },
+        },
       });
-      console.log("🔍 DEBUG: overdueInvoices completed:", overdueInvoices);
 
-      console.log("🔍 DEBUG: Starting recentPayments...");
-      // Recent payments (last 10) - Simple query without SPBG filters
+      // Recent payments (last 10)
       const recentPayments = await DeliveryOrderPayments.findAll({
         limit: 10,
         order: [["payment_date", "DESC"]],
@@ -1266,11 +1188,9 @@ module.exports = {
             model: DeliveryOrder,
             as: "deliveryOrder",
             attributes: ["do_number", "customer_name"],
-            required: true
           },
-        ]
+        ],
       });
-      console.log("🔍 DEBUG: recentPayments completed, count:", recentPayments.length);
 
       const stats = {
         totalOutstanding: outstandingQuery || 0,
@@ -1287,14 +1207,11 @@ module.exports = {
         })),
       };
 
-      console.log("🔍 DEBUG: Stats calculated successfully:", stats);
-
       return res.json({
         success: true,
         data: stats,
       });
     } catch (err) {
-      console.error("❌ ERROR in getOverviewStats:", err);
       return next(err);
     }
   },
@@ -1307,16 +1224,7 @@ module.exports = {
   async getDeliveryOrders(req, res, next) {
     try {
       const { Op } = require("sequelize");
-      const { 
-        status = "pending", 
-        customer, 
-        page = 1, 
-        limit = 20,
-        // SPBG Filter Parameters
-        spbg_only,
-        spbg_location,
-        gas_filling_only
-      } = req.query;
+      const { status = "pending", customer, page = 1, limit = 20 } = req.query;
 
       const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -1336,26 +1244,6 @@ module.exports = {
         whereClause.customer_name = {
           [Op.iLike]: `%${customer}%`,
         };
-      }
-
-      // SPBG Filtering
-      if (spbg_only === 'true' || spbg_only === true) {
-        whereClause[Op.or] = [
-          { spbg_location: { [Op.not]: null } },
-          { gas_volume_m3: { [Op.not]: null } },
-          { calculation_method: { [Op.not]: null } }
-        ];
-      }
-
-      if (spbg_location && spbg_location !== '') {
-        whereClause.spbg_location = spbg_location;
-      }
-
-      if (gas_filling_only === 'true' || gas_filling_only === true) {
-        whereClause[Op.and] = [
-          { gas_volume_m3: { [Op.not]: null } },
-          { gas_volume_m3: { [Op.gt]: 0 } }
-        ];
       }
 
       const { count, rows } = await DeliveryOrder.findAndCountAll({

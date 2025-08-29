@@ -29,6 +29,11 @@ interface Vehicle {
   tire_stats: TireStats;
   last_service_date: string;
   next_service_due: string;
+  // GPS Tracking fields
+  device_id: string | null;
+  has_gps_tracking: boolean;
+  gps_last_update: string | null;
+  tracked_plate: string | null;
 }
 
 const VehiclesPage = () => {
@@ -179,6 +184,8 @@ const VehiclesPage = () => {
     if (date < threeMonths) return 'text-yellow-600';
     return 'text-gray-800';
   };
+
+
 
   // Pagination component
   const renderPagination = () => {
@@ -411,10 +418,13 @@ const VehiclesPage = () => {
                     </div>
                   </div>
                 </div>
+
+
               </div>
 
               {/* Card Footer Actions */}
               <div className="bg-gray-50 px-5 py-3 flex justify-end items-center space-x-3 flex-wrap">
+
                 <Link 
                   to={`/services/create?vehicleId=${vehicle.id}`} 
                   className="text-sm text-blue-600 hover:text-blue-900 font-medium"
@@ -429,10 +439,10 @@ const VehiclesPage = () => {
                 </Link>
                 <Link 
                   to={`/vehicles/tires?vehicleId=${vehicle.id}`} 
-                  className="text-sm text-green-600 hover:text-green-900 font-medium" 
+                  className="text-sm text-purple-600 hover:text-purple-900 font-medium" 
                   title="Manage Tires"
                 >
-                  Manage Tires
+                  Tires
                 </Link>
                 <Link 
                   to={`/vehicles/edit/${vehicle.id}`} 

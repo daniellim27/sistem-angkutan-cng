@@ -14,6 +14,7 @@ const MainLayout = () => {
     if (path.startsWith("/trips")) return "Purchase Orders";
     if (path.startsWith("/delivery-orders")) return "Delivery Orders";
     if (path.startsWith("/big-dos")) return "Big Delivery Orders";
+    if (path.startsWith("/live-tracking")) return "Live GPS Tracking";
     if (path.startsWith("/vehicles/tires")) return "Tire Management";
     if (path.startsWith("/vehicles")) return "Fleet Management";
     if (path.startsWith("/drivers")) return "Driver Management";
@@ -236,6 +237,22 @@ const MainLayout = () => {
                 <span className="text-xl mr-3">🚛</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
                   Fleet Management
+                </span>
+              </Link>
+            </li>
+            <li className="mb-4">
+              <Link
+                to="/live-tracking"
+                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
+                  isActiveLink("/live-tracking")
+                    ? "bg-gray-700 border-l-4 border-blue-500"
+                    : ""
+                }`}
+                title="Live GPS Tracking"
+              >
+                <span className="text-xl mr-3">🗺️</span>
+                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
+                  Live GPS Tracking
                 </span>
               </Link>
             </li>

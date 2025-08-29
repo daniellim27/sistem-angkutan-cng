@@ -17,13 +17,13 @@ const VehicleCreatePage = () => {
     try {
       const payload = {
         license_plate: data.license_plate?.trim(),
-        type: data.type?.trim(),
-        capacity: data.capacity,
-        tire_count: data.tire_count,           // NEW: Include tire configuration
-        spare_tire_count: data.spare_tire_count, // NEW: Include spare tire configuration
+        type: data.type?.trim() || null,
+        capacity: data.capacity || null,
+        tire_count: data.tire_count || 6,           // Default to 6 if empty
+        spare_tire_count: data.spare_tire_count || 2, // Default to 2 if empty
         driver_id: data.driver_id,
-        status: data.status,
-        stnk_number: data.stnk_number?.trim(),
+        status: data.status || 'available',
+        stnk_number: data.stnk_number?.trim() || null,
         stnk_expired_date: data.stnk_expired_date || null,
         tax_due_date: data.tax_due_date || null,
         last_service_date: data.last_service_date || null,

@@ -105,36 +105,11 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(11, 8),
         validate: { min: -180, max: 180 },
       },
-
-      // === GAS FILLING FIELDS ===
-      gas_volume_m3: {
-        type: DataTypes.DECIMAL(10, 2),
+      // Additional unload locations as JSON array
+      additional_unload_locations: { 
+        type: DataTypes.JSONB, 
         allowNull: true,
-        comment: "Gas volume in cubic meters",
-        validate: { min: 0 },
-      },
-      spbg_location: {
-        type: DataTypes.STRING(100),
-        allowNull: true,
-        comment: "SPBG (Stasiun Pengisian Bahan Bakar Gas) location",
-      },
-      calculation_method: {
-        type: DataTypes.ENUM("jisdor", "fixed"),
-        allowNull: true,
-        defaultValue: "jisdor",
-        comment: "Method used for gas filling cost calculation",
-      },
-      jisdor_rate: {
-        type: DataTypes.DECIMAL(10, 2),
-        allowNull: true,
-        comment: "JISDOR rate for gas filling cost calculation",
-        validate: { min: 0 },
-      },
-      gas_filling_cost: {
-        type: DataTypes.DECIMAL(15, 2),
-        allowNull: true,
-        comment: "Calculated gas filling cost",
-        validate: { min: 0 },
+        comment: 'JSON array of additional unload locations: [{"location": "Address", "latitude": "lat", "longitude": "lng"}]'
       },
 
       // === DOCUMENT FIELD ===

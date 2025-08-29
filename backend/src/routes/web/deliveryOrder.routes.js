@@ -43,11 +43,4 @@ router.patch(
   webDOController.completeDeliveryOrder
 );
 
-// ✅ IoT Sensor Data routes
-router.get(
-  "/:id/sensordata",
-  checkRole(["admin", "owner"]),
-  webDOController.getSensorData
-);
-
 module.exports = router;

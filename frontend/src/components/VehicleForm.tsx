@@ -112,17 +112,17 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
     
     const submitData: VehicleFormData = {
       license_plate: formData.license_plate,
-      type: formData.type,
-      capacity: formData.capacity,
-      tire_count: parseInt(formData.tire_count, 10),           // NEW
-      spare_tire_count: parseInt(formData.spare_tire_count, 10), // NEW
+      type: formData.type || '',
+      capacity: formData.capacity || '',
+      tire_count: formData.tire_count ? parseInt(formData.tire_count, 10) : 6,           
+      spare_tire_count: formData.spare_tire_count ? parseInt(formData.spare_tire_count, 10) : 2, 
       driver_id: formData.driver_id === '' ? null : parseInt(formData.driver_id, 10),
-      stnk_number: formData.stnk_number,
-      stnk_expired_date: formData.stnk_expired_date,
-      tax_due_date: formData.tax_due_date,
-      last_service_date: formData.last_service_date,
-      next_service_due: formData.next_service_due,
-      status: formData.status,
+      stnk_number: formData.stnk_number || '',
+      stnk_expired_date: formData.stnk_expired_date || '',
+      tax_due_date: formData.tax_due_date || '',
+      last_service_date: formData.last_service_date || '',
+      next_service_due: formData.next_service_due || '',
+      status: formData.status || 'available',
     };
     
     onSubmit(submitData);
@@ -152,7 +152,6 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
           id="type" 
           value={formData.type} 
           onChange={handleChange} 
-          required 
           className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" 
         />
       </div>
@@ -166,7 +165,6 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
             id="capacity" 
             value={formData.capacity} 
             onChange={handleChange} 
-            required 
             min="0" 
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" 
           />
@@ -179,7 +177,6 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
             id="status" 
             value={formData.status} 
             onChange={handleChange} 
-            required 
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="available">Available</option>
@@ -221,7 +218,6 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
             id="tire_count" 
             value={formData.tire_count} 
             onChange={handleChange} 
-            required 
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="4">4 Ban (Mobil Kecil)</option>
@@ -239,7 +235,6 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
             id="spare_tire_count" 
             value={formData.spare_tire_count} 
             onChange={handleChange} 
-            required 
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="0">0 Ban Serep</option>
@@ -269,7 +264,6 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
           id="stnk_number" 
           value={formData.stnk_number} 
           onChange={handleChange} 
-          required 
           className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" 
         />
       </div>
@@ -283,7 +277,6 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
             id="stnk_expired_date" 
             value={formData.stnk_expired_date} 
             onChange={handleChange} 
-            required 
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" 
           />
         </div>
@@ -295,7 +288,6 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
             id="tax_due_date" 
             value={formData.tax_due_date} 
             onChange={handleChange} 
-            required 
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" 
           />
         </div>

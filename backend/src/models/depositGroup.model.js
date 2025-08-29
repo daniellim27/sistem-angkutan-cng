@@ -68,28 +68,6 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING,
         defaultValue: 'none', // e.g., 'none', 'pending', 'paid'
       },
-      // === SPBG FIELDS ===
-      group_type: {
-        type: DataTypes.ENUM('general', 'spbg'),
-        allowNull: false,
-        defaultValue: 'general',
-        comment: 'Type of deposit group: general or SPBG-specific'
-      },
-      spbg_location: {
-        type: DataTypes.STRING(100),
-        allowNull: true,
-        comment: 'SPBG (Stasiun Pengisian Bahan Bakar Gas) location'
-      },
-      spbg_operator: {
-        type: DataTypes.STRING(100),
-        allowNull: true,
-        comment: 'SPBG operator name or company'
-      },
-      gas_type: {
-        type: DataTypes.ENUM('cng', 'lng', 'lpg'),
-        allowNull: true,
-        comment: 'Type of gas for SPBG groups'
-      },
         created_at: {
         type: DataTypes.DATE,
         defaultValue: DataTypes.NOW,

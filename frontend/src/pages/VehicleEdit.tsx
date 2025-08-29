@@ -33,8 +33,10 @@ const VehicleEditPage = () => {
     try {
       const payload: any = { 
         ...data,
-        tire_count: data.tire_count,           // NEW: Include tire configuration
-        spare_tire_count: data.spare_tire_count // NEW: Include spare tire configuration
+        tire_count: data.tire_count || 6,           // Default to 6 if empty
+        spare_tire_count: data.spare_tire_count || 2, // Default to 2 if empty
+        type: data.type?.trim() || null,
+        stnk_number: data.stnk_number?.trim() || null
       };
 
       if (data.capacity === null || data.capacity.trim() === '') {

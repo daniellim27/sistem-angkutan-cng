@@ -49,6 +49,8 @@ import VehicleServiceHistory from "./pages/VehicleServiceHistory";
 import PaymentsRoutes from "./modules/payments/routes";
 import InvoiceDetail from "./pages/Ritase/InvoiceDetail";
 import DepositGroupManagement from "./pages/DepositGroupManagement";
+import LiveTracking from "./pages/LiveTracking";
+import TrackDeliveryDetail from "./pages/TrackDeliveryDetail";
 import { Toaster } from "react-hot-toast";
 
 import ComprehensiveRitaseTable from "./pages/Ritase/ComprehensiveRitaseTable";
@@ -172,6 +174,8 @@ function App() {
           <Route path="cash" element={<CashManagementPage />} />
           <Route path="tempo" element={<TempoManagementPage />} />
           <Route path="deposit-groups" element={<DepositGroupManagement />} />
+          <Route path="live-tracking" element={<LiveTracking />} />
+          <Route path="track-delivery/:id" element={<TrackDeliveryDetail />} />
         </Route>
       </Routes>
     </Router>

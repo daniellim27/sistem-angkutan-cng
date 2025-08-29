@@ -66,6 +66,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
       load_longitude,
       unload_latitude,
       unload_longitude,
+      additional_unload_locations, // New field for multiple unload locations
       payment_status = "proses_tagihan",
       status = "assigned",
       do_name,
@@ -255,6 +256,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
       unload_location,
       unload_latitude,
       unload_longitude,
+      additional_unload_locations, // Include additional unload locations
       payment_status,
       status,
     });
@@ -376,7 +378,14 @@ exports.getAllDeliveryOrders = async (req, res, next) => {
     const offset = (page - 1) * limit;
 
     let whereClause = {};
-    if (status) whereClause.status = status;
+    if (status) {
+      // Handle comma-separated status values
+      if (typeof status === 'string' && status.includes(',')) {
+        whereClause.status = { [Op.in]: status.split(',').map(s => s.trim()) };
+      } else {
+        whereClause.status = status;
+      }
+    }
     if (driver_id) whereClause.driver_id = driver_id;
     if (vehicle_id) whereClause.vehicle_id = vehicle_id;
     if (po_id) whereClause.purchase_order_id = po_id;
@@ -1204,86 +1213,5 @@ exports.getDeliveryStatistics = async (req, res, next) => {
     console.error("Error getting delivery statistics:", err);
     res.status(500).json({ success: false, message: err.message });
     next(err);
-  }
-};
-
-/**
- * 🎯 GET SENSOR DATA FOR DELIVERY ORDER
- * GET /api/web/delivery-orders/:id/sensordata
- */
-exports.getSensorData = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { limit = 10 } = req.query;
-
-    // Validate delivery order exists
-    const deliveryOrder = await DeliveryOrder.findByPk(id);
-    if (!deliveryOrder) {
-      return res.status(404).json({
-        success: false,
-        message: 'Delivery order not found'
-      });
-    }
-
-    // Get latest sensor data from IoT table
-    const { IotRawData } = require('../../models');
-    
-    const latestSensorData = await IotRawData.findOne({
-      where: { delivery_order_id: id },
-      order: [['created_at', 'DESC']]
-    });
-
-    if (!latestSensorData) {
-      return res.json({
-        success: true,
-        data: null,
-        message: 'No sensor data available for this delivery order'
-      });
-    }
-
-    // Get recent sensor data history
-    const sensorDataHistory = await IotRawData.findAll({
-      where: { delivery_order_id: id },
-      order: [['created_at', 'DESC']],
-      limit: parseInt(limit),
-      attributes: [
-        'id',
-        'pressure_in',
-        'pressure_out', 
-        'temperature',
-        'meter_pulse',
-        'created_at'
-      ]
-    });
-
-    res.json({
-      success: true,
-      data: {
-        latest: {
-          id: latestSensorData.id,
-          pressure_in: latestSensorData.pressure_in,
-          pressure_out: latestSensorData.pressure_out,
-          temperature: latestSensorData.temperature,
-          meter_pulse: latestSensorData.meter_pulse,
-          created_at: latestSensorData.created_at
-        },
-        history: sensorDataHistory.map(record => ({
-          id: record.id,
-          pressure_in: record.pressure_in,
-          pressure_out: record.pressure_out,
-          temperature: record.temperature,
-          meter_pulse: record.meter_pulse,
-          created_at: record.created_at
-        }))
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Error getting sensor data:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to retrieve sensor data' 
-    });
-    next(error);
   }
 };

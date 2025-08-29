@@ -1,4 +1,4 @@
-// Script to add SPBG category to existing database
+  // Script to add SPBG category to existing database
 const fs = require("fs");
 const path = require("path");
 const db = require("./src/utils/db");
