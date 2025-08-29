@@ -28,7 +28,7 @@ const driverRoutes = require("./routes/driver.routes");
 const iotRoutes = require("./routes/iot.routes");
 
 // === Import Exchange Rate Routes ===
-const webExchangeRateRoutes = require("./routes/web/exchangeRate.routes");
+const webExchangeRateRoutes = require("./routes/web/exchangeRates.routes");
 
 // === Import Web Routes (NEW) ===
 const webPurchaseOrderRoutes = require("./routes/web/purchaseOrder.routes");
@@ -128,77 +128,77 @@ initializeDatabase().then(() => {
         api: "/api/tracking",
         web: "/api/web/tracking",
       },
-    },
+    })
   });
-});
 
-// === Existing Mobile Routes (UNCHANGED) ===
-app.use("/api", healthRoutes);
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/vehicles", vehicleRoutes);
-app.use("/api/purchase-orders", purchaseOrderRoutes);
-app.use("/api/delivery-orders", deliveryOrderRoutes);
-app.use("/api/big-delivery-orders", bigDeliveryOrderRoutes);
-app.use("/api/driver-expenses", driverExpenseRoutes);
-app.use("/api/drivers", driverRoutes);
+  // === Existing Mobile Routes (UNCHANGED) ===
+  app.use("/api", healthRoutes);
+  app.use("/api/auth", authRoutes);
+  app.use("/api/users", userRoutes);
+  app.use("/api/vehicles", vehicleRoutes);
+  app.use("/api/purchase-orders", purchaseOrderRoutes);
+  app.use("/api/delivery-orders", deliveryOrderRoutes);
+  app.use("/api/big-delivery-orders", bigDeliveryOrderRoutes);
+  app.use("/api/driver-expenses", driverExpenseRoutes);
+  app.use("/api/drivers", driverRoutes);
 
-// === IoT Routes ===
-app.use("/api/v1/iot", iotRoutes);
+  // === IoT Routes ===
+  app.use("/api/v1/iot", iotRoutes);
 
-// Static uploads
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+  // Static uploads
+  app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-// === New Web Routes (ADDED) ===
-app.use("/api/web/purchase-orders", webPurchaseOrderRoutes);
-app.use("/api/web/delivery-orders", webDeliveryOrderRoutes);
-app.use("/api/web/big-delivery-orders", webBigDeliveryOrderRoutes);
-app.use("/api/web/vehicles", webVehicleRoutes);
-app.use("/api/web/drivers", webDriverRoutes);
-app.use("/api/web/stock", webStockRoutes);
-app.use("/api/web/services", webServiceRoutes);
-app.use("/api/web/tires", webTireRoutes);
-app.use("/api/web/cash", webCashRoutes);
-app.use("/api/web/ritase", webRitaseRoutes);
-app.use("/api/web/buku-kas", webBukuKasRoutes);
-app.use("/api/web/payments", webPaymentsRoutes);
-app.use("/api/web/ritase-payments", legacyRitasePaymentsRoutes);
-app.use("/api/web/deposit-groups", webDepositGroupRoutes);
-app.use("/api/web/utils", utilsRoutes);
-app.use("/api/web/exchange-rates", webExchangeRateRoutes);
+  // === New Web Routes (ADDED) ===
+  app.use("/api/web/purchase-orders", webPurchaseOrderRoutes);
+  app.use("/api/web/delivery-orders", webDeliveryOrderRoutes);
+  app.use("/api/web/big-delivery-orders", webBigDeliveryOrderRoutes);
+  app.use("/api/web/vehicles", webVehicleRoutes);
+  app.use("/api/web/drivers", webDriverRoutes);
+  app.use("/api/web/stock", webStockRoutes);
+  app.use("/api/web/services", webServiceRoutes);
+  app.use("/api/web/tires", webTireRoutes);
+  app.use("/api/web/cash", webCashRoutes);
+  app.use("/api/web/ritase", webRitaseRoutes);
+  app.use("/api/web/buku-kas", webBukuKasRoutes);
+  app.use("/api/web/payments", webPaymentsRoutes);
+  app.use("/api/web/ritase-payments", legacyRitasePaymentsRoutes);
+  app.use("/api/web/deposit-groups", webDepositGroupRoutes);
+  app.use("/api/web/utils", utilsRoutes);
+  app.use("/api/web/exchange-rates", webExchangeRateRoutes);
 
-// Add tracking routes for both web and mobile access
-app.use("/api/tracking", trackingRoutes);
-app.use("/api/web/tracking", trackingRoutes);
+  // Add tracking routes for both web and mobile access
+  app.use("/api/tracking", trackingRoutes);
+  app.use("/api/web/tracking", trackingRoutes);
 
-app.use("/api/utils", utilsRoutes);
+  app.use("/api/utils", utilsRoutes);
 
-// Error handling middleware
-app.use(errorHandler);
+  // Error handling middleware
+  app.use(errorHandler);
 
-// Start HTTP server
-app.listen(PORT, host, () => {
-  console.log(`🚀 Server running on http://${host}:${PORT}`);
-  console.log(`📋 Environment: PORT=${process.env.PORT || 'not set'}, Using port: ${PORT}`);
-  console.log(`🌐 CORS enabled for: localhost:3001, localhost:3000, and all origins`);
-  console.log(
-    `📱 Mobile API: /api/purchase-orders, /api/delivery-orders, /api/vehicles`
-  );
-  console.log(
-    "🌐 Web API: /api/web/purchase-orders, /api/web/delivery-orders, /api/web/vehicles, " +
-      "/api/web/stock, /api/web/services, /api/web/tires, /api/web/payments, /api/web/tracking"
-  );
-  console.log("📍 GPS Tracking API: /api/tracking, /api/web/tracking");
-  console.log("🔗 IoT API: /api/v1/iot/data, /api/web/delivery-orders/:id/sensordata");
-  
-  // Start GPS tracking service
-  if (process.env.INOVATRACKS_USERNAME && process.env.INOVATRACKS_PASSWORD) {
-    scheduledScrapingService.start();
-    scheduledScrapingService.startCleanupSchedule();
-    console.log("🗺️ GPS tracking service initialized");
-  } else {
-    console.log("⚠️ GPS tracking service not started - missing Inovatracks credentials");
-  }
+  // Start HTTP server
+  app.listen(PORT, host, () => {
+    console.log(`🚀 Server running on http://${host}:${PORT}`);
+    console.log(`📋 Environment: PORT=${process.env.PORT || 'not set'}, Using port: ${PORT}`);
+    console.log(`🌐 CORS enabled for: localhost:3001, localhost:3000, and all origins`);
+    console.log(
+      `📱 Mobile API: /api/purchase-orders, /api/delivery-orders, /api/vehicles`
+    );
+    console.log(
+      "🌐 Web API: /api/web/purchase-orders, /api/web/delivery-orders, /api/web/vehicles, " +
+        "/api/web/stock, /api/web/services, /api/web/tires, /api/web/payments, /api/web/tracking"
+    );
+    console.log("📍 GPS Tracking API: /api/tracking, /api/web/tracking");
+    console.log("🔗 IoT API: /api/v1/iot/data, /api/web/delivery-orders/:id/sensordata");
+    
+    // Start GPS tracking service
+    if (process.env.INOVATRACKS_USERNAME && process.env.INOVATRACKS_PASSWORD) {
+      scheduledScrapingService.start();
+      scheduledScrapingService.startCleanupSchedule();
+      console.log("🗺️ GPS tracking service initialized");
+    } else {
+      console.log("⚠️ GPS tracking service not started - missing Inovatracks credentials");
+    }
+  });
 }).catch(err => {
   console.error("💥 Server startup failed:", err);
   process.exit(1);
