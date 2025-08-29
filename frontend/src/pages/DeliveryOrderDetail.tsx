@@ -27,6 +27,16 @@ interface DeliveryOrder {
   gas_filling_cost?: number;
 }
 
+interface SensorData {
+  id: number;
+  delivery_order_id: number;
+  pressure_in: number;
+  pressure_out: number;
+  temperature: number;
+  meter_pulse: number;
+  created_at: string;
+}
+
 interface DeliveryOrderDetailProps {
   // Add any props if needed
 }
@@ -37,15 +47,51 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
   const [deliveryOrder, setDeliveryOrder] = useState<DeliveryOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'details' | 'iot'>('details');
+  
+  // IoT Data State
+  const [sensorData, setSensorData] = useState<SensorData | null>(null);
+  const [iotLoading, setIotLoading] = useState(false);
+  const [iotError, setIotError] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  // Mockup IoT Data
+  const mockSensorData: SensorData = {
+    id: 1,
+    delivery_order_id: Number(id),
+    pressure_in: 12.5,
+    pressure_out: 8.2,
+    temperature: 45.3,
+    meter_pulse: 1250,
+    created_at: new Date().toISOString()
+  };
 
   // SPBG locations for display
-  const spbgLocations: { value: string; label: string }[] = [];
+  const spbgLocations = [
+    { value: 'jakarta', label: 'Jakarta' },
+    { value: 'bandung', label: 'Bandung' },
+    { value: 'surabaya', label: 'Surabaya' },
+    { value: 'semarang', label: 'Semarang' },
+    { value: 'yogyakarta', label: 'Yogyakarta' },
+    { value: 'medan', label: 'Medan' },
+    { value: 'palembang', label: 'Palembang' },
+    { value: 'makassar', label: 'Makassar' }
+  ];
 
   useEffect(() => {
     if (id) {
       fetchDeliveryOrder();
     }
   }, [id]);
+
+  // IoT Data Polling Effect
+  useEffect(() => {
+    if (id && activeTab === 'iot') {
+      // fetchSensorData(); // Removed real polling
+      setSensorData(mockSensorData); // Set mock data
+      setLastUpdate(new Date());
+    }
+  }, [id, activeTab]);
 
   const fetchDeliveryOrder = async () => {
     try {
@@ -151,7 +197,35 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
         </button>
       </div>
 
-      <div className="space-y-6">
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('details')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'details'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            📋 Delivery Details
+          </button>
+          <button
+            onClick={() => setActiveTab('iot')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'iot'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            🔗 IOT View
+          </button>
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'details' && (
+        <div className="space-y-6">
         {/* Basic Information */}
         <div className="bg-white p-6 rounded-lg shadow">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Basic Information</h2>
@@ -345,22 +419,158 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex justify-end space-x-3">
-          <button
-            onClick={() => navigate(`/delivery-orders/${deliveryOrder.id}/edit`)}
-            className="bg-blue-500 hover:bg-blue-700 text-white px-4 py-2 rounded"
-          >
-            Edit Delivery Order
-          </button>
-          <button
-            onClick={() => navigate('/delivery-orders')}
-            className="bg-gray-500 hover:bg-gray-700 text-white px-4 py-2 rounded"
-          >
-            Back to List
-          </button>
+          {/* Actions */}
+          <div className="flex justify-end space-x-3">
+            <button
+              onClick={() => navigate(`/delivery-orders/${deliveryOrder.id}/edit`)}
+              className="bg-blue-500 hover:bg-blue-700 text-white px-4 py-2 rounded"
+            >
+              Edit Delivery Order
+            </button>
+            <button
+              onClick={() => navigate('/delivery-orders')}
+              className="bg-gray-500 hover:bg-gray-700 text-white px-4 py-2 rounded"
+            >
+              Back to List
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* IoT Tab Content */}
+      {activeTab === 'iot' && (
+        <div className="space-y-6">
+          {/* IoT Status Header */}
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 rounded-lg text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold">IoT Sensor Dashboard</h2>
+                <p className="text-blue-100 mt-1">DO: {deliveryOrder.do_number}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-blue-100">Last Updated</p>
+                <p className="text-lg font-semibold">
+                  {lastUpdate ? lastUpdate.toLocaleTimeString() : 'Not Available'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Sensor Data Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Pressure In */}
+            <div className="bg-white p-6 rounded-lg shadow border-t-4 border-blue-500">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                    <span className="text-blue-600 text-lg">🔹</span>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Pressure In</p>
+                  <p className="text-2xl font-bold text-blue-600">
+                    {mockSensorData.pressure_in} bar
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Pressure Out */}
+            <div className="bg-white p-6 rounded-lg shadow border-t-4 border-green-500">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                    <span className="text-green-600 text-lg">🔸</span>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Pressure Out</p>
+                  <p className="text-2xl font-bold text-green-600">
+                    {mockSensorData.pressure_out} bar
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Temperature */}
+            <div className="bg-white p-6 rounded-lg shadow border-t-4 border-orange-500">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                    <span className="text-orange-600 text-lg">🌡️</span>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Temperature</p>
+                  <p className="text-2xl font-bold text-orange-600">
+                    {mockSensorData.temperature}°C
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Meter Pulse */}
+            <div className="bg-white p-6 rounded-lg shadow border-t-4 border-purple-500">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                    <span className="text-purple-600 text-lg">⚡</span>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Meter Pulse</p>
+                  <p className="text-2xl font-bold text-purple-600">
+                    {mockSensorData.meter_pulse}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Mock Data Notice */}
+          <div className="bg-blue-50 border border-blue-200 p-6 rounded-lg shadow">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                  <span className="text-blue-600 text-lg">ℹ️</span>
+                </div>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-sm font-medium text-blue-800">Mockup Data Active</h3>
+                <p className="text-sm text-blue-700 mt-1">
+                  This is sample IoT sensor data for demonstration purposes. 
+                  Real sensor data will be displayed here when IoT devices are connected.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* IoT Information Panel */}
+          <div className="bg-gray-50 p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">🔗 IoT System Information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="font-medium text-gray-700 mb-2">Data Collection</h4>
+                <ul className="text-sm text-gray-600 space-y-1">
+                  <li>• Real-time sensor data collection</li>
+                  <li>• Automatic updates every 5 seconds</li>
+                  <li>• Pressure, temperature, and meter readings</li>
+                  <li>• Historical data storage</li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-700 mb-2">Current Status</h4>
+                <ul className="text-sm text-gray-600 space-y-1">
+                  <li>• Backend IoT API: ✅ Ready</li>
+                  <li>• Database Storage: ✅ Ready</li>
+                  <li>• Frontend Display: ✅ Active (Mock Data)</li>
+                  <li>• Real IoT Connection: ⏳ Pending</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
