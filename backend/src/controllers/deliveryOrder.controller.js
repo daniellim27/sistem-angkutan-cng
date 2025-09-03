@@ -7,6 +7,7 @@ const {
   User,
   DriverExpense,
   DriverProfile,
+  BudgetRequest,
   DepositGroup, // Add DepositGroup
   DepositGroupMember, // Add DepositGroupMember
   DeliveryOrderAdjustments,
@@ -24,25 +25,35 @@ const filterSensitiveDataForDriver = (data, userRole) => {
 
   // Function untuk remove gaji dari object
   const removeGaji = (obj) => {
-    if (obj && typeof obj === "object") {
-      delete obj.gaji;
-
-      // Remove gaji dari financial_summary juga
-      if (obj.financial_summary) {
-        delete obj.financial_summary.gaji;
-        // Recalculate total_for_driver without gaji
-        obj.financial_summary.total_for_driver =
-          obj.financial_summary.trip_allowance || 0;
-      }
+    if (!obj || typeof obj !== "object") {
+      return obj; // Return original if not a valid object
     }
-    return obj;
+
+    // Create a copy to avoid mutating the original object
+    const copy = { ...obj };
+    delete copy.gaji;
+
+    // Remove gaji dari financial_summary juga
+    if (copy.financial_summary) {
+      copy.financial_summary = { ...copy.financial_summary };
+      delete copy.financial_summary.gaji;
+      // Recalculate total_for_driver without gaji
+      copy.financial_summary.total_for_driver =
+        copy.financial_summary.trip_allowance || 0;
+    }
+    
+    // Preserve expenses and budgetRequests data - always include as arrays
+    copy.expenses = obj.expenses || [];
+    copy.budgetRequests = obj.budgetRequests || [];
+
+    return copy;
   };
 
   // Handle array atau single object
   if (Array.isArray(data)) {
-    return data.map((item) => removeGaji({ ...item }));
+    return data.map((item) => removeGaji(item));
   } else {
-    return removeGaji({ ...data });
+    return removeGaji(data);
   }
 };
 
@@ -429,6 +440,8 @@ exports.getDeliveryOrderById = async (req, res, next) => {
     const userRole = req.user.role;
     const userId = req.user.id;
 
+    console.log("Fetching delivery order with ID:", req.params.id);
+    
     const order = await DeliveryOrder.findByPk(req.params.id, {
       include: [
         { model: PurchaseOrder, as: "purchaseOrder" },
@@ -441,10 +454,44 @@ exports.getDeliveryOrderById = async (req, res, next) => {
         {
           model: DriverExpense,
           as: "expenses",
-          order: [["created_at", "DESC"]],
+          required: false, // Important: don't require expenses to exist
+          include: [
+            {
+              model: User,
+              as: "driver",
+              attributes: ["id", "username"],
+              required: false
+            }
+          ]
+        },
+        {
+          model: BudgetRequest,
+          as: "budgetRequests",
+          required: false, // Important: don't require budget requests to exist
+          include: [
+            {
+              model: User,
+              as: "driver",
+              attributes: ["id", "username"],
+              required: false
+            },
+            {
+              model: User,
+              as: "approver",
+              attributes: ["id", "username"],
+              required: false
+            }
+          ]
         },
       ],
     });
+    
+    console.log("Raw order found:", !!order);
+    if (order) {
+      console.log("Order ID:", order.id);
+      console.log("Raw expenses count:", order.expenses?.length || 'undefined');
+      console.log("Raw budget requests count:", order.budgetRequests?.length || 'undefined');
+    }
 
     if (!order) {
       return res.status(404).json({ message: "Delivery Order not found" });
@@ -458,7 +505,18 @@ exports.getDeliveryOrderById = async (req, res, next) => {
     }
 
     const plainOrder = order.get({ plain: true });
-    const expensesTotal = plainOrder.expenses.reduce(
+    
+    // DEBUG: Log the raw order data
+    console.log("=== RAW ORDER DATA DEBUG ===");
+    console.log("Raw expenses data:", plainOrder.expenses);
+    console.log("Raw budget requests data:", plainOrder.budgetRequests);
+    console.log("===========================");
+    
+    // Ensure expenses and budgetRequests are always arrays
+    const expenses = plainOrder.expenses || [];
+    const budgetRequests = plainOrder.budgetRequests || [];
+    
+    const expensesTotal = expenses.reduce(
       (sum, expense) => sum + parseFloat(expense.amount),
       0
     );
@@ -467,6 +525,8 @@ exports.getDeliveryOrderById = async (req, res, next) => {
 
     const responseData = {
       ...plainOrder,
+      expenses: expenses, // Ensure this is always an array
+      budgetRequests: budgetRequests, // Ensure this is always an array
       expenses_total: expensesTotal,
       remaining_allowance: tripAllowance - expensesTotal,
       financial_summary: {
@@ -478,8 +538,26 @@ exports.getDeliveryOrderById = async (req, res, next) => {
       },
     };
 
+    // DEBUG: Log the raw response data BEFORE filtering
+    console.log("=== BEFORE FILTERING DEBUG ===");
+    console.log("Raw expenses:", responseData.expenses);
+    console.log("Raw budget requests:", responseData.budgetRequests);
+    console.log("Raw expenses type:", typeof responseData.expenses);
+    console.log("Raw budget requests type:", typeof responseData.budgetRequests);
+    console.log("================================");
+
     // === FILTER SENSITIVE DATA FOR DRIVERS ===
     const filteredData = filterSensitiveDataForDriver(responseData, userRole);
+
+    // DEBUG: Log the response data structure AFTER filtering
+    console.log("=== AFTER FILTERING DEBUG ===");
+    console.log("User role:", userRole);
+    console.log("Filtered expenses:", filteredData.expenses);
+    console.log("Filtered budget requests:", filteredData.budgetRequests);
+    console.log("Expenses type:", typeof filteredData.expenses);
+    console.log("Budget requests type:", typeof filteredData.budgetRequests);
+    console.log("Full response keys:", Object.keys(filteredData));
+    console.log("===============================");
 
     res.json(filteredData);
   } catch (err) {

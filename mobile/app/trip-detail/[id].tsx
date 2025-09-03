@@ -22,6 +22,8 @@ import {
   getDeliveryOrderDetails,
   createDriverExpense,
   confirmLoad,
+  createBudgetRequest,
+  getBudgetRequests,
 } from "../../src/services/api";
 import { FontAwesome5 } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -34,6 +36,8 @@ interface Expense {
   receipt_url: string | null;
   created_at: string;
   notes?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  rejection_reason?: string;
 }
 
 interface LocationData {
@@ -77,6 +81,21 @@ interface ExpenseForm {
   notes: string;
 }
 
+interface BudgetRequest {
+  id: number;
+  requested_amount: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  evidence_url?: string;
+  created_at: string;
+  rejection_reason?: string;
+}
+
+interface BudgetRequestForm {
+  requested_amount: string;
+  reason: string;
+}
+
 const TripDetailScreen = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -91,7 +110,10 @@ const TripDetailScreen = () => {
   // State untuk form expense
   // Add component state here
   const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [showBudgetRequestModal, setShowBudgetRequestModal] = useState(false);
+  const [showActionMenu, setShowActionMenu] = useState(false);
   const [submittingExpense, setSubmittingExpense] = useState(false);
+  const [submittingBudgetRequest, setSubmittingBudgetRequest] = useState(false);
   const [showLoadConfirmation, setShowLoadConfirmation] = useState(false);
   const [submittingLoad, setSubmittingLoad] = useState(false);
   const [expenseForm, setExpenseForm] = useState<ExpenseForm>({
@@ -99,13 +121,20 @@ const TripDetailScreen = () => {
     amount: "",
     notes: "",
   });
+  const [budgetRequestForm, setBudgetRequestForm] = useState<BudgetRequestForm>({
+    requested_amount: "",
+    reason: "",
+  });
+  const [budgetRequests, setBudgetRequests] = useState<BudgetRequest[]>([]);
   const [receiptImage, setReceiptImage] = useState<any>(null);
+  const [evidenceImage, setEvidenceImage] = useState<any>(null);
 
   const expenseTypes = [
     { label: "BBM/Solar", value: "bbm" },
     { label: "Tol", value: "tol" },
     { label: "Parkir", value: "parkir" },
     { label: "Makan", value: "makan" },
+    { label: "Tambah Pengeluaran", value: "pengeluaran_tambahan" },
     { label: "Lain-lain", value: "lainnya" },
   ];
 
@@ -120,15 +149,35 @@ const TripDetailScreen = () => {
     try {
       console.log(`Fetching trip details for ID: ${id}`);
       const response = await getDeliveryOrderDetails(id);
+      
+      console.log("API Response:", response);
+      console.log("Response data:", response.data);
 
       // Check if component is still mounted
       if (mountedRef.current) {
-        setTrip(response.data);
-        console.log(`Trip loaded - Status: ${response.data.status}`);
+        const tripData = response.data.data || response.data;
+        console.log("Setting trip data:", tripData);
+        console.log("Trip ID:", tripData?.id);
+        setTrip(tripData);
+        console.log(`Trip loaded - ID: ${tripData?.id}, Status: ${tripData?.status}`);
+        
+        // Fetch budget requests for this delivery order
+        try {
+          const budgetResponse = await getBudgetRequests(id);
+          if (mountedRef.current) {
+            setBudgetRequests(budgetResponse.data.budgetRequests || []);
+          }
+        } catch (budgetError) {
+          console.log("No budget requests found or error fetching:", budgetError);
+          if (mountedRef.current) {
+            setBudgetRequests([]);
+          }
+        }
       }
     } catch (error: any) {
       if (mountedRef.current) {
         console.error("Error fetching trip:", error);
+        console.error("Error response:", error.response?.data);
 
         // Handle specific error types
         if (error.response?.status === 401) {
@@ -237,19 +286,9 @@ const TripDetailScreen = () => {
         const selectedImage = result.assets[0];
         console.log("Selected image:", selectedImage); // Debug log
         setReceiptImage(selectedImage);
-        if (Platform.OS === "web") {
-          window.alert("Foto struk berhasil dipilih!");
-        } else {
-          Alert.alert("Berhasil", "Foto struk berhasil dipilih!");
-        }
       }
     } catch (error) {
       console.error("Image picker error:", error);
-      if (Platform.OS === "web") {
-        window.alert("Gagal memilih gambar. Silakan coba lagi.");
-      } else {
-        Alert.alert("Error", "Gagal memilih gambar. Silakan coba lagi.");
-      }
     }
   };
 
@@ -285,16 +324,9 @@ const TripDetailScreen = () => {
         const takenImage = result.assets[0];
         console.log("Taken image:", takenImage); // Debug log
         setReceiptImage(takenImage);
-
-        // Berikan feedback visual bahwa foto sudah diambil
-        Alert.alert("Berhasil", "Foto struk berhasil diambil!");
       }
     } catch (error) {
       console.error("Error taking picture:", error);
-      Alert.alert(
-        "Error",
-        "Terjadi kesalahan saat mengambil foto. Silakan coba lagi."
-      );
     }
   };
 
@@ -313,7 +345,6 @@ const TripDetailScreen = () => {
             fileName: file.name,
             type: file.type,
           });
-          Alert.alert("Berhasil", "Foto struk berhasil dipilih!");
         }
       };
       input.click();
@@ -456,17 +487,31 @@ const TripDetailScreen = () => {
     setReceiptImage(null);
   };
 
+  const resetBudgetRequestForm = () => {
+    setBudgetRequestForm({ requested_amount: "", reason: "" });
+    setEvidenceImage(null);
+  };
+
   const validateExpenseForm = () => {
     if (!expenseForm.jenis) {
-      Alert.alert("Error", "Pilih jenis pengeluaran");
       return false;
     }
     if (!expenseForm.amount || parseFloat(expenseForm.amount) <= 0) {
-      Alert.alert("Error", "Masukkan jumlah pengeluaran yang valid");
       return false;
     }
     if (trip && parseFloat(expenseForm.amount) > trip.remaining_allowance) {
-      Alert.alert("Error", "Jumlah pengeluaran melebihi sisa uang jalan");
+      return false;
+    }
+    return true;
+  };
+
+  const validateBudgetRequestForm = () => {
+    if (!budgetRequestForm.requested_amount || parseFloat(budgetRequestForm.requested_amount) <= 0) {
+      Alert.alert("Error", "Masukkan jumlah tambahan uang jalan yang valid");
+      return false;
+    }
+    if (!budgetRequestForm.reason || budgetRequestForm.reason.trim().length === 0) {
+      Alert.alert("Error", "Masukkan alasan permohonan");
       return false;
     }
     return true;
@@ -488,45 +533,26 @@ const TripDetailScreen = () => {
 
     if (!validateExpenseForm() || !trip) return;
 
-    // WEB COMPATIBILITY: Gunakan confirm() untuk web
-    if (Platform.OS === "web") {
-      const confirmed = window.confirm(
-        "Apakah Anda yakin ingin menyimpan pengeluaran ini?"
-      );
-      if (confirmed) {
-        await submitExpenseToServer();
-      }
-    } else {
-      // Mobile specific alert
-      // 1. KONFIRMASI DAHULU SEBELUM MENYIMPAN
-      Alert.alert(
-        "Konfirmasi Penyimpanan",
-        "Apakah Anda yakin ingin menyimpan pengeluaran ini?",
-        [
-          {
-            text: "Batal",
-            style: "cancel",
-            // Jika batal, biarkan user edit form lagi - tidak ada action
-          },
-          {
-            text: "Oke",
-            style: "default",
-            onPress: async () => {
-              // 2. JIKA USER KONFIRMASI, BARU LAKUKAN SUBMIT
-              await submitExpenseToServer();
-            },
-          },
-        ]
-      );
-    }
+    // Submit directly without confirmation
+    await submitExpenseToServer();
   };
 
   // FUNCTION BARU - Pisahkan logic submit ke server
   const submitExpenseToServer = async () => {
-    if (!trip) return;
+    if (!trip) {
+      console.error("No trip data available");
+      return;
+    }
+
+    if (!trip.id) {
+      console.error("Trip ID is missing:", trip);
+      Alert.alert("Error", "Trip ID is missing. Please refresh and try again.");
+      return;
+    }
 
     setSubmittingExpense(true);
     console.log("Starting expense submission process..."); // Add debug log
+    console.log("Trip data:", trip); // Log trip data
 
     try {
       let imageData = null;
@@ -564,20 +590,8 @@ const TripDetailScreen = () => {
       // 4. REFRESH DATA DI BACKGROUND
       await fetchTripDetails();
 
-      // 5. SHOW SUCCESS NOTIFICATION SETELAH MODAL TERTUTUP
-      if (Platform.OS === "web") {
-        window.alert(
-          "✅ Pengeluaran berhasil disimpan dan saldo telah diperbarui."
-        );
-      } else {
-        setTimeout(() => {
-          Alert.alert(
-            "✅ Berhasil!",
-            "Pengeluaran berhasil disimpan dan saldo telah diperbarui.",
-            [{ text: "OK" }]
-          );
-        }, 300); // Delay sedikit untuk smooth transition
-      }
+      // Success notification removed as requested
+      // Modal closed and data refreshed
     } catch (error: any) {
       console.error("Error submitting expense:", error); // Error logging
 
@@ -587,56 +601,206 @@ const TripDetailScreen = () => {
         console.error("Response error status:", error.response.status);
       }
 
-      // Error notification
-      if (Platform.OS === "web") {
-        window.alert(
-          "❌ Gagal Menyimpan: " +
-            (error.response?.data?.message ||
-              error.message ||
-              "Terjadi kesalahan")
-        );
-      } else {
-        // 6. JIKA ERROR, MODAL TETAP TERBUKA DAN SHOW ERROR
-        Alert.alert(
-          "❌ Gagal Menyimpan",
-          error.response?.data?.message ||
-            error.message ||
-            "Terjadi kesalahan saat menyimpan pengeluaran. Silakan coba lagi.",
-          [{ text: "OK" }]
-        );
-      }
+      // Log error without showing popup
+      console.error("Failed to save expense:", error.response?.data?.message || error.message);
     } finally {
       setSubmittingExpense(false);
     }
   };
 
-  const renderExpenseItem = ({ item }: { item: Expense }) => (
-    <View style={styles.expenseItem}>
-      <FontAwesome5 name="receipt" size={20} color="#3498db" />
-      <View style={styles.expenseDetails}>
-        <Text style={styles.expenseType}>{item.jenis}</Text>
-        <Text style={styles.expenseDate}>
-          {new Date(item.created_at).toLocaleDateString("id-ID", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-          })}
-        </Text>
-        {item.notes && <Text style={styles.expenseNotes}>{item.notes}</Text>}
+  const handleSubmitBudgetRequest = async () => {
+    console.log("🔥 DEBUG: handleSubmitBudgetRequest called");
+    if (isTripCompleted) {
+      console.log("🔥 DEBUG: Trip is completed, cannot submit budget request");
+      Alert.alert(
+        "Tidak Dapat Mengajukan Tambahan Budget",
+        "Perjalanan ini sudah selesai. Permohonan tambahan uang jalan tidak dapat diajukan lagi.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
+    console.log("🔥 DEBUG: Validating form...");
+    const isFormValid = validateBudgetRequestForm();
+    console.log("🔥 DEBUG: Form validation result:", isFormValid);
+    console.log("🔥 DEBUG: Trip object:", trip ? "exists" : "missing");
+    
+    if (!isFormValid || !trip) {
+      console.log("🔥 DEBUG: Form validation failed or trip missing, returning");
+      return;
+    }
+
+    // Check if there's already a pending budget request
+    const pendingRequest = budgetRequests.find(req => req.status === 'pending');
+    console.log("🔥 DEBUG: Checking for pending requests:", pendingRequest);
+    if (pendingRequest) {
+      console.log("🔥 DEBUG: Found pending request, showing alert");
+      Alert.alert(
+        "Permohonan Sudah Ada",
+        "Anda sudah memiliki permohonan tambahan uang jalan yang sedang diproses. Tunggu hingga permohonan sebelumnya disetujui atau ditolak.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
+    console.log("🔥 DEBUG: Submitting budget request immediately");
+    
+    // Navigate back immediately to show that request has been submitted
+    router.back();
+    
+    // Submit in background
+    submitBudgetRequestToServer();
+  };
+
+  const submitBudgetRequestToServer = async () => {
+    if (!trip) {
+      console.error("No trip data available");
+      return;
+    }
+
+    if (!trip.id) {
+      console.error("Trip ID is missing:", trip);
+      Alert.alert("Error", "Trip ID is missing. Please refresh and try again.");
+      return;
+    }
+
+    setSubmittingBudgetRequest(true);
+    console.log("Starting budget request submission process...");
+    console.log("Trip data:", trip); // Log trip data
+
+    try {
+      let imageData = null;
+      if (evidenceImage) {
+        console.log("Evidence image:", evidenceImage);
+
+        imageData =
+          Platform.OS === "web"
+            ? evidenceImage
+            : {
+                uri: evidenceImage.uri,
+                type: evidenceImage.type || "image/jpeg",
+                name: evidenceImage.fileName || "evidence.jpg",
+              };
+      }
+
+      const requestData = {
+        delivery_order_id: trip.id,
+        requested_amount: parseFloat(budgetRequestForm.requested_amount),
+        reason: budgetRequestForm.reason,
+        evidence: imageData,
+      };
+      console.log("Submitting budget request data:", requestData);
+
+      const response = await createBudgetRequest(requestData);
+      console.log("Budget request submission response:", response.data);
+
+      // Success handling
+      setShowBudgetRequestModal(false);
+      resetBudgetRequestForm();
+      
+      // Refresh data to show new budget request
+      await fetchTripDetails();
+    } catch (error: any) {
+      console.error("Error submitting budget request:", error);
+
+      if (error.response) {
+        console.error("Response error data:", error.response.data);
+        console.error("Response error status:", error.response.status);
+      }
+
+      if (Platform.OS === "web") {
+        window.alert(
+          "❌ Gagal Mengajukan: " +
+            (error.response?.data?.message ||
+              error.message ||
+              "Terjadi kesalahan")
+        );
+      } else {
+        Alert.alert(
+          "❌ Gagal Mengajukan",
+          error.response?.data?.message ||
+            error.message ||
+            "Terjadi kesalahan saat mengajukan tambahan uang jalan. Silakan coba lagi.",
+          [{ text: "OK" }]
+        );
+      }
+    } finally {
+      setSubmittingBudgetRequest(false);
+    }
+  };
+
+  const getExpenseTypeLabel = (jenis: string) => {
+    const typeMap: { [key: string]: string } = {
+      bbm: "BBM/Solar",
+      tol: "Tol",
+      parkir: "Parkir",
+      makan: "Makan",
+      pengeluaran_tambahan: "Tambah Pengeluaran",
+      lainnya: "Lain-lain",
+    };
+    return typeMap[jenis] || jenis;
+  };
+
+  const getStatusInfo = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return { icon: 'clock', color: '#f39c12', label: 'Menunggu Persetujuan' };
+      case 'approved':
+        return { icon: 'check-circle', color: '#27ae60', label: 'Disetujui' };
+      case 'rejected':
+        return { icon: 'times-circle', color: '#e74c3c', label: 'Ditolak' };
+      default:
+        return { icon: 'check-circle', color: '#27ae60', label: 'Disetujui' };
+    }
+  };
+
+  const renderExpenseItem = ({ item }: { item: Expense }) => {
+    const statusInfo = getStatusInfo(item.status || 'approved');
+    
+    return (
+      <View style={styles.expenseItem}>
+        <FontAwesome5 name="receipt" size={20} color="#3498db" />
+        <View style={styles.expenseDetails}>
+          <View style={styles.expenseHeader}>
+            <Text style={styles.expenseType}>{getExpenseTypeLabel(item.jenis)}</Text>
+            <View style={[styles.statusBadge, { backgroundColor: statusInfo.color }]}>
+              <FontAwesome5 name={statusInfo.icon} size={12} color="#fff" />
+              <Text style={styles.statusText}>{statusInfo.label}</Text>
+            </View>
+          </View>
+          <Text style={styles.expenseDate}>
+            {new Date(item.created_at).toLocaleDateString("id-ID", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            })}
+          </Text>
+          {item.notes && <Text style={styles.expenseNotes}>{item.notes}</Text>}
+          {item.status === 'rejected' && item.rejection_reason && (
+            <Text style={styles.rejectionReason}>
+              Alasan: {item.rejection_reason}
+            </Text>
+          )}
+        </View>
+        <View style={styles.expenseAmountContainer}>
+          <Text style={[
+            styles.expenseAmount,
+            item.status === 'rejected' && styles.rejectedAmount
+          ]}>
+            -Rp {Number(item.amount).toLocaleString("id-ID")}
+          </Text>
+          {item.receipt_url && (
+            <FontAwesome5
+              name="camera"
+              size={16}
+              color="#27ae60"
+              style={{ marginTop: 4 }}
+            />
+          )}
+        </View>
       </View>
-      <Text style={styles.expenseAmount}>
-        -Rp {Number(item.amount).toLocaleString("id-ID")}
-      </Text>
-      {item.receipt_url && (
-        <FontAwesome5
-          name="camera"
-          size={16}
-          color="#27ae60"
-          style={{ marginLeft: 8 }}
-        />
-      )}
-    </View>
-  );
+    );
+  };
 
   const handleLoadConfirmation = async (loadData: {
     actual_load_quantity: number;
@@ -985,15 +1149,72 @@ const TripDetailScreen = () => {
         </View>
       </ScrollView>
 
-      {/* FLOATING ACTION BUTTON - Sembunyikan untuk completed trips */}
+      {/* ACTION MENU - Sembunyikan untuk completed trips */}
       {!isTripCompleted && (
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => setShowExpenseModal(true)}
-          activeOpacity={0.8}
-        >
-          <FontAwesome5 name="plus" size={24} color="#fff" />
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity
+            style={styles.fab}
+            onPress={() => setShowActionMenu(true)}
+            activeOpacity={0.8}
+          >
+            <FontAwesome5 name="plus" size={24} color="#fff" />
+          </TouchableOpacity>
+
+          {/* Action Menu Modal */}
+          <Modal
+            visible={showActionMenu}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => setShowActionMenu(false)}
+          >
+            <TouchableOpacity
+              style={styles.actionMenuOverlay}
+              activeOpacity={1}
+              onPress={() => setShowActionMenu(false)}
+            >
+              <View style={styles.actionMenuContainer}>
+                <Text style={styles.actionMenuTitle}>Pilih Aksi</Text>
+                
+                <TouchableOpacity
+                  style={styles.actionMenuItem}
+                  onPress={() => {
+                    setShowActionMenu(false);
+                    setShowExpenseModal(true);
+                  }}
+                >
+                  <FontAwesome5 name="receipt" size={20} color="#3b82f6" />
+                  <View style={styles.actionMenuTextContainer}>
+                    <Text style={styles.actionMenuText}>Catat Pengeluaran</Text>
+                    <Text style={styles.actionMenuSubtext}>BBM, tol, parkir, makan, dll</Text>
+                  </View>
+                  <FontAwesome5 name="chevron-right" size={16} color="#6b7280" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.actionMenuItem}
+                  onPress={() => {
+                    setShowActionMenu(false);
+                    setShowBudgetRequestModal(true);
+                  }}
+                >
+                  <FontAwesome5 name="money-bill-alt" size={20} color="#10b981" />
+                  <View style={styles.actionMenuTextContainer}>
+                    <Text style={styles.actionMenuText}>Ajukan Tambahan Uang Jalan</Text>
+                    <Text style={styles.actionMenuSubtext}>Permohonan penambahan budget</Text>
+                  </View>
+                  <FontAwesome5 name="chevron-right" size={16} color="#6b7280" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.actionMenuCancel}
+                  onPress={() => setShowActionMenu(false)}
+                >
+                  <Text style={styles.actionMenuCancelText}>Batal</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+        </>
       )}
 
       {/* MODAL FORM EXPENSE */}
@@ -1067,23 +1288,31 @@ const TripDetailScreen = () => {
               placeholder="Contoh: 50000"
               keyboardType="numeric"
             />
-            <Text style={styles.formLabel}>Keterangan (Opsional)</Text>
+            <Text style={styles.formLabel}>
+              Keterangan Pengeluaran (Opsional)
+            </Text>
             <TextInput
               style={[styles.formInput, styles.textArea]}
               value={expenseForm.notes}
               onChangeText={(value) =>
                 setExpenseForm({ ...expenseForm, notes: value })
               }
-              placeholder="Catatan tambahan..."
+              placeholder={
+                expenseForm.jenis === "pengeluaran_tambahan"
+                  ? "Jelaskan keperluan pengeluaran tambahan..."
+                  : "Catatan tambahan..."
+              }
               multiline
               numberOfLines={3}
             />
-            <Text style={styles.formLabel}>Foto Struk (Opsional)</Text>
+            <Text style={styles.formLabel}>
+              Foto Bukti Pengeluaran (Opsional)
+            </Text>
             {receiptImage ? (
               <View style={styles.imageContainer}>
                 <View style={styles.imagePreviewContainer}>
                   <Text style={styles.imageSelected}>
-                    ✓ Foto struk telah dipilih
+                    ✓ Foto bukti telah dipilih
                   </Text>
                   <Text style={styles.imageDetails}>
                     {receiptImage.fileName || "receipt.jpg"}
@@ -1105,7 +1334,7 @@ const TripDetailScreen = () => {
               >
                 <FontAwesome5 name="camera" size={20} color="#3b82f6" />
                 <Text style={styles.imagePickerText}>
-                  Ambil/Pilih Foto Struk
+                  Ambil/Pilih Foto Bukti
                 </Text>
               </TouchableOpacity>
             )}
@@ -1113,31 +1342,8 @@ const TripDetailScreen = () => {
               <TouchableOpacity
                 style={styles.cancelButton}
                 onPress={() => {
-                  // Tambah konfirmasi jika user sudah isi form
-                  if (
-                    expenseForm.jenis ||
-                    expenseForm.amount ||
-                    expenseForm.notes ||
-                    receiptImage
-                  ) {
-                    Alert.alert(
-                      "Tutup Form?",
-                      "Data yang sudah diisi akan hilang. Yakin ingin menutup form?",
-                      [
-                        { text: "Tidak", style: "cancel" },
-                        {
-                          text: "Ya, Tutup",
-                          style: "destructive",
-                          onPress: () => {
-                            setShowExpenseModal(false);
-                            resetExpenseForm();
-                          },
-                        },
-                      ]
-                    );
-                  } else {
-                    setShowExpenseModal(false);
-                  }
+                  setShowExpenseModal(false);
+                  resetExpenseForm();
                 }}
               >
                 <Text style={styles.cancelButtonText}>Batal</Text>
@@ -1166,6 +1372,217 @@ const TripDetailScreen = () => {
                 ) : (
                   <Text style={styles.submitButtonText}>
                     Simpan Pengeluaran
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* MODAL FORM BUDGET REQUEST */}
+      <Modal
+        visible={showBudgetRequestModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowBudgetRequestModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Ajukan Tambahan Uang Jalan</Text>
+            <TouchableOpacity onPress={() => setShowBudgetRequestModal(false)}>
+              <FontAwesome5 name="times" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            <Text style={styles.formLabel}>Jumlah Tambahan (Rp) *</Text>
+            <TextInput
+              style={styles.formInput}
+              value={budgetRequestForm.requested_amount}
+              onChangeText={(value) =>
+                setBudgetRequestForm({ ...budgetRequestForm, requested_amount: value })
+              }
+              placeholder="Contoh: 100000"
+              keyboardType="numeric"
+            />
+
+            <Text style={styles.formLabel}>Alasan Permohonan *</Text>
+            <TextInput
+              style={[styles.formInput, styles.textArea]}
+              value={budgetRequestForm.reason}
+              onChangeText={(value) =>
+                setBudgetRequestForm({ ...budgetRequestForm, reason: value })
+              }
+              placeholder="Jelaskan alasan mengapa membutuhkan tambahan uang jalan..."
+              multiline
+              numberOfLines={4}
+            />
+
+            <Text style={styles.formLabel}>
+              Foto Bukti Pendukung (Opsional)
+            </Text>
+            {evidenceImage ? (
+              <View style={styles.imageContainer}>
+                <View style={styles.imagePreviewContainer}>
+                  <Text style={styles.imageSelected}>
+                    ✓ Foto bukti telah dipilih
+                  </Text>
+                  <Text style={styles.imageDetails}>
+                    {evidenceImage.fileName || "evidence.jpg"}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.changeImageButton}
+                  onPress={() => {
+                    if (Platform.OS === "web") {
+                      const input = document.createElement("input");
+                      input.type = "file";
+                      input.accept = "image/*";
+                      input.onchange = (e) => {
+                        const target = e.target as HTMLInputElement | null;
+                        if (target && target.files && target.files[0]) {
+                          const file = target.files[0];
+                          setEvidenceImage({
+                            uri: URL.createObjectURL(file),
+                            fileName: file.name,
+                            type: file.type,
+                          });
+                        }
+                      };
+                      input.click();
+                    } else {
+                      showImagePicker();
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.changeImageText}>Ganti Foto</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.imagePickerButton}
+                onPress={() => {
+                  if (Platform.OS === "web") {
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.accept = "image/*";
+                    input.onchange = (e) => {
+                      const target = e.target as HTMLInputElement | null;
+                      if (target && target.files && target.files[0]) {
+                        const file = target.files[0];
+                        setEvidenceImage({
+                          uri: URL.createObjectURL(file),
+                          fileName: file.name,
+                          type: file.type,
+                        });
+                        Alert.alert("Berhasil", "Foto bukti berhasil dipilih!");
+                      }
+                    };
+                    input.click();
+                  } else {
+                    Alert.alert(
+                      "Pilih Foto Bukti",
+                      "Bagaimana cara Anda ingin menambahkan foto?",
+                      [
+                        { text: "Kamera", onPress: () => {
+                          // Use camera
+                          ImagePicker.launchCameraAsync({
+                            mediaTypes: ["images"],
+                            allowsEditing: false,
+                            quality: 0.8,
+                            base64: false,
+                          }).then((result) => {
+                            if (!result.canceled && result.assets && result.assets.length > 0) {
+                              setEvidenceImage(result.assets[0]);
+                              Alert.alert("Berhasil", "Foto bukti berhasil diambil!");
+                            }
+                          });
+                        }},
+                        { text: "Galeri", onPress: () => {
+                          // Use gallery
+                          ImagePicker.launchImageLibraryAsync({
+                            mediaTypes: "images",
+                            allowsEditing: false,
+                            quality: 0.8,
+                            base64: false,
+                          }).then((result) => {
+                            if (!result.canceled && result.assets && result.assets.length > 0) {
+                              setEvidenceImage(result.assets[0]);
+                              Alert.alert("Berhasil", "Foto bukti berhasil dipilih!");
+                            }
+                          });
+                        }},
+                        { text: "Batal", style: "cancel" },
+                      ],
+                      { cancelable: true }
+                    );
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <FontAwesome5 name="camera" size={20} color="#3b82f6" />
+                <Text style={styles.imagePickerText}>
+                  Ambil/Pilih Foto Bukti
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  if (
+                    budgetRequestForm.requested_amount ||
+                    budgetRequestForm.reason ||
+                    evidenceImage
+                  ) {
+                    Alert.alert(
+                      "Tutup Form?",
+                      "Data yang sudah diisi akan hilang. Yakin ingin menutup form?",
+                      [
+                        { text: "Tidak", style: "cancel" },
+                        {
+                          text: "Ya, Tutup",
+                          style: "destructive",
+                          onPress: () => {
+                            setShowBudgetRequestModal(false);
+                            resetBudgetRequestForm();
+                          },
+                        },
+                      ]
+                    );
+                  } else {
+                    setShowBudgetRequestModal(false);
+                  }
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Batal</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.submitButton,
+                  submittingBudgetRequest && styles.disabledButton,
+                  (!budgetRequestForm.requested_amount || !budgetRequestForm.reason) &&
+                    styles.incompleteButton,
+                ]}
+                onPress={handleSubmitBudgetRequest}
+                disabled={
+                  submittingBudgetRequest || !budgetRequestForm.requested_amount || !budgetRequestForm.reason
+                }
+              >
+                {submittingBudgetRequest ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={[styles.submitButtonText, { marginLeft: 8 }]}>
+                      Mengajukan...
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.submitButtonText}>
+                    Ajukan Permohonan
                   </Text>
                 )}
               </TouchableOpacity>
@@ -1419,7 +1836,7 @@ const styles = StyleSheet.create({
   detailText: { fontSize: 14, color: "#555", marginBottom: 4 },
   expenseItem: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#eee",
@@ -1434,6 +1851,40 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   expenseAmount: { fontSize: 16, fontWeight: "bold", color: "#e74c3c" },
+  // New expense status styles
+  expenseHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between", 
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  expenseAmountContainer: {
+    alignItems: "flex-end",
+  },
+  rejectedAmount: {
+    textDecorationLine: "line-through",
+    color: "#999",
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  statusText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "600",
+    marginLeft: 4,
+  },
+  rejectionReason: {
+    fontSize: 11,
+    color: "#e74c3c",
+    marginTop: 4,
+    fontStyle: "italic",
+  },
   emptyText: { textAlign: "center", color: "#888", paddingVertical: 20 },
 
   // STYLES BARU untuk completed trip
@@ -1770,6 +2221,65 @@ const styles = StyleSheet.create({
   },
   submitButtonText: { fontSize: 16, color: "#fff", fontWeight: "600" },
   disabledButton: { backgroundColor: "#ccc" },
+
+  // Action Menu styles
+  actionMenuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  actionMenuContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+  },
+  actionMenuTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#333',
+  },
+  actionMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  actionMenuTextContainer: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  actionMenuText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  actionMenuSubtext: {
+    fontSize: 14,
+    color: '#666',
+  },
+  actionMenuCancel: {
+    paddingVertical: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  actionMenuCancelText: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '600',
+  },
 });
 
 export default TripDetailScreen;

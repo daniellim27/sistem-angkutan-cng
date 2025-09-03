@@ -10,6 +10,7 @@ vehicleRouter.use(verifyToken);
 // Static routes (no parameters)
 vehicleRouter.get('/statistics', checkRole(['admin', 'owner', 'driver']), vehicleController.getVehicleStatistics);
 vehicleRouter.get('/drivers/available', checkRole(['admin', 'owner', 'driver']), vehicleController.getAvailableDrivers);
+vehicleRouter.get('/my-assigned', checkRole(['driver']), vehicleController.getDriverAssignedVehicle);
 
 // Collection routes (operate on the collection, not individual items)
 vehicleRouter.get('/', checkRole(['admin', 'owner', 'driver']), vehicleController.getAllVehicles);
@@ -22,7 +23,7 @@ vehicleRouter.put('/:id', checkRole(['admin', 'owner', 'driver']), vehicleContro
 vehicleRouter.delete('/:id', checkRole(['admin', 'owner', 'driver']), vehicleController.deleteVehicle);
 
 // Nested resource routes (specific actions on individual items)
-vehicleRouter.get('/:vehicle_id/history', checkRole(['admin', 'owner', 'driver']), vehicleController.getServiceHistory);
+vehicleRouter.get('/:id/history', checkRole(['admin', 'owner', 'driver']), vehicleController.getServiceHistory);
 vehicleRouter.put('/:vehicleId/assign-driver', checkRole(['admin', 'owner', 'driver']), vehicleController.assignDriver);
 
 module.exports = vehicleRouter;

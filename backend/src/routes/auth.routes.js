@@ -15,6 +15,13 @@ const {
 router.post("/mobile/login", ...validateLogin, authController.mobileLogin);
 router.post("/web/login", ...validateLogin, authController.webLogin);
 
+// Public mobile registration route (allows self-registration for drivers/users)
+router.post(
+  "/mobile/register", 
+  ...validateRegistration, 
+  authController.mobileRegister
+);
+
 // Protected register route (owner only)
 router.post(
   "/register",

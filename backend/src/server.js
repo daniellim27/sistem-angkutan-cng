@@ -21,6 +21,7 @@ const deliveryOrderRoutes = require("./routes/deliveryOrder.routes");
 const bigDeliveryOrderRoutes = require("./routes/bigDeliveryOrder.routes");
 const userRoutes = require("./routes/user.routes");
 const driverExpenseRoutes = require("./routes/driverExpense.routes");
+const budgetRequestRoutes = require("./routes/budgetRequest.routes");
 const vehicleRoutes = require("./routes/vehicle.routes");
 const driverRoutes = require("./routes/driver.routes");
 
@@ -43,6 +44,8 @@ const webCashRoutes = require("./routes/web/cash.routes");
 const webRitaseRoutes = require("./routes/web/ritase.routes");
 const webBukuKasRoutes = require("./routes/web/bukuKas.routes");
 const webPaymentsRoutes = require("./routes/web/payments.routes");
+const webExpenseRoutes = require("./routes/web/expense.routes");
+const webBudgetRequestRoutes = require("./routes/web/budgetRequest.routes");
 const legacyRitasePaymentsRoutes = require("./routes/web/ritase.payments.legacy.route");
 const utilsRoutes = require("./routes/utils.routes");
 const webDepositGroupRoutes = require("./routes/web/depositGroup.routes");
@@ -140,6 +143,7 @@ initializeDatabase().then(() => {
   app.use("/api/delivery-orders", deliveryOrderRoutes);
   app.use("/api/big-delivery-orders", bigDeliveryOrderRoutes);
   app.use("/api/driver-expenses", driverExpenseRoutes);
+  app.use("/api/budget-requests", budgetRequestRoutes);
   app.use("/api/drivers", driverRoutes);
 
   // === IoT Routes ===
@@ -161,6 +165,8 @@ initializeDatabase().then(() => {
   app.use("/api/web/ritase", webRitaseRoutes);
   app.use("/api/web/buku-kas", webBukuKasRoutes);
   app.use("/api/web/payments", webPaymentsRoutes);
+  app.use("/api/web/expenses", webExpenseRoutes);
+  app.use("/api/web/budget-requests", webBudgetRequestRoutes);
   app.use("/api/web/ritase-payments", legacyRitasePaymentsRoutes);
   app.use("/api/web/deposit-groups", webDepositGroupRoutes);
   app.use("/api/web/utils", utilsRoutes);

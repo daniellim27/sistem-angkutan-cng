@@ -81,13 +81,13 @@ export default function RegisterScreen() {
       username: formData.username.trim(),
       password: formData.password,
       role: formData.role,
-      fullName: formData.fullName.trim(),
+      full_name: formData.fullName.trim(),
       phone: formData.phone.trim(),
       email: formData.email.trim() || undefined,
       address: formData.address.trim(),
-      idCardNumber: formData.idCardNumber.trim() || undefined,
-      simNumber: formData.simNumber.trim() || undefined,
-      licenseType: formData.licenseType.trim() || undefined,
+      id_card_number: formData.idCardNumber.trim() || undefined,
+      sim_number: formData.simNumber.trim() || undefined,
+      license_type: formData.licenseType.trim() || undefined,
     };
 
     const result = await register(registrationData);

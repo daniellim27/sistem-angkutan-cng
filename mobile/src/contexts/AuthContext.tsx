@@ -126,13 +126,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const register = async (userData: any) => {
     setIsLoading(true);
     try {
-      const { data } = await apiClient.post("/auth/register", userData);
+      const { data } = await apiClient.post("/auth/mobile/register", userData);
       return { success: true, data };
     } catch (err: any) {
       console.error("Register error:", err.response?.data || err.message);
+      let errorMessage = "Registration failed";
+      
+      if (err.response?.data?.details) {
+        errorMessage = err.response.data.details;
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
       return {
         success: false,
-        error: err.response?.data?.message || "Register gagal.",
+        error: errorMessage,
       };
     } finally {
       setIsLoading(false);

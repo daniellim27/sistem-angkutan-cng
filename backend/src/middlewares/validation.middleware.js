@@ -12,10 +12,12 @@ const validateRegistration = [
   body("role")
     .isIn(["admin", "driver"])
     .withMessage("Role must be either admin or driver."),
-  body("fullName").notEmpty().withMessage("Full name is required."),
+  body("full_name").notEmpty().withMessage("Full name is required."),
   body("phone")
-    .isMobilePhone("id-ID")
-    .withMessage("A valid Indonesian phone number is required."),
+    .notEmpty()
+    .withMessage("Phone number is required.")
+    .isLength({ min: 8, max: 15 })
+    .withMessage("Phone number must be between 8 and 15 characters."),
 
   // Custom middleware to handle the validation result
   (req, res, next) => {

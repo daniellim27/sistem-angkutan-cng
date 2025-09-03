@@ -25,6 +25,8 @@ const MainLayout = () => {
     if (path.startsWith("/buku-kas")) return "Cash Book";
     if (path.startsWith("/tempo")) return "Credit Book";
     if (path.startsWith("/deposit-groups")) return "Deposit Payments";
+    if (path.startsWith("/budget-requests")) return "Budget Request Management";
+    if (path.startsWith("/driver-expenses")) return "Driver Expense Management";
     return "CNG Dashboard";
   };
 
@@ -290,6 +292,22 @@ const MainLayout = () => {
             </li>
             <li className="mb-4">
               <Link
+                to="/driver-expenses"
+                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
+                  isActiveLink("/driver-expenses")
+                    ? "bg-gray-700 border-l-4 border-blue-500"
+                    : ""
+                }`}
+                title="Driver Expense Management"
+              >
+                <span className="text-xl mr-3">💰</span>
+                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
+                  Pengeluaran Driver
+                </span>
+              </Link>
+            </li>
+            <li className="mb-4">
+              <Link
                 to="/services"
                 className={`flex items-center p-2 rounded hover:bg-gray-700 ${
                   isActiveLink("/services")
@@ -399,6 +417,22 @@ const MainLayout = () => {
                 <span className="text-xl mr-3">🤬</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
                   Credit Book
+                </span>
+              </Link>
+            </li>
+            <li className="mb-4">
+              <Link
+                to="/budget-requests"
+                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
+                  isActiveLink("/budget-requests")
+                    ? "bg-gray-700 border-l-4 border-blue-500"
+                    : ""
+                }`}
+                title="Budget Request Management"
+              >
+                <span className="text-xl mr-3">💸</span>
+                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
+                  Budget Requests
                 </span>
               </Link>
             </li>

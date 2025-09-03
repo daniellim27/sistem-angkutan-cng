@@ -46,6 +46,9 @@ const setupExchangeRateModel = require("./exchangeRate.model");
 
 // NEW: IoT Raw Data Model
 const setupIotRawDataModel = require("./iotRawData.model");
+
+// NEW: Budget Request Model
+const setupBudgetRequestModel = require("./budgetRequest.model");
 // Initialize Sequelize connection using your .env variables
 const sequelize = new Sequelize(
   process.env.DB_NAME,
@@ -113,6 +116,9 @@ db.DriverLocation = setupDriverLocationModel(sequelize);
 // Exchange Rate and IoT models
 db.ExchangeRate = setupExchangeRateModel(sequelize);
 db.IotRawData = setupIotRawDataModel(sequelize);
+
+// Budget Request model
+db.BudgetRequest = setupBudgetRequestModel(sequelize);
 const {
   User,
   DriverProfile,
@@ -145,6 +151,7 @@ const {
   DriverLocation,
   ExchangeRate,
   IotRawData,
+  BudgetRequest,
 } = db;
 
 // User <-> Profile Associations (One-to-One)
@@ -211,6 +218,32 @@ DeliveryOrder.hasMany(DriverExpense, {
   as: "expenses",
 });
 DriverExpense.belongsTo(DeliveryOrder, {
+  foreignKey: "delivery_order_id",
+  as: "deliveryOrder",
+});
+DriverExpense.belongsTo(User, {
+  foreignKey: "approved_by",
+  as: "approvedBy",
+});
+
+// Budget Request Associations
+User.hasMany(BudgetRequest, {
+  foreignKey: "driver_id",
+  as: "budgetRequests",
+});
+BudgetRequest.belongsTo(User, { foreignKey: "driver_id", as: "driver" });
+
+User.hasMany(BudgetRequest, {
+  foreignKey: "approved_by",
+  as: "approvedBudgetRequests",
+});
+BudgetRequest.belongsTo(User, { foreignKey: "approved_by", as: "approver" });
+
+DeliveryOrder.hasMany(BudgetRequest, {
+  foreignKey: "delivery_order_id",
+  as: "budgetRequests",
+});
+BudgetRequest.belongsTo(DeliveryOrder, {
   foreignKey: "delivery_order_id",
   as: "deliveryOrder",
 });

@@ -29,6 +29,8 @@ interface Vehicle {
   driver_name: string | null;
   driver_phone: string | null;
   driver_status: string | null;
+  // Assignment type indicator
+  assignment_type?: 'permanent' | 'delivery_order';
 }
 
 interface VehicleService {
@@ -49,8 +51,42 @@ export default function VehicleScreen() {
   const fetchData = async () => {
     try {
       setError(null);
-      console.log("🔄 Fetching driver's active delivery orders...");
+      console.log("🔄 Fetching driver's vehicle information...");
 
+      // First, check for permanently assigned vehicle
+      try {
+        console.log("🚗 Checking for assigned vehicle...");
+        const assignedVehicleResponse = await apiClient.get("/vehicles/my-assigned");
+        console.log("📥 Assigned vehicle response:", assignedVehicleResponse.data);
+
+        if (assignedVehicleResponse.data.data) {
+          const assignedVehicle = assignedVehicleResponse.data.data;
+          console.log("✅ Found assigned vehicle:", assignedVehicle.license_plate);
+          
+          // Set assigned vehicle
+          setVehicle({
+            ...assignedVehicle,
+            assignment_type: 'permanent'
+          });
+
+          // Fetch service history for assigned vehicle
+          try {
+            const serviceResponse = await apiClient.get(`/vehicles/${assignedVehicle.id}/history`);
+            setServiceHistory(serviceResponse.data.data || []);
+            console.log("📋 Service history loaded:", serviceResponse.data.data?.length || 0, "records");
+          } catch (serviceErr) {
+            console.log("⚠️ Could not load service history:", serviceErr);
+            setServiceHistory([]);
+          }
+          
+          return; // Exit early if we found an assigned vehicle
+        }
+      } catch (assignedErr) {
+        console.log("⚠️ No permanently assigned vehicle or error:", assignedErr.response?.data?.message || assignedErr.message);
+      }
+
+      // If no permanently assigned vehicle, check for active delivery order vehicle
+      console.log("🔄 Checking for active delivery order vehicle...");
       const ordersResponse = await apiClient.get("/delivery-orders/me");
       console.log("📥 Active orders response:", ordersResponse.data);
 
@@ -92,6 +128,7 @@ export default function VehicleScreen() {
           driver_name: vehicleApiData.driver_name || null,
           driver_phone: vehicleApiData.driver_phone || null,
           driver_status: vehicleApiData.driver_status || null,
+          assignment_type: 'delivery_order' // Temporary assignment through delivery order
         };
         
         setVehicle(vehicleData);
@@ -234,7 +271,10 @@ export default function VehicleScreen() {
           <Ionicons name="car-sport-outline" size={64} color="#9ca3af" />
           <Text style={styles.emptyStateText}>No Vehicle Assigned</Text>
           <Text style={styles.emptyStateSubtext}>
-            You do not have an active delivery order with an assigned vehicle.
+            You do not have a permanently assigned vehicle or an active delivery order with a vehicle.
+          </Text>
+          <Text style={styles.emptyStateSubtext}>
+            Contact your admin to get a vehicle assignment.
           </Text>
         </View>
       </ScrollView>
@@ -251,7 +291,14 @@ export default function VehicleScreen() {
       {/* Vehicle Info Card */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>Vehicle Information</Text>
+          <View>
+            <Text style={styles.cardTitle}>Vehicle Information</Text>
+            <Text style={styles.assignmentTypeText}>
+              {vehicle.assignment_type === 'permanent' 
+                ? '🔒 Permanently Assigned' 
+                : '📋 Active Delivery Order'}
+            </Text>
+          </View>
           <View
             style={[
               styles.statusBadge,
@@ -456,6 +503,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#1f2937",
+  },
+  assignmentTypeText: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginTop: 2,
   },
   statusBadge: {
     paddingHorizontal: 12,

@@ -4,8 +4,12 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 import { router } from "expo-router";
+import Constants from 'expo-constants';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+// Try to get API URL from environment or app config
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 
+                     Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL || 
+                     'http://localhost:3000/api';
 
 // Create a dedicated axios instance
 const apiClient = axios.create({
@@ -118,6 +122,17 @@ export const createDriverExpense = async (expenseData) => {
   // Pastikan async
   console.log("createDriverExpense called with:", expenseData);
 
+  // Validate required data
+  if (!expenseData.delivery_order_id) {
+    throw new Error("delivery_order_id is required");
+  }
+  if (!expenseData.jenis) {
+    throw new Error("jenis is required");
+  }
+  if (!expenseData.amount && expenseData.amount !== 0) {
+    throw new Error("amount is required");
+  }
+
   const formData = new FormData();
 
   formData.append(
@@ -225,6 +240,51 @@ export const updateDeliveryStatus = (doId, action) => {
 
 export const getLoadStatus = (doId) => {
   return apiClient.get(`/delivery-orders/${doId}/load-status`);
+};
+
+// Budget Request API functions
+export const createBudgetRequest = async (requestData) => {
+  console.log("createBudgetRequest called with:", requestData);
+
+  // Validate required data
+  if (!requestData.delivery_order_id) {
+    throw new Error("delivery_order_id is required");
+  }
+  if (!requestData.requested_amount && requestData.requested_amount !== 0) {
+    throw new Error("requested_amount is required");
+  }
+  if (!requestData.reason) {
+    throw new Error("reason is required");
+  }
+
+  const formData = new FormData();
+  formData.append('delivery_order_id', requestData.delivery_order_id.toString());
+  formData.append('requested_amount', requestData.requested_amount.toString());
+  formData.append('reason', requestData.reason);
+
+  // Use helper function for evidence file
+  await appendFileToFormData(formData, 'evidence', requestData.evidence);
+
+  console.log("FormData created for budget request submission");
+  return apiClient.post('/budget-requests', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+    timeout: 30000,
+  });
+};
+
+export const getBudgetRequests = async (deliveryOrderId = null) => {
+  const params = deliveryOrderId ? { delivery_order_id: deliveryOrderId } : {};
+  return apiClient.get('/budget-requests', { params });
+};
+
+export const getBudgetRequestDetails = async (requestId) => {
+  return apiClient.get(`/budget-requests/${requestId}`);
+};
+
+export const deleteBudgetRequest = async (requestId) => {
+  return apiClient.delete(`/budget-requests/${requestId}`);
 };
 
 export default apiClient;

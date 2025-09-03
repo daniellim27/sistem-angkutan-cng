@@ -100,6 +100,66 @@ const webLogin = async (req, res, next) => {
   }
 };
 
+const mobileRegister = async (req, res, next) => {
+  try {
+    // Separate user data from profile data using destructuring
+    const { username, password, role, ...profileData } = req.body;
+
+    // Restrict roles for mobile registration (security measure)
+    if (!["driver", "admin"].includes(role)) {
+      return res.status(400).json({
+        message: "Invalid role for mobile registration. Only 'driver' and 'admin' roles are allowed.",
+      });
+    }
+
+    // Use a managed transaction for safety; it automatically handles COMMIT and ROLLBACK.
+    const newUser = await sequelize.transaction(async (t) => {
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      const user = await User.create(
+        {
+          username,
+          password_hash: passwordHash,
+          role,
+        },
+        { transaction: t }
+      );
+
+      // Create the corresponding profile based on the role
+      if (role === "admin") {
+        await AdminProfile.create(
+          { ...profileData, user_id: user.id },
+          { transaction: t }
+        );
+      } else if (role === "driver") {
+        await DriverProfile.create(
+          { ...profileData, user_id: user.id },
+          { transaction: t }
+        );
+      }
+
+      return user;
+    });
+
+    const userResponse = newUser.toJSON();
+    delete userResponse.password_hash;
+
+    res.status(201).json({
+      message: "Mobile registration successful",
+      user: userResponse,
+    });
+  } catch (err) {
+    // Provide a more specific error for unique constraints (e.g., username exists)
+    if (err instanceof UniqueConstraintError) {
+      return res.status(409).json({
+        message: "Registration failed",
+        details: "Username already exists. Please choose a different username.",
+      });
+    }
+    next(err); // Pass all other errors to the global handler
+  }
+};
+
 const register = async (req, res, next) => {
   try {
     // Separate user data from profile data using destructuring
@@ -178,6 +238,7 @@ const logout = async (req, res) => {
 module.exports = {
   mobileLogin,
   webLogin,
+  mobileRegister,
   register,
   validateToken,
   logout,

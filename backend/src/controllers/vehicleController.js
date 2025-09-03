@@ -354,6 +354,64 @@ exports.getAvailableDrivers = async (req, res, next) => {
   }
 };
 
+// Get driver's assigned vehicle
+exports.getDriverAssignedVehicle = async (req, res, next) => {
+  try {
+    const driverId = req.user.id; // From auth middleware
+    
+    console.log('🚗 Getting assigned vehicle for driver:', driverId);
+    
+    // Import models from the correct location
+    const { DriverProfile } = require('../models');
+    
+    const vehicle = await Vehicle.findOne({
+      where: { driver_id: driverId },
+      include: [
+        {
+          model: User,
+          as: 'driver',
+          attributes: ['id', 'username'],
+          include: [
+            {
+              model: DriverProfile,
+              as: 'driverProfile',
+              attributes: ['full_name', 'phone', 'status'],
+              required: false
+            }
+          ]
+        }
+      ]
+    });
+
+    if (!vehicle) {
+      return res.json({
+        success: true,
+        data: null,
+        message: 'No vehicle assigned to this driver'
+      });
+    }
+
+    const vehicleData = vehicle.toJSON();
+    const enhancedVehicle = {
+      ...vehicleData,
+      driver_name: vehicle.driver?.driverProfile?.full_name || null,
+      driver_phone: vehicle.driver?.driverProfile?.phone || null,
+      driver_status: vehicle.driver?.driverProfile?.status || null,
+      assignment_type: 'permanent' // Indicate this is a permanent assignment
+    };
+
+    console.log('✅ Found assigned vehicle:', enhancedVehicle.license_plate);
+
+    res.json({
+      success: true,
+      data: enhancedVehicle
+    });
+  } catch (err) {
+    console.error('Error getting driver assigned vehicle:', err);
+    next(err);
+  }
+};
+
 // Get vehicle statistics
 exports.getVehicleStatistics = async (req, res, next) => {
   try {

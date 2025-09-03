@@ -33,8 +33,8 @@ module.exports = (sequelize) => {
           msg: 'Expense type cannot be empty'
         },
         isIn: {
-          args: [['bbm', 'tol', 'parkir', 'makan', 'lainnya']],
-          msg: 'Expense type must be one of: bbm, tol, parkir, makan, lainnya'
+          args: [['bbm', 'tol', 'parkir', 'makan', 'pengeluaran_tambahan', 'lainnya']],
+          msg: 'Expense type must be one of: bbm, tol, parkir, makan, pengeluaran_tambahan, lainnya'
         }
       }
     },
@@ -66,6 +66,39 @@ module.exports = (sequelize) => {
         len: {
           args: [0, 500],
           msg: 'Notes must not exceed 500 characters'
+        }
+      }
+    },
+    status: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: 'approved',
+      validate: {
+        isIn: {
+          args: [['pending', 'approved', 'rejected']],
+          msg: 'Status must be one of: pending, approved, rejected'
+        }
+      }
+    },
+    approved_by: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    approved_at: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    rejection_reason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      validate: {
+        len: {
+          args: [0, 500],
+          msg: 'Rejection reason must not exceed 500 characters'
         }
       }
     },
