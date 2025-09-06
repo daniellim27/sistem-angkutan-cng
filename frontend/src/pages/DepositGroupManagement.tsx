@@ -18,22 +18,25 @@ interface DepositGroup {
   updated_at: string;
 }
 
-interface DepositGroupMember {
+interface PurchaseOrder {
   id: number;
-  member_name: string;
-  member_type: 'driver' | 'vehicle' | 'company';
-  member_id: number;
-  deposit_amount: number;
-  current_balance: number;
-  last_transaction_date?: string;
+  po_number: string;
+  customer_name: string;
+  item_name: string;
+  total_quantity: number;
+  unit: string;
+  unit_price: string;
+  total_amount: string;
+  status: string;
+  deposit_group_id?: number;
   created_at: string;
 }
 
 interface DepositGroupWithMembers extends DepositGroup {
-  members: DepositGroupMember[];
+  purchase_orders: PurchaseOrder[];
   total_deposits: number;
   total_balance: number;
-  member_count: number;
+  po_count: number;
 }
 
 const DepositGroupManagement = () => {
@@ -41,9 +44,12 @@ const DepositGroupManagement = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showPOModal, setShowPOModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<DepositGroupWithMembers | null>(null);
   const [editingGroup, setEditingGroup] = useState<DepositGroup | null>(null);
+  const [allPurchaseOrders, setAllPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [loadingPOs, setLoadingPOs] = useState(false);
 
   // Form data for creating/editing groups
   const [formData, setFormData] = useState({
@@ -51,6 +57,18 @@ const DepositGroupManagement = () => {
     target_quantity: '',
     deposited_amount: '',
     unit: 'ton'
+  });
+
+  // Form data for creating POs
+  const [poFormData, setPOFormData] = useState({
+    po_number: '',
+    customer_name: '',
+    item_name: '',
+    total_quantity: '',
+    unit: 'ton',
+    unit_price: '',
+    load_location: '',
+    unload_location: ''
   });
 
   // Unit options for selection
@@ -61,23 +79,64 @@ const DepositGroupManagement = () => {
   ];
 
   useEffect(() => {
-    fetchGroups();
+    const initializeData = async () => {
+      const purchaseOrders = await fetchAllPurchaseOrders();
+      await fetchGroups(purchaseOrders); // Pass POs directly to avoid state timing issues
+    };
+    initializeData();
   }, []);
 
-  const fetchGroups = async () => {
+  const fetchAllPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
+    try {
+      setLoadingPOs(true);
+      console.log('🔍 Debug - Fetching purchase orders...');
+      const response = await apiClient.get('/purchase-orders?page=1&limit=20');
+      console.log('🔍 Debug - Raw API response:', response);
+      console.log('🔍 Debug - response.data:', response.data);
+      const allPos = response.data?.data || response.data || [];
+      console.log('🔍 Debug - Extracted POs:', allPos);
+      setAllPurchaseOrders(allPos);
+      return allPos;
+    } catch (err) {
+      console.error('Failed to fetch purchase orders:', err);
+      setAllPurchaseOrders([]);
+      return [];
+    } finally {
+      setLoadingPOs(false);
+    }
+  };
+
+  const fetchGroups = async (purchaseOrders?: PurchaseOrder[]) => {
     try {
       setLoading(true);
       const response = await apiClient.get('/deposit-groups');
       // The API returns data directly, not wrapped in a 'data' property
       const groupsData = response.data || [];
-      // Transform API response to match frontend expectations
-      const transformedGroups = groupsData.map((group: DepositGroup) => ({
-        ...group,
-        members: [], // Will be populated when viewing members
-        total_deposits: parseFloat(group.deposited_amount),
-        total_balance: parseFloat(group.balance),
-        member_count: 0 // Will be calculated when needed
-      }));
+      
+      // Use passed POs or fall back to state
+      const posToUse = purchaseOrders || allPurchaseOrders;
+      
+      // Calculate balance as: deposited_amount - sum_of_po_amounts
+      console.log('🔍 Debug - allPurchaseOrders length:', posToUse.length);
+      console.log('🔍 Debug - allPurchaseOrders:', posToUse.map(po => ({ id: po.id, deposit_group_id: po.deposit_group_id })));
+      console.log('🔍 Debug - groupsData:', groupsData.map((g: DepositGroup) => ({ id: g.id, name: g.group_name })));
+      
+      const transformedGroups = groupsData.map((group: DepositGroup) => {
+        // Find POs for this group
+        const groupPos = posToUse.filter((po: PurchaseOrder) => po.deposit_group_id === group.id);
+        console.log(`🔍 Debug - Group ${group.id} (${group.group_name}): Found ${groupPos.length} POs`, groupPos.map(po => ({ id: po.id, deposit_group_id: po.deposit_group_id })));
+        const totalPOAmount = groupPos.reduce((sum, po) => sum + parseFloat(po.total_amount), 0);
+        const depositedAmount = parseFloat(group.deposited_amount);
+        const calculatedBalance = depositedAmount - totalPOAmount;
+        
+        return {
+          ...group,
+          purchase_orders: groupPos,
+          total_deposits: depositedAmount,
+          total_balance: calculatedBalance, // Use calculated balance instead of API balance
+          po_count: groupPos.length
+        };
+      });
       setGroups(transformedGroups);
     } catch (err) {
       setError('Failed to fetch deposit groups.');
@@ -157,15 +216,61 @@ const DepositGroupManagement = () => {
 
   const openMembersModal = (group: DepositGroupWithMembers) => {
     setSelectedGroup(group);
+    // POs are already calculated and stored in the group object
     setShowMembersModal(true);
+  };
+
+  const openPOModal = (group: DepositGroupWithMembers) => {
+    setSelectedGroup(group);
+    setShowPOModal(true);
+  };
+
+  const handlePOSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedGroup) return;
+
+    try {
+      const payload = {
+        ...poFormData,
+        total_quantity: parseFloat(poFormData.total_quantity),
+        unit_price: parseFloat(poFormData.unit_price),
+        deposit_group_id: selectedGroup.id
+      };
+
+      await apiClient.post('/purchase-orders', payload);
+      setShowPOModal(false);
+      resetPOForm();
+      // Refresh purchase orders first, then groups (so balance calculation has updated PO data)
+      const updatedPOs = await fetchAllPurchaseOrders();
+      fetchGroups(updatedPOs);
+    } catch (err) {
+      setError('Failed to create purchase order.');
+      console.error(err);
+    }
+  };
+
+  const resetPOForm = () => {
+    setPOFormData({
+      po_number: '',
+      customer_name: '',
+      item_name: '',
+      total_quantity: '',
+      unit: 'ton',
+      unit_price: '',
+      load_location: '',
+      unload_location: ''
+    });
   };
 
   const closeModal = () => {
     setShowCreateModal(false);
+    setShowPOModal(false);
     setShowMembersModal(false);
     setEditingGroup(null);
     setSelectedGroup(null);
     resetForm();
+    resetPOForm();
   };
 
   const formatCurrency = (amount: number) => {
@@ -283,10 +388,16 @@ const DepositGroupManagement = () => {
 
               <div className="flex space-x-2">
                 <button
+                  onClick={() => openPOModal(group)}
+                  className="flex-1 bg-green-500 hover:bg-green-600 text-white text-sm py-2 px-3 rounded"
+                >
+                  Add PO
+                </button>
+                <button
                   onClick={() => openMembersModal(group)}
                   className="flex-1 bg-gray-500 hover:bg-gray-600 text-white text-sm py-2 px-3 rounded"
                 >
-                  View Members
+                  View POs
                 </button>
                 <button
                   onClick={() => handleEdit(group)}
@@ -423,6 +534,165 @@ const DepositGroupManagement = () => {
         </div>
       )}
 
+      {/* PO Creation Modal */}
+      {showPOModal && selectedGroup && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
+                Create Purchase Order in {selectedGroup.group_name}
+              </h3>
+              
+              <form onSubmit={handlePOSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* PO Number */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      PO Number *
+                    </label>
+                    <input
+                      type="text"
+                      value={poFormData.po_number}
+                      onChange={(e) => setPOFormData(prev => ({ ...prev, po_number: e.target.value }))}
+                      placeholder="Enter PO number"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      required
+                    />
+                  </div>
+
+                  {/* Customer Name */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Customer Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={poFormData.customer_name}
+                      onChange={(e) => setPOFormData(prev => ({ ...prev, customer_name: e.target.value }))}
+                      placeholder="Enter customer name"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      required
+                    />
+                  </div>
+
+                  {/* Item Name */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Item Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={poFormData.item_name}
+                      onChange={(e) => setPOFormData(prev => ({ ...prev, item_name: e.target.value }))}
+                      placeholder="Enter item name"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      required
+                    />
+                  </div>
+
+                  {/* Total Quantity */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Total Quantity *
+                    </label>
+                    <input
+                      type="number"
+                      value={poFormData.total_quantity}
+                      onChange={(e) => setPOFormData(prev => ({ ...prev, total_quantity: e.target.value }))}
+                      placeholder="Enter quantity"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      min="0"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+
+                  {/* Unit */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Unit *
+                    </label>
+                    <select
+                      value={poFormData.unit}
+                      onChange={(e) => setPOFormData(prev => ({ ...prev, unit: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      required
+                    >
+                      {unitOptions.map(unit => (
+                        <option key={unit.value} value={unit.value}>
+                          {unit.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Unit Price */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Unit Price (IDR) *
+                    </label>
+                    <input
+                      type="number"
+                      value={poFormData.unit_price}
+                      onChange={(e) => setPOFormData(prev => ({ ...prev, unit_price: e.target.value }))}
+                      placeholder="Enter unit price"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      min="0"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+
+                  {/* Load Location */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Load Location
+                    </label>
+                    <input
+                      type="text"
+                      value={poFormData.load_location}
+                      onChange={(e) => setPOFormData(prev => ({ ...prev, load_location: e.target.value }))}
+                      placeholder="Enter load location"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+
+                  {/* Unload Location */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Unload Location
+                    </label>
+                    <input
+                      type="text"
+                      value={poFormData.unload_location}
+                      onChange={(e) => setPOFormData(prev => ({ ...prev, unload_location: e.target.value }))}
+                      placeholder="Enter unload location"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+                  >
+                    Create PO
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Members Modal */}
       {showMembersModal && selectedGroup && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
@@ -430,7 +700,7 @@ const DepositGroupManagement = () => {
             <div className="mt-3">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-medium text-gray-900">
-                  Members of {selectedGroup.group_name}
+                  Purchase Orders in {selectedGroup.group_name}
                 </h3>
                 <button
                   onClick={closeModal}
@@ -442,64 +712,80 @@ const DepositGroupManagement = () => {
                 </button>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Member Name
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Type
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Deposit Amount
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Current Balance
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Last Transaction
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {selectedGroup.members.map((member) => (
-                      <tr key={member.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {member.member_name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                            member.member_type === 'driver' ? 'bg-blue-100 text-blue-800' :
-                            member.member_type === 'vehicle' ? 'bg-green-100 text-green-800' :
-                            'bg-purple-100 text-purple-800'
-                          }`}>
-                            {member.member_type.charAt(0).toUpperCase() + member.member_type.slice(1)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                          {formatCurrency(member.deposit_amount)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                          <span className={`font-medium ${
-                            member.current_balance >= 0 ? 'text-blue-600' : 'text-red-600'
-                          }`}>
-                            {formatCurrency(member.current_balance)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {member.last_transaction_date ? formatDate(member.last_transaction_date) : 'Never'}
-                        </td>
+              {loadingPOs ? (
+                <div className="text-center py-8">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <p className="mt-2 text-gray-500">Loading purchase orders...</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          PO Number
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Customer
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Item
+                        </th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Quantity
+                        </th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Unit Price
+                        </th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Total Amount
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {selectedGroup.purchase_orders.map((po) => (
+                        <tr key={po.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {po.po_number}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {po.customer_name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {po.item_name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+                            {po.total_quantity} {getUnitLabel(po.unit)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+                            {formatCurrency(parseFloat(po.unit_price))}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+                            {formatCurrency(parseFloat(po.total_amount))}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                              po.status === 'confirmed' ? 'bg-green-100 text-green-800' :
+                              po.status === 'partial' ? 'bg-yellow-100 text-yellow-800' :
+                              po.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
-              {selectedGroup.members.length === 0 && (
+              {!loadingPOs && selectedGroup.purchase_orders.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
-                  <p>No members in this group yet.</p>
+                  <p>No purchase orders in this group yet.</p>
                 </div>
               )}
             </div>

@@ -58,6 +58,40 @@ interface PODetails {
   load_longitude?: number;
   unload_latitude?: number;
   unload_longitude?: number;
+  deposit_group_id?: number;
+  deposit_group?: {
+    id: number;
+    name: string;
+    status: string;
+    remaining_quantity: number;
+    target_quantity: number;
+  };
+  is_deposit_linked?: boolean;
+}
+
+interface DepositGroupDetails {
+  id: number;
+  group_name: string;
+  balance: string;
+  deposited_amount: string;
+  target_quantity: string;
+  remaining_quantity: string;
+  unit: string;
+  status: string;
+}
+
+interface PurchaseOrder {
+  id: number;
+  po_number: string;
+  customer_name: string;
+  item_name: string;
+  total_quantity: number;
+  unit: string;
+  unit_price: string;
+  total_amount: string;
+  status: string;
+  deposit_group_id?: number;
+  created_at: string;
 }
 
 interface Vehicle {
@@ -181,6 +215,10 @@ const CreateDeliveryFromPO: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<string[]>([]); // Changed to array for multiple errors
+  const [depositGroupDetails, setDepositGroupDetails] = useState<DepositGroupDetails | null>(null);
+  const [depositGroupLoading, setDepositGroupLoading] = useState(false);
+  const [allPurchaseOrders, setAllPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [loadingAllPOs, setLoadingAllPOs] = useState(false);
   
   // JISDOR rate fetching states
   const [currentJisdorRate, setCurrentJisdorRate] = useState<number | null>(16364.42); // Set default rate
@@ -334,6 +372,53 @@ const CreateDeliveryFromPO: React.FC = () => {
     return totalRevenue - operationalCosts - gasFillingCost;
   };
 
+  // Calculate total amount for all delivery orders
+  const calculateTotalDOAmount = (): number => {
+    return formDataList.reduce((total, formData) => {
+      if (!formData.unit_price || !formData.minimal_load_quantity) return total;
+      const quantity = parseFloat(formData.minimal_load_quantity);
+      const unitPrice = parseFloat(formData.unit_price);
+      return total + calculateTotalAmount(quantity, unitPrice, poDetails?.unit || "ton");
+    }, 0);
+  };
+
+  // Calculate available balance (deposited_amount - sum of existing POs)
+  const getAvailableDepositBalance = (): number => {
+    if (!depositGroupDetails || !poDetails?.is_deposit_linked) return 0;
+    
+    const depositedAmount = parseFloat(depositGroupDetails.deposited_amount);
+    
+    // Filter POs that belong to this deposit group
+    const groupPOs = allPurchaseOrders.filter(po => po.deposit_group_id === depositGroupDetails.id);
+    console.log(`🔍 Deposit Group ${depositGroupDetails.id}: Found ${groupPOs.length} existing POs`, groupPOs.map(po => ({ id: po.id, total_amount: po.total_amount })));
+    
+    // Sum up all existing PO amounts
+    const totalExistingPOAmount = groupPOs.reduce((sum, po) => sum + parseFloat(po.total_amount), 0);
+    console.log(`🔍 Total existing PO amount: ${totalExistingPOAmount}, Deposited amount: ${depositedAmount}`);
+    
+    // Calculate available balance
+    const availableBalance = depositedAmount - totalExistingPOAmount;
+    console.log(`🔍 Available balance: ${availableBalance}`);
+    
+    return availableBalance;
+  };
+
+  // Check if total DO amount exceeds deposit group balance
+  const isDOAmountExceedingBalance = (): boolean => {
+    if (!depositGroupDetails || !poDetails?.is_deposit_linked) return false;
+    const totalDOAmount = calculateTotalDOAmount();
+    const availableBalance = getAvailableDepositBalance();
+    return totalDOAmount > availableBalance;
+  };
+
+  // Get remaining deposit balance after DOs
+  const getRemainingDepositBalance = (): number => {
+    if (!depositGroupDetails || !poDetails?.is_deposit_linked) return 0;
+    const totalDOAmount = calculateTotalDOAmount();
+    const availableBalance = getAvailableDepositBalance();
+    return availableBalance - totalDOAmount;
+  };
+
   // Location setting function
   const setLocationWithType = (lat: number, lng: number, address: string, type: "load" | "unload") => {
     const newFormDataList = [...formDataList];
@@ -402,6 +487,38 @@ const CreateDeliveryFromPO: React.FC = () => {
     }
   }, [currentJisdorRate]);
 
+  const fetchAllPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
+    try {
+      setLoadingAllPOs(true);
+      console.log('🔍 Fetching all purchase orders for balance calculation...');
+      const response = await apiClient.get('/purchase-orders?page=1&limit=20');
+      const allPos = response.data?.data || response.data || [];
+      console.log('🔍 Fetched POs:', allPos.length, allPos.map((po: PurchaseOrder) => ({ id: po.id, deposit_group_id: po.deposit_group_id })));
+      setAllPurchaseOrders(allPos);
+      return allPos;
+    } catch (err) {
+      console.error('Failed to fetch purchase orders:', err);
+      setErrors(prev => [...prev, 'Failed to fetch purchase orders for balance calculation.']);
+      setAllPurchaseOrders([]);
+      return [];
+    } finally {
+      setLoadingAllPOs(false);
+    }
+  };
+
+  const fetchDepositGroupDetails = async (depositGroupId: number): Promise<void> => {
+    try {
+      setDepositGroupLoading(true);
+      const response = await apiClient.get(`/deposit-groups/${depositGroupId}`);
+      setDepositGroupDetails(response.data);
+    } catch (err) {
+      console.error("Error fetching deposit group details:", err);
+      setErrors(prev => [...prev, "Failed to fetch deposit group details."]);
+    } finally {
+      setDepositGroupLoading(false);
+    }
+  };
+
   const fetchPODetails = async (): Promise<void> => {
     try {
       const response = await apiClient.get(`/purchase-orders/${poId}`);
@@ -413,6 +530,14 @@ const CreateDeliveryFromPO: React.FC = () => {
       }
 
       setPODetails(details);
+
+      // Fetch deposit group details and all POs if PO is linked to a deposit group
+      if (details.deposit_group_id) {
+        await Promise.all([
+          fetchDepositGroupDetails(details.deposit_group_id),
+          fetchAllPurchaseOrders()
+        ]);
+      }
 
       // Multi-item support from incoming
       const items = details.item_name
@@ -686,6 +811,21 @@ const CreateDeliveryFromPO: React.FC = () => {
         return;
       }
 
+      // Check deposit group balance validation
+      if (poDetails.is_deposit_linked && isDOAmountExceedingBalance()) {
+        const totalDOAmount = calculateTotalDOAmount();
+        const availableBalance = getAvailableDepositBalance();
+        const errorMessage = `Total delivery order amount (Rp ${totalDOAmount.toLocaleString('id-ID')}) exceeds available deposit balance (Rp ${availableBalance.toLocaleString('id-ID')}). Please reduce quantities or unit prices.`;
+        
+        // Show alert
+        alert(errorMessage);
+        
+        newErrors.push(errorMessage);
+        setErrors(newErrors);
+        setLoading(false);
+        return;
+      }
+
       for (let index = 0; index < formDataList.length; index++) {
         const formData = formDataList[index];
         const unitPrice = parseFloat(formData.unit_price);
@@ -884,6 +1024,72 @@ const CreateDeliveryFromPO: React.FC = () => {
                     : "Weight-based pricing"}
                 </p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Deposit Group Information - Simplified */}
+        {poDetails.is_deposit_linked && depositGroupDetails && (
+          <div className="mt-4 pt-4 border-t border-blue-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm text-gray-600">Deposit Group Name</label>
+                <p className="font-medium text-blue-700">{depositGroupDetails.group_name}</p>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Remaining Balance</label>
+                <p className="font-medium text-green-600">
+                  Rp {getAvailableDepositBalance().toLocaleString("id-ID")}
+                </p>
+              </div>
+            </div>
+            
+            {/* Current DO Amount Calculation
+            <div className="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+              <h4 className="text-sm font-semibold text-yellow-900 mb-2">
+                📊 Current Delivery Order Summary
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                <div>
+                  <span className="text-yellow-700">Total DO Amount:</span>
+                  <span className="ml-2 font-medium text-yellow-900">
+                    Rp {calculateTotalDOAmount().toLocaleString("id-ID")}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-yellow-700">Remaining Balance:</span>
+                  <span className={`ml-2 font-medium ${
+                    getRemainingDepositBalance() >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    Rp {getRemainingDepositBalance().toLocaleString("id-ID")}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-yellow-700">Status:</span>
+                  <span className={`ml-2 font-medium ${
+                    isDOAmountExceedingBalance() ? 'text-red-600' : 'text-green-600'
+                  }`}>
+                    {isDOAmountExceedingBalance() ? '⚠️ Exceeds Balance' : '✅ Within Balance'}
+                  </span>
+                </div>
+              </div>
+              {isDOAmountExceedingBalance() && (
+                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+                  ⚠️ Warning: The total amount of delivery orders exceeds the available deposit balance. 
+                  Please reduce quantities or unit prices to proceed.
+                </div>
+              )}
+            </div> */}
+          </div>
+        )}
+
+        {(depositGroupLoading || loadingAllPOs) && (
+          <div className="mt-4 pt-4 border-t border-blue-200">
+            <div className="text-center text-blue-600">
+              <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+              <span className="ml-2">
+                {depositGroupLoading ? 'Loading deposit group details...' : 'Loading purchase orders...'}
+              </span>
             </div>
           </div>
         )}
