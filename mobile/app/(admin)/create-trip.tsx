@@ -94,14 +94,31 @@ export default function CreateTrip() {
         apiClient.get("/vehicles?status=available"),
         apiClient.get("/purchase-orders"),
       ]);
+      
+      // Debug logging to see what we're getting
+      console.log("Drivers response:", driversRes.data);
+      console.log("Vehicles response:", vehiclesRes.data);
+      console.log("PO response:", poRes.data);
+      
+      // Ensure we always have arrays
+      const drivers = Array.isArray(driversRes.data) ? driversRes.data : [];
+      const vehicles = Array.isArray(vehiclesRes.data) ? vehiclesRes.data : [];
+      const purchaseOrders = Array.isArray(poRes.data) ? poRes.data : [];
+      
       setMasterData({
-        drivers: driversRes.data,
-        vehicles: vehiclesRes.data,
-        purchaseOrders: poRes.data,
+        drivers,
+        vehicles,
+        purchaseOrders,
       });
     } catch (err) {
       console.error("Error fetching master data:", err);
       setError("Gagal memuat data master. Coba lagi nanti.");
+      // Set empty arrays on error to prevent crashes
+      setMasterData({
+        drivers: [],
+        vehicles: [],
+        purchaseOrders: [],
+      });
     } finally {
       setLoading(false);
     }
@@ -251,6 +268,16 @@ export default function CreateTrip() {
     );
   }
 
+  // Safety check to ensure we have valid data before rendering
+  if (!masterData || !Array.isArray(masterData.drivers) || !Array.isArray(masterData.vehicles) || !Array.isArray(masterData.purchaseOrders)) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" />
+        <Text>Memuat data...</Text>
+      </View>
+    );
+  }
+
   // RENDER DI SINI:
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -267,7 +294,7 @@ export default function CreateTrip() {
               onChange={(e) => handlePoChange(e.target.value)}
             >
               <option value="">-- Pilih PO --</option>
-              {masterData.purchaseOrders.map((po) => (
+              {(masterData.purchaseOrders || []).map((po) => (
                 <option key={po.id} value={po.id}>
                   {po.po_number}
                 </option>
@@ -280,7 +307,7 @@ export default function CreateTrip() {
               style={{ width: "100%" }}
             >
               <Picker.Item label="-- Pilih PO --" value="" />
-              {masterData.purchaseOrders.map((po) => (
+              {(masterData.purchaseOrders || []).map((po) => (
                 <Picker.Item key={po.id} label={po.po_number} value={po.id} />
               ))}
             </Picker>
@@ -426,11 +453,11 @@ export default function CreateTrip() {
                 onChange={(e) => handleChange("driver_id", e.target.value)}
               >
                 <option value="">
-                  {masterData.drivers.length === 0
+                  {(masterData.drivers?.length || 0) === 0
                     ? "Tidak ada driver tersedia"
                     : "Pilih Driver"}
                 </option>
-                {masterData.drivers.map((d) => (
+                {(masterData.drivers || []).map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.driverProfile?.full_name || d.username}
                   </option>
@@ -446,13 +473,13 @@ export default function CreateTrip() {
               >
                 <Picker.Item
                   label={
-                    masterData.drivers.length === 0
+                    (masterData.drivers?.length || 0) === 0
                       ? "Tidak ada driver tersedia"
                       : "Pilih Driver"
                   }
                   value=""
                 />
-                {masterData.drivers.map((d) => (
+                {(masterData.drivers || []).map((d) => (
                   <Picker.Item
                     key={d.id}
                     label={d.driverProfile?.full_name || d.username}
@@ -462,7 +489,7 @@ export default function CreateTrip() {
               </Picker>
             )}
           </View>
-          {masterData.drivers.length === 0 && (
+          {(masterData.drivers?.length || 0) === 0 && (
             <Text style={{ color: "red", marginBottom: 8 }}>
               Semua Driver Sibuk. Tidak ada driver yang tersedia untuk sekarang.
             </Text>
@@ -476,7 +503,7 @@ export default function CreateTrip() {
                 onChange={(e) => handleChange("vehicle_id", e.target.value)}
               >
                 <option value="">Pilih Mobil</option>
-                {masterData.vehicles.map((v) => (
+                {(masterData.vehicles || []).map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.license_plate} ({v.type})
                   </option>
@@ -492,13 +519,13 @@ export default function CreateTrip() {
               >
                 <Picker.Item
                   label={
-                    masterData.vehicles.length === 0
+                    (masterData.vehicles?.length || 0) === 0
                       ? "Tidak ada mobil tersedia"
                       : "Pilih Mobil"
                   }
                   value=""
                 />
-                {masterData.vehicles.map((v) => (
+                {(masterData.vehicles || []).map((v) => (
                   <Picker.Item
                     key={v.id}
                     label={`${v.license_plate} (${v.type})`}
