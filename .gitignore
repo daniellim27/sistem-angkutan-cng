@@ -75,7 +75,10 @@ pgsql_data/
 postgres.log
 *.sqlite
 *.db
-*.sql
+# Ignore database dump files but keep migration scripts
+*.dump
+*.backup
+# Keep migration files: backend/src/migrations/*.sql and migrations/*.sql
 
 # ========================================
 # UPLOADS & MEDIA

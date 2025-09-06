@@ -6,6 +6,7 @@ const {
   Vehicle,
   User,
   DriverProfile,
+  BigDoTambahan,
   sequelize,
 } = require("../models");
 const { Op } = require("sequelize");
@@ -30,16 +31,9 @@ exports.getDriverActiveBigDO = async (req, res, next) => {
           attributes: ["license_plate", "type"],
         },
         {
-          model: DeliveryOrder,
-          as: "deliveryOrders",
-          include: [
-            {
-              model: PurchaseOrder,
-              as: "purchaseOrder",
-              attributes: ["po_number", "customer_name"],
-            },
-          ],
-          order: [["display_order", "ASC"]],
+          model: BigDoTambahan,
+          as: "tambahan",
+          order: [["tambahan_number", "ASC"]],
         },
       ],
     });
@@ -59,8 +53,8 @@ exports.getDriverActiveBigDO = async (req, res, next) => {
         big_do_number: bigDO.big_do_number,
         status: bigDO.status,
         status_text: bigDO.getStatusText(),
-        total_dos: bigDO.deliveryOrders.length,
-        completed_dos: bigDO.deliveryOrders.filter(
+        total_dos: bigDO.tambahan.length,
+        completed_dos: bigDO.tambahan.filter(
           (dOrder) => dOrder.status === "completed"
         ).length,
         financial_summary: bigDO.getFinancialSummary(),
@@ -69,7 +63,7 @@ exports.getDriverActiveBigDO = async (req, res, next) => {
         license_plate: bigDO.vehicle.license_plate,
         type: bigDO.vehicle.type,
       },
-      delivery_orders: bigDO.deliveryOrders.map((dOrder) => ({
+      delivery_orders: bigDO.tambahan.map((dOrder) => ({
         id: dOrder.id,
         do_number: dOrder.do_number,
         po_number: dOrder.purchaseOrder?.po_number,
@@ -172,8 +166,8 @@ exports.completeBigDeliveryOrder = async (req, res, next) => {
     const bigDO = await BigDeliveryOrder.findByPk(id, {
       include: [
         {
-          model: DeliveryOrder,
-          as: "deliveryOrders",
+          model: BigDoTambahan,
+          as: "tambahan",
           where: { status: { [Op.not]: "completed" } },
           required: false,
         },
@@ -200,7 +194,7 @@ exports.completeBigDeliveryOrder = async (req, res, next) => {
     const completedAt = new Date();
 
     // Complete all individual DOs
-    for (const individualDO of bigDO.deliveryOrders) {
+    for (const individualDO of bigDO.tambahan) {
       const actualQty = actual_quantities?.find(
         (aq) => aq.do_id === individualDO.id
       );
@@ -239,7 +233,7 @@ exports.completeBigDeliveryOrder = async (req, res, next) => {
       message: "Big Delivery Order completed successfully",
       data: {
         big_do_number: bigDO.big_do_number,
-        completed_dos: bigDO.deliveryOrders.length,
+        completed_dos: bigDO.tambahan.length,
         completed_at: completedAt,
         financial_summary: bigDO.getFinancialSummary(),
       },
@@ -265,16 +259,9 @@ exports.getBigDeliveryOrderById = async (req, res, next) => {
           as: "vehicle",
         },
         {
-          model: DeliveryOrder,
-          as: "deliveryOrders",
-          include: [
-            {
-              model: PurchaseOrder,
-              as: "purchaseOrder",
-              attributes: ["po_number", "customer_name"],
-            },
-          ],
-          order: [["display_order", "ASC"]],
+          model: BigDoTambahan,
+          as: "tambahan",
+          order: [["tambahan_number", "ASC"]],
         },
       ],
     });
@@ -292,7 +279,7 @@ exports.getBigDeliveryOrderById = async (req, res, next) => {
         ...bigDO.toJSON(),
         status_text: bigDO.getStatusText(),
         financial_summary: bigDO.getFinancialSummary(),
-        deliveryOrders: bigDO.deliveryOrders.map((dOrder) => ({
+        deliveryOrders: bigDO.tambahan.map((dOrder) => ({
           ...dOrder.toJSON(),
           unit_display: dOrder.getUnitDisplay(),
           status_text: dOrder.getStatusText(),
