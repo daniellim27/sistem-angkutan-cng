@@ -2,7 +2,13 @@ const { DataTypes } = require('sequelize');
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable('budget_requests', {
+    // Check if table exists first
+    const tableExists = await queryInterface.showAllTables().then(tables => 
+      tables.includes('budget_requests')
+    );
+
+    if (!tableExists) {
+      await queryInterface.createTable('budget_requests', {
       id: {
         type: DataTypes.INTEGER,
         primaryKey: true,
@@ -75,48 +81,94 @@ module.exports = {
       }
     });
 
-    // Add indexes for better query performance
-    await queryInterface.addIndex('budget_requests', ['delivery_order_id']);
-    await queryInterface.addIndex('budget_requests', ['driver_id']);
-    await queryInterface.addIndex('budget_requests', ['status']);
-    await queryInterface.addIndex('budget_requests', ['created_at']);
+    // Add indexes for better query performance (with error handling)
+    try {
+      await queryInterface.addIndex('budget_requests', ['delivery_order_id']);
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+    }
 
-    // Add foreign key constraints
-    await queryInterface.addConstraint('budget_requests', {
-      fields: ['delivery_order_id'],
-      type: 'foreign key',
-      name: 'fk_budget_requests_delivery_order_id',
-      references: {
-        table: 'delivery_orders',
-        field: 'id'
-      },
-      onDelete: 'CASCADE',
-      onUpdate: 'CASCADE'
-    });
+    try {
+      await queryInterface.addIndex('budget_requests', ['driver_id']);
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+    }
 
-    await queryInterface.addConstraint('budget_requests', {
-      fields: ['driver_id'],
-      type: 'foreign key',
-      name: 'fk_budget_requests_driver_id',
-      references: {
-        table: 'users',
-        field: 'id'
-      },
-      onDelete: 'CASCADE',
-      onUpdate: 'CASCADE'
-    });
+    try {
+      await queryInterface.addIndex('budget_requests', ['status']);
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+    }
 
-    await queryInterface.addConstraint('budget_requests', {
-      fields: ['approved_by'],
-      type: 'foreign key',
-      name: 'fk_budget_requests_approved_by',
-      references: {
-        table: 'users',
-        field: 'id'
-      },
-      onDelete: 'SET NULL',
-      onUpdate: 'CASCADE'
-    });
+    try {
+      await queryInterface.addIndex('budget_requests', ['created_at']);
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+    }
+
+    // Add foreign key constraints (with error handling)
+    try {
+      await queryInterface.addConstraint('budget_requests', {
+        fields: ['delivery_order_id'],
+        type: 'foreign key',
+        name: 'fk_budget_requests_delivery_order_id',
+        references: {
+          table: 'delivery_orders',
+          field: 'id'
+        },
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE'
+      });
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+    }
+
+    try {
+      await queryInterface.addConstraint('budget_requests', {
+        fields: ['driver_id'],
+        type: 'foreign key',
+        name: 'fk_budget_requests_driver_id',
+        references: {
+          table: 'users',
+          field: 'id'
+        },
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE'
+      });
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+    }
+
+    try {
+      await queryInterface.addConstraint('budget_requests', {
+        fields: ['approved_by'],
+        type: 'foreign key',
+        name: 'fk_budget_requests_approved_by',
+        references: {
+          table: 'users',
+          field: 'id'
+        },
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE'
+      });
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+    }
+    }
   },
 
   async down(queryInterface, Sequelize) {

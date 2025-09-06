@@ -5,14 +5,17 @@ import apiClient from '../api/axiosConfig';
 interface DepositGroup {
   id: number;
   group_name: string;
-  description?: string;
+  balance: string;
+  target_quantity: string;
+  deposited_amount: string;
+  remaining_quantity: string;
+  unit: string;
+  status: string;
+  total_selisih_amount: string;
+  selisih_details: string | null;
+  selisih_status: string;
   created_at: string;
   updated_at: string;
-  // Enhanced with SPBG-specific fields
-  group_type: 'general' | 'spbg'; // New field to distinguish SPBG groups
-  spbg_location?: string; // SPBG location for SPBG groups
-  spbg_operator?: string; // SPBG operator/company name
-  gas_type?: 'cng' | 'lng' | 'lpg'; // Type of gas handled
 }
 
 interface DepositGroupMember {
@@ -42,21 +45,20 @@ const DepositGroupManagement = () => {
   const [selectedGroup, setSelectedGroup] = useState<DepositGroupWithMembers | null>(null);
   const [editingGroup, setEditingGroup] = useState<DepositGroup | null>(null);
 
-  // Enhanced form data with SPBG fields
+  // Form data for creating/editing groups
   const [formData, setFormData] = useState({
     group_name: '',
-    description: '',
-    group_type: 'general' as 'general' | 'spbg',
-    spbg_location: '',
-    spbg_operator: '',
-    gas_type: 'cng' as 'cng' | 'lng' | 'lpg'
+    target_quantity: '',
+    deposited_amount: '',
+    unit: 'ton'
   });
 
-  // SPBG locations for selection
-  const spbgLocations: { value: string; label: string }[] = [];
-
-  // Gas types for SPBG groups
-  const gasTypes: { value: string; label: string }[] = [];
+  // Unit options for selection
+  const unitOptions = [
+    { value: 'ton', label: 'Ton' },
+    { value: 'kubik', label: 'Kubik (m³)' },
+    { value: 'kilogram', label: 'Kilogram' }
+  ];
 
   useEffect(() => {
     fetchGroups();
@@ -66,7 +68,17 @@ const DepositGroupManagement = () => {
     try {
       setLoading(true);
       const response = await apiClient.get('/deposit-groups');
-      setGroups(response.data.data || []);
+      // The API returns data directly, not wrapped in a 'data' property
+      const groupsData = response.data || [];
+      // Transform API response to match frontend expectations
+      const transformedGroups = groupsData.map((group: DepositGroup) => ({
+        ...group,
+        members: [], // Will be populated when viewing members
+        total_deposits: parseFloat(group.deposited_amount),
+        total_balance: parseFloat(group.balance),
+        member_count: 0 // Will be calculated when needed
+      }));
+      setGroups(transformedGroups);
     } catch (err) {
       setError('Failed to fetch deposit groups.');
       console.error(err);
@@ -79,10 +91,18 @@ const DepositGroupManagement = () => {
     e.preventDefault();
     
     try {
+      const payload = {
+        ...formData,
+        target_quantity: parseFloat(formData.target_quantity),
+        deposited_amount: parseFloat(formData.deposited_amount),
+        remaining_quantity: parseFloat(formData.target_quantity), // Initially same as target
+        status: 'active'
+      };
+
       if (editingGroup) {
-        await apiClient.put(`/deposit-groups/${editingGroup.id}`, formData);
+        await apiClient.put(`/deposit-groups/${editingGroup.id}`, payload);
       } else {
-        await apiClient.post('/deposit-groups', formData);
+        await apiClient.post('/deposit-groups', payload);
       }
       
       setShowCreateModal(false);
@@ -99,11 +119,9 @@ const DepositGroupManagement = () => {
     setEditingGroup(group);
     setFormData({
       group_name: group.group_name,
-      description: group.description || '',
-      group_type: group.group_type || 'general',
-      spbg_location: group.spbg_location || '',
-      spbg_operator: group.spbg_operator || '',
-      gas_type: group.gas_type || 'cng'
+      target_quantity: group.target_quantity,
+      deposited_amount: group.deposited_amount,
+      unit: group.unit
     });
     setShowCreateModal(true);
   };
@@ -125,11 +143,9 @@ const DepositGroupManagement = () => {
   const resetForm = () => {
     setFormData({
       group_name: '',
-      description: '',
-      group_type: 'general',
-      spbg_location: '',
-      spbg_operator: '',
-      gas_type: 'cng'
+      target_quantity: '',
+      deposited_amount: '',
+      unit: 'ton'
     });
   };
 
@@ -168,16 +184,10 @@ const DepositGroupManagement = () => {
     });
   };
 
-  // Get SPBG location display name
-  const getSPBGLocationLabel = (value: string) => {
-    const location = spbgLocations.find(loc => loc.value === value);
-    return location ? location.label : value;
-  };
-
-  // Get gas type display name
-  const getGasTypeLabel = (value: string) => {
-    const gasType = gasTypes.find(gas => gas.value === value);
-    return gasType ? gasType.label : value;
+  // Get unit display name
+  const getUnitLabel = (value: string) => {
+    const unit = unitOptions.find(u => u.value === value);
+    return unit ? unit.label : value;
   };
 
   if (loading) return <div className="text-center p-8">Loading deposit groups...</div>;
@@ -203,53 +213,43 @@ const DepositGroupManagement = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {groups.map((group) => (
           <div key={group.id} className="bg-white rounded-lg shadow-md overflow-hidden">
-            {/* Group Type Badge */}
+            {/* Status Badge */}
             <div className={`px-4 py-2 text-xs font-medium text-white ${
-              group.group_type === 'spbg' ? 'bg-blue-600' : 'bg-gray-600'
+              group.status === 'active' ? 'bg-green-600' : 
+              group.status === 'fulfilled' ? 'bg-blue-600' : 
+              group.status === 'overdrawn' ? 'bg-red-600' : 'bg-gray-600'
             }`}>
-              {group.group_type === 'spbg' ? 'SPBG Group' : 'General Group'}
+              {group.status.charAt(0).toUpperCase() + group.status.slice(1).replace('_', ' ')}
             </div>
 
             <div className="p-4">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">{group.group_name}</h3>
               
-              {group.description && (
-                <p className="text-gray-600 text-sm mb-3">{group.description}</p>
-              )}
-
-              {/* SPBG-specific information display */}
-              {group.group_type === 'spbg' && (
-                <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <h4 className="text-sm font-medium text-blue-900 mb-2">SPBG Information</h4>
-                  <div className="space-y-1 text-sm">
-                    {group.spbg_location && (
-                      <div className="flex items-center">
-                        <span className="text-blue-700 font-medium w-20">Location:</span>
-                        <span className="text-blue-900">{getSPBGLocationLabel(group.spbg_location)}</span>
-                      </div>
-                    )}
-                    {group.spbg_operator && (
-                      <div className="flex items-center">
-                        <span className="text-blue-700 font-medium w-20">Operator:</span>
-                        <span className="text-blue-900">{group.spbg_operator}</span>
-                      </div>
-                    )}
-                    {group.gas_type && (
-                      <div className="flex items-center">
-                        <span className="text-blue-700 font-medium w-20">Gas Type:</span>
-                        <span className="text-blue-900">{getGasTypeLabel(group.gas_type)}</span>
-                      </div>
-                    )}
+              {/* Group Information */}
+              <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <h4 className="text-sm font-medium text-gray-900 mb-2">Group Details</h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700 font-medium">Target:</span>
+                    <span className="text-gray-900">{group.target_quantity} {getUnitLabel(group.unit)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700 font-medium">Remaining:</span>
+                    <span className="text-gray-900">{group.remaining_quantity} {getUnitLabel(group.unit)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700 font-medium">Unit:</span>
+                    <span className="text-gray-900">{getUnitLabel(group.unit)}</span>
                   </div>
                 </div>
-              )}
+              </div>
 
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-600">
                     {formatCurrency(group.total_deposits)}
                   </div>
-                  <div className="text-xs text-gray-500">Total Deposits</div>
+                  <div className="text-xs text-gray-500">Deposited Amount</div>
                 </div>
                 <div className="text-center">
                   <div className={`text-2xl font-bold ${
@@ -261,8 +261,23 @@ const DepositGroupManagement = () => {
                 </div>
               </div>
 
+              {/* Selisih Information */}
+              {group.selisih_status !== 'none' && (
+                <div className="mb-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <h4 className="text-sm font-medium text-yellow-900 mb-1">Selisih Status</h4>
+                  <div className="text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-yellow-700 font-medium">Amount:</span>
+                      <span className="text-yellow-900">{formatCurrency(parseFloat(group.total_selisih_amount))}</span>
+                    </div>
+                    <div className="text-xs text-yellow-600 mt-1">
+                      Status: {group.selisih_status}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
-                <span>{group.member_count} members</span>
                 <span>Created {formatDate(group.created_at)}</span>
               </div>
 
@@ -319,32 +334,7 @@ const DepositGroupManagement = () => {
               </h3>
               
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Group Type Selector */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Group Type *
-                  </label>
-                  <select
-                    value={formData.group_type}
-                    onChange={(e) => setFormData(prev => ({ 
-                      ...prev, 
-                      group_type: e.target.value as 'general' | 'spbg',
-                      // Reset SPBG fields when switching to general
-                      ...(e.target.value === 'general' && {
-                        spbg_location: '',
-                        spbg_operator: '',
-                        gas_type: 'cng'
-                      })
-                    }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    required
-                  >
-                    <option value="general">General Deposit Group</option>
-                    <option value="spbg">SPBG (Gas Station) Group</option>
-                  </select>
-                </div>
-
-                {/* Basic Group Information */}
+                {/* Group Name */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Group Name *
@@ -359,77 +349,58 @@ const DepositGroupManagement = () => {
                   />
                 </div>
 
+                {/* Target Quantity */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Description
+                    Target Quantity *
                   </label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="Enter group description"
-                    rows={3}
+                  <input
+                    type="number"
+                    value={formData.target_quantity}
+                    onChange={(e) => setFormData(prev => ({ ...prev, target_quantity: e.target.value }))}
+                    placeholder="Enter target quantity"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    min="0"
+                    step="0.01"
+                    required
                   />
                 </div>
 
-                {/* SPBG-specific fields - only show when SPBG group type is selected */}
-                {formData.group_type === 'spbg' && (
-                  <div className="border-t border-gray-200 pt-4 mt-4">
-                    <h4 className="text-sm font-medium text-gray-900 mb-3">SPBG Information</h4>
-                    
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          SPBG Location *
-                        </label>
-                        <select
-                          value={formData.spbg_location}
-                          onChange={(e) => setFormData(prev => ({ ...prev, spbg_location: e.target.value }))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                          required
-                        >
-                          <option value="">Select SPBG Location</option>
-                          {spbgLocations.map(location => (
-                            <option key={location.value} value={location.value}>
-                              {location.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                {/* Unit */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Unit *
+                  </label>
+                  <select
+                    value={formData.unit}
+                    onChange={(e) => setFormData(prev => ({ ...prev, unit: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    required
+                  >
+                    {unitOptions.map(unit => (
+                      <option key={unit.value} value={unit.value}>
+                        {unit.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          SPBG Operator
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.spbg_operator}
-                          onChange={(e) => setFormData(prev => ({ ...prev, spbg_operator: e.target.value }))}
-                          placeholder="e.g., Pertamina, Shell, etc."
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Gas Type *
-                        </label>
-                        <select
-                          value={formData.gas_type}
-                          onChange={(e) => setFormData(prev => ({ ...prev, gas_type: e.target.value as 'cng' | 'lng' | 'lpg' }))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                          required
-                        >
-                          {gasTypes.map(gasType => (
-                            <option key={gasType.value} value={gasType.value}>
-                              {gasType.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* Deposited Amount */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Deposited Amount (Rp) *
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.deposited_amount}
+                    onChange={(e) => setFormData(prev => ({ ...prev, deposited_amount: e.target.value }))}
+                    placeholder="Enter deposited amount"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    min="0"
+                    step="0.01"
+                    required
+                  />
+                </div>
 
                 <div className="flex justify-end space-x-3 pt-4">
                   <button

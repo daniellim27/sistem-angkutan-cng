@@ -7,14 +7,14 @@ exports.getAllPurchaseOrders = async (req, res, next) => {
       attributes: {
         include: [
           [
-            Sequelize.fn("COUNT", Sequelize.col("deliveryOrders.id")),
+            Sequelize.fn("COUNT", Sequelize.col("poDeliveryOrders.id")),
             "total_delivery_orders",
           ],
           [
             Sequelize.fn(
               "SUM",
               Sequelize.literal(
-                'CASE WHEN "deliveryOrders"."status" = \'completed\' THEN 1 ELSE 0 END'
+                'CASE WHEN "poDeliveryOrders"."status" = \'completed\' THEN 1 ELSE 0 END'
               )
             ),
             "completed_delivery_orders",
@@ -24,7 +24,7 @@ exports.getAllPurchaseOrders = async (req, res, next) => {
       include: [
         {
           model: DeliveryOrder,
-          as: "deliveryOrders",
+          as: "poDeliveryOrders",
           attributes: [], // Don't include the actual DOs in this list view
         },
       ],
@@ -45,7 +45,7 @@ exports.getPurchaseOrderById = async (req, res, next) => {
       include: [
         {
           model: DeliveryOrder,
-          as: "deliveryOrders", // This alias must match the one in models/index.js
+          as: "poDeliveryOrders", // This alias must match the one in models/index.js
           include: ["driver", "vehicle"], // Eager load driver and vehicle info for each DO
         },
       ],

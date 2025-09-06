@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
+const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
 class MigrationRunner {
@@ -14,11 +15,28 @@ class MigrationRunner {
       max: 5
     });
     
+    // Initialize Sequelize for JS migrations
+    this.sequelize = new Sequelize({
+      host: process.env.DB_HOST,
+      port: process.env.DB_PORT,
+      username: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      dialect: 'postgres',
+      logging: false
+    });
+    
     this.migrationsDir = path.join(__dirname, '../migrations');
     this.migrationOrder = [
       'init.sql',
+      '20241223_create_exchange_rates.js',
+      '20241224_create_iot_table.js',
+      '20241225_add_expense_approval_fields.js',
+      '20241226_create_budget_requests.js',
+      'add_spbg_category.sql',
+      'add_spbg_fields_to_existing.sql',
+      '20241227_add_additional_unload_locations.js',
       'add_driver_locations_table.sql'
-      // Add future migrations here in order
     ];
   }
 
@@ -66,8 +84,13 @@ class MigrationRunner {
       // Execute the migration in a transaction
       await this.pool.query('BEGIN');
       
-      // Run the migration SQL
-      await this.pool.query(content);
+      if (filename.endsWith('.js')) {
+        // Handle JavaScript/Sequelize migrations
+        await this.executeJSMigration(filePath);
+      } else {
+        // Handle SQL migrations
+        await this.pool.query(content);
+      }
       
       // Record the migration
       await this.pool.query(
@@ -83,6 +106,23 @@ class MigrationRunner {
       console.error(`❌ Migration failed: ${filename}`, error.message);
       throw error;
     }
+  }
+
+  async executeJSMigration(filePath) {
+    // Clear require cache to ensure fresh module load
+    delete require.cache[require.resolve(filePath)];
+    
+    const migration = require(filePath);
+    
+    if (typeof migration.up !== 'function') {
+      throw new Error('Migration must export an "up" function');
+    }
+    
+    // Create queryInterface for Sequelize migrations
+    const queryInterface = this.sequelize.getQueryInterface();
+    
+    // Execute the up migration
+    await migration.up(queryInterface, this.sequelize.Sequelize);
   }
 
   async runMigrations() {
@@ -142,6 +182,7 @@ class MigrationRunner {
 
   async close() {
     await this.pool.end();
+    await this.sequelize.close();
   }
 }
 
