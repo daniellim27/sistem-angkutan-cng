@@ -48,6 +48,7 @@ const webPaymentsRoutes = require("./routes/web/payments.routes");
 const webExpenseRoutes = require("./routes/web/expense.routes");
 const webBudgetRequestRoutes = require("./routes/web/budgetRequest.routes");
 const webInfrastructureRoutes = require("./routes/web/infrastructure.routes");
+const webVehicleExpenseRoutes = require("./routes/vehicleExpenseRoutes");
 const legacyRitasePaymentsRoutes = require("./routes/web/ritase.payments.legacy.route");
 const utilsRoutes = require("./routes/utils.routes");
 const webDepositGroupRoutes = require("./routes/web/depositGroup.routes");
@@ -172,6 +173,7 @@ initializeDatabase().then(() => {
   app.use("/api/web/expenses", webExpenseRoutes);
   app.use("/api/web/budget-requests", webBudgetRequestRoutes);
   app.use("/api/web/infrastructure", webInfrastructureRoutes);
+  app.use("/api/web/vehicle-expense-cash", webVehicleExpenseRoutes);
   app.use("/api/web/ritase-payments", legacyRitasePaymentsRoutes);
   app.use("/api/web/deposit-groups", webDepositGroupRoutes);
   app.use("/api/web/utils", utilsRoutes);

@@ -514,6 +514,16 @@ CashTransaction.belongsTo(CashCategory, {
   as: "category",
 });
 
+// Vehicle to CashTransaction (One-to-Many) for vehicle expenses
+Vehicle.hasMany(CashTransaction, {
+  foreignKey: "vehicle_id",
+  as: "expenseTransactions",
+});
+CashTransaction.belongsTo(Vehicle, {
+  foreignKey: "vehicle_id",
+  as: "vehicle",
+});
+
 // DepositGroup to DepositGroupMember (One-to-Many)
 DepositGroup.hasMany(DepositGroupMember, {
   foreignKey: "group_id",

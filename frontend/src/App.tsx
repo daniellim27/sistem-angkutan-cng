@@ -48,6 +48,7 @@ import StockBatchesPage from "./pages/StockBatches";
 import CashManagementPage from "./pages/CashManagement";
 import CashCoordinatorPage from "./pages/CashCoordinator";
 import TempoManagementPage from "./pages/CashTempoManagement";
+import VehicleExpenseCashPage from "./pages/VehicleExpenseCash";
 import StockHistoryPage from "./pages/StockHistory";
 import VehicleServiceHistory from "./pages/VehicleServiceHistory";
 import PaymentsRoutes from "./modules/payments/routes";
@@ -186,6 +187,7 @@ function App() {
           <Route path="cash" element={<CashManagementPage />} />
           <Route path="cash-coordinator" element={<CashCoordinatorPage />} />
           <Route path="tempo" element={<TempoManagementPage />} />
+          <Route path="vehicle-expense-cash" element={<VehicleExpenseCashPage />} />
           <Route path="deposit-groups" element={<DepositGroupManagement />} />
           <Route path="budget-requests" element={<BudgetRequestManagement />} />
           <Route path="driver-expenses" element={<DriverExpenseManagement />} />

@@ -26,6 +26,7 @@ const MainLayout = () => {
     if (path.startsWith("/ritase")) return "Ritase Dashboard";
     if (path.startsWith("/buku-kas")) return "Cash Book";
     if (path.startsWith("/tempo")) return "Credit Book";
+    if (path.startsWith("/vehicle-expense-cash")) return "Kas Pengeluaran Mobil";
     if (path.startsWith("/deposit-groups")) return "Deposit Payments";
     if (path.startsWith("/budget-requests")) return "Budget Request Management";
     if (path.startsWith("/driver-expenses")) return "Driver Expense Management";
@@ -451,6 +452,22 @@ const MainLayout = () => {
                 <span className="text-xl mr-3">🤬</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
                   Credit Book
+                </span>
+              </Link>
+            </li>
+            <li className="mb-4">
+              <Link
+                to="/vehicle-expense-cash"
+                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
+                  isActiveLink("/vehicle-expense-cash")
+                    ? "bg-gray-700 border-l-4 border-blue-500"
+                    : ""
+                }`}
+                title="Vehicle Expense Cash"
+              >
+                <span className="text-xl mr-3">🚗</span>
+                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
+                  Kas Pengeluaran Mobil
                 </span>
               </Link>
             </li>

@@ -62,6 +62,7 @@ apiClient.interceptors.response.use(
     if (
       response.config.url?.includes("/cash/") ||
       response.config.url?.includes("/cash-coordinator/") ||
+      response.config.url?.includes("/vehicle-expense-cash") ||
       response.config.url?.includes("/big-delivery-orders") ||
       response.config.url?.includes("/trips") ||
       response.config.url?.includes("/purchase-orders") ||

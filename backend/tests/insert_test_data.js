@@ -1,5 +1,17 @@
 // Script to insert Module 2 test data for comprehensive SPBG & CNG filtering testing
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+// Check if required environment variables are set
+const requiredEnvVars = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
+const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingVars.length > 0) {
+  console.error('❌ Missing required environment variables:', missingVars.join(', '));
+  console.error('Please set these variables or create a .env file in the backend directory');
+  process.exit(1);
+}
+
 const db = require(path.join(__dirname, '../src/utils/db'));
 
 const insertTestData = async () => {

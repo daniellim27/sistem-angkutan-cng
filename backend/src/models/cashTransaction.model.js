@@ -34,6 +34,14 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING(20),
       allowNull: false
     },
+    vehicle_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'vehicles',
+        key: 'id'
+      }
+    },
     transaction_date: {
       type: DataTypes.DATEONLY,
       allowNull: false,
