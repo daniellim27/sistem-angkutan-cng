@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiClient from '../api/axiosConfig';
 
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000';
+
 interface DriverExpense {
   id: number;
   jenis: string;
@@ -59,6 +61,8 @@ interface DeliveryOrder {
   calculation_method?: 'jisdor' | 'fixed';
   jisdor_rate?: number;
   gas_filling_cost?: number;
+  // Surat jalan photos
+  surat_jalan_photo_url?: string | string[];
   // Added financial and expense data
   expenses?: DriverExpense[];
   budgetRequests?: BudgetRequest[];
@@ -479,6 +483,75 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
           </div>
         </div>
 
+        {/* Surat Jalan Documents */}
+        {Array.isArray(deliveryOrder.surat_jalan_photo_url) && deliveryOrder.surat_jalan_photo_url.length > 0 && (
+          <div className="bg-white p-6 rounded-lg shadow border-t-4 border-green-500">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">📄 Surat Jalan Documents</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {deliveryOrder.surat_jalan_photo_url.map((photoUrl, index) => (
+                <div key={index} className="relative group">
+                  <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                    <div className="flex items-center justify-center space-x-2 mb-3">
+                      <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span className="text-lg font-medium text-gray-700">
+                        Surat Jalan {(deliveryOrder.surat_jalan_photo_url?.length || 0) > 1 ? `#${index + 1}` : ''}
+                      </span>
+                    </div>
+                    
+                    <div className="text-center">
+                      <a
+                        href={`${BACKEND_URL}/${photoUrl}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                      >
+                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                        View Document
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
+              <div className="flex items-center">
+                <svg className="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span className="text-sm text-green-700 font-medium">
+                  {deliveryOrder.surat_jalan_photo_url?.length || 0} surat jalan document{(deliveryOrder.surat_jalan_photo_url?.length || 0) > 1 ? 's' : ''} uploaded
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Show message when no surat jalan is available */}
+        {(!deliveryOrder.surat_jalan_photo_url || (Array.isArray(deliveryOrder.surat_jalan_photo_url) && deliveryOrder.surat_jalan_photo_url.length === 0)) && (
+          <div className="bg-white p-6 rounded-lg shadow border-t-4 border-yellow-500">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">📄 Surat Jalan Documents</h2>
+            
+            <div className="text-center py-8">
+              <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <p className="text-gray-500 text-lg">No surat jalan documents uploaded yet</p>
+              <p className="text-gray-400 text-sm mt-2">Documents will appear here once the driver confirms the load</p>
+            </div>
+          </div>
+        )}
+
         {/* Financial Information */}
         <div className="bg-white p-6 rounded-lg shadow">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Financial Information</h2>
@@ -829,7 +902,7 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
                       <div className="flex items-center space-x-2">
                         {request.evidence_url && (
                           <a
-                            href={`${process.env.REACT_APP_API_URL || 'http://localhost:3000'}/${request.evidence_url}`}
+                            href={`${BACKEND_URL}/${request.evidence_url}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:text-blue-800 text-sm"
@@ -906,7 +979,7 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
                       <div className="flex items-center space-x-2">
                         {expense.receipt_url && (
                           <a
-                            href={`${process.env.REACT_APP_API_URL || 'http://localhost:3000'}/${expense.receipt_url}`}
+                            href={`${BACKEND_URL}/${expense.receipt_url}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:text-blue-800 text-sm"

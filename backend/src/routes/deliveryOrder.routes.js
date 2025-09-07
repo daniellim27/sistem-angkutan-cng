@@ -59,23 +59,44 @@ const suratJalanPhotoStorage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const fileExtension = path.extname(file.originalname);
-    // Fix Android file names
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9_.-]/g, "_");
+    
+    // Handle blob URLs and get proper file extension
+    let fileExtension = path.extname(file.originalname);
+    if (!fileExtension || file.originalname.includes('blob:')) {
+      // If no extension or blob URL, determine from MIME type
+      if (file.mimetype === 'image/jpeg') {
+        fileExtension = '.jpg';
+      } else if (file.mimetype === 'image/png') {
+        fileExtension = '.png';
+      } else if (file.mimetype === 'application/pdf') {
+        fileExtension = '.pdf';
+      } else {
+        fileExtension = '.jpg'; // default fallback
+      }
+    }
+    
     cb(null, "surat-jalan-photo-" + uniqueSuffix + fileExtension);
   },
 });
 
 const suratJalanPhotoFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png/;
-  const mimetype = allowedTypes.test(file.mimetype);
-  const extname = allowedTypes.test(
-    path.extname(file.originalname).toLowerCase()
-  );
-
-  if (mimetype && extname) {
+  const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+  
+  // Primary validation should be based on MIME type
+  if (allowedMimeTypes.includes(file.mimetype)) {
     return cb(null, true);
   }
+  
+  // Fallback: check file extension for cases where MIME type might be incorrect
+  const allowedExtensions = /jpeg|jpg|png/;
+  const extname = allowedExtensions.test(
+    path.extname(file.originalname).toLowerCase()
+  );
+  
+  if (extname) {
+    return cb(null, true);
+  }
+  
   cb(
     new Error(
       "Error: Foto surat jalan hanya mendukung format JPEG, JPG, atau PNG."

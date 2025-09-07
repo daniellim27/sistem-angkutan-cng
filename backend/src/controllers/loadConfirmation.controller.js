@@ -19,6 +19,9 @@ exports.confirmLoad = async (req, res, next) => {
       driverId,
     });
     console.log("Uploaded file:", req.file);
+    console.log("All uploaded files:", req.files);
+    console.log("Request body:", req.body);
+    console.log("Content-Type:", req.headers['content-type']);
 
     // Validasi input
     if (!actual_load_quantity) {
@@ -29,22 +32,36 @@ exports.confirmLoad = async (req, res, next) => {
 
     // Accept both single and multiple file upload
     let suratJalanFile = req.file;
-    const suratJalanFiles = req.files; // This will be an array
+    const suratJalanFiles = req.files || []; // Ensure it's always an array
 
-    if (!suratJalanFile && suratJalanFiles && suratJalanFiles.length > 0) {
+    console.log("Files received:", {
+      file: req.file,
+      files: req.files,
+      filesLength: suratJalanFiles.length
+    });
+
+    if (!suratJalanFile && suratJalanFiles.length > 0) {
       suratJalanFile = suratJalanFiles[0];
     }
 
-    if (!suratJalanFile) {
+    if (!suratJalanFile && suratJalanFiles.length === 0) {
       return res.status(400).json({
         message: "Foto surat jalan harus diupload.",
       });
     }
 
-    // Process file upload
-    const surat_jalan_photo_url = suratJalanFiles.map((f) =>
-      f.path.replace(/\\/g, "/")
-    );
+    // Process file upload - handle both single file and multiple files
+    let surat_jalan_photo_url = [];
+    
+    if (suratJalanFiles.length > 0) {
+      // Multiple files uploaded
+      surat_jalan_photo_url = suratJalanFiles.map((f) =>
+        f.path.replace(/\\/g, "/")
+      );
+    } else if (suratJalanFile) {
+      // Single file uploaded  
+      surat_jalan_photo_url = [suratJalanFile.path.replace(/\\/g, "/")];
+    }
 
     // Cari delivery order
     const deliveryOrder = await DeliveryOrder.findOne({

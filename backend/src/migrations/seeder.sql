@@ -10,7 +10,7 @@ INSERT INTO admin_profiles (user_id, full_name, phone, email) VALUES
 ((SELECT id FROM users WHERE username = 'admin'), 'System Administrator', '081234567890', 'admin@company.com');
 
 -- Stock Categories (Essential for business operations)
-INSERT INTO stock_categories (category_name, description) VALUES
+INSERT INTO stock_categories (category_name, description) VALUES    
 ('Oli & Pelumas', 'Oli mesin, oli transmisi, dan pelumas lainnya'),
 ('Filter', 'Filter oli, filter solar, filter udara'),
 ('Spare Parts', 'Suku cadang kendaraan'),

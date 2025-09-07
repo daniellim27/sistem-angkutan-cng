@@ -37,7 +37,7 @@ interface DODetails {
   unload_longitude: string;
   status: string;
   created_at: string;
-  surat_jalan_photo_url?: string;
+  surat_jalan_photo_url?: string | string[];
 
   // Related data
   purchaseOrder?: {
@@ -85,6 +85,7 @@ const DODetailScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [poSummary, setPoSummary] = useState<any>(null);
   const [showImage, setShowImage] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string>("");
 
   const fetchDODetails = async () => {
     if (!id) return;
@@ -452,18 +453,51 @@ const DODetailScreen = () => {
             doDetails.surat_jalan_photo_url
           )}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>📄 Documents</Text>
-            <TouchableOpacity
-              style={styles.documentItem}
-              onPress={() => setShowImage(true)}
-            >
-              <FontAwesome5 name="file-image" size={20} color="#3498db" />
-              <Text style={styles.documentText}>Surat Jalan Photo</Text>
-              <FontAwesome5 name="external-link-alt" size={16} color="#666" />
-            </TouchableOpacity>
+            <View style={styles.cardTitleRow}>
+              <Text style={styles.cardTitle}>📄 Surat Jalan Documents</Text>
+              {(() => {
+                const photos = Array.isArray(doDetails.surat_jalan_photo_url) 
+                  ? doDetails.surat_jalan_photo_url 
+                  : [doDetails.surat_jalan_photo_url];
+                
+                if (photos.length > 1) {
+                  return (
+                    <View style={styles.photoCountBadge}>
+                      <Text style={styles.photoCountText}>{photos.length} photos</Text>
+                    </View>
+                  );
+                }
+                return null;
+              })()}
+            </View>
+            {(() => {
+              const photos = Array.isArray(doDetails.surat_jalan_photo_url) 
+                ? doDetails.surat_jalan_photo_url 
+                : [doDetails.surat_jalan_photo_url];
+              
+              return photos.map((photoUrl, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.documentItem,
+                    index > 0 && styles.documentItemSpacing
+                  ]}
+                  onPress={() => {
+                    setSelectedImageUrl(photoUrl);
+                    setShowImage(true);
+                  }}
+                >
+                  <FontAwesome5 name="file-image" size={20} color="#3498db" />
+                  <Text style={styles.documentText}>
+                    Surat Jalan Photo {photos.length > 1 ? `${index + 1}` : ''}
+                  </Text>
+                  <FontAwesome5 name="external-link-alt" size={16} color="#666" />
+                </TouchableOpacity>
+              ));
+            })()}
             <DocumentImageViewer
               visible={showImage}
-              imageUrl={doDetails.surat_jalan_photo_url}
+              imageUrl={selectedImageUrl}
               onClose={() => setShowImage(false)}
             />
           </View>
@@ -592,7 +626,28 @@ const styles = StyleSheet.create({
     backgroundColor: "#f9fafb",
     borderRadius: 8,
   },
+  documentItemSpacing: {
+    marginTop: 8,
+  },
   documentText: { flex: 1, marginLeft: 12, fontSize: 14, color: "#1f2937" },
+  
+  cardTitleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  photoCountBadge: {
+    backgroundColor: "#3498db",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  photoCountText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
 });
 
 export default DODetailScreen;
