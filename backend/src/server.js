@@ -1,10 +1,43 @@
 // server.js
 require("dotenv").config();
+
+// Polyfill for File API to fix undici compatibility issues
+if (typeof globalThis.File === 'undefined') {
+  globalThis.File = class File {
+    constructor(chunks, filename, options = {}) {
+      this.name = filename;
+      this.size = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+      this.type = options.type || '';
+      this.lastModified = options.lastModified || Date.now();
+      this._chunks = chunks;
+    }
+    
+    stream() {
+      return new ReadableStream({
+        start(controller) {
+          for (const chunk of this._chunks) {
+            controller.enqueue(chunk);
+          }
+          controller.close();
+        }
+      });
+    }
+    
+    arrayBuffer() {
+      return Promise.resolve(Buffer.concat(this._chunks));
+    }
+    
+    text() {
+      return Promise.resolve(Buffer.concat(this._chunks).toString());
+    }
+  };
+}
+
 const minimist = require("minimist");
 
 const admin = require("./services/firebase");
 const argv = minimist(process.argv.slice(2));
-const host = argv.host || 'localhost';
+const host = argv.host || process.env.HOST || (process.env.NODE_ENV === 'development' ? '0.0.0.0' : 'localhost');
 
 const express = require("express");
 const setupMiddleware = require("./middlewares/setup.middleware");

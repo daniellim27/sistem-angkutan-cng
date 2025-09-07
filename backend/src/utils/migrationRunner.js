@@ -37,7 +37,9 @@ class MigrationRunner {
       'add_spbg_fields_to_existing.sql',
       '20241227_add_additional_unload_locations.js',
       'add_driver_locations_table.sql',
-      '20241225_create_infrastructure_inventory.js'
+      '20241225_create_infrastructure_inventory.js',
+      '20241225_add_cash_categories_unique_constraint.sql',
+      '20241225_add_vehicle_id_to_cash_transactions.js'
     ];
   }
 

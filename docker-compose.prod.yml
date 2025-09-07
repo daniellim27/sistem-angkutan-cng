@@ -1,0 +1,24 @@
+# Production configuration
+version: '3.8'
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme_secure_password}
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    # Remove port exposure in production for security
+    ports: []
+
+  backend:
+    environment:
+      NODE_ENV: production
+      DB_PASSWORD: ${DB_PASSWORD:-changeme_secure_password}
+      JWT_SECRET: ${JWT_SECRET:-changeme_jwt_secret}
+    # Remove port exposure in production - use reverse proxy
+    ports: []
+    restart: always
+
+volumes:
+  postgres_data_prod:
+    driver: local

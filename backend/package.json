@@ -13,14 +13,16 @@
     "migrate:legacy": "node src/utils/runMigrations.js",
     "migrate:fresh": "node src/utils/migrateFresh.js",
     "migrate:spbg": "node run_spbg_migration.js",
-    "seeder": "node src/utils/runSeeder.js",
+    "seeder": "node scripts/run-seeder.js",
     "hash-passwords": "node src/utils/hashPasswords.js",
     "insert:test-data": "node insert_test_data.js",
     "add:spbg-category": "node add_spbg_category.js",
     "lint": "eslint src/",
     "db:check": "npm run migrate:status",
     "db:setup": "npm run migrate && npm run seeder",
-    "db:init": "npm run migrate:mark-existing && npm run migrate"
+    "db:init": "npm run migrate:mark-existing && npm run migrate",
+    "setup:admin": "node setup-admin.js",
+    "db:full-setup": "npm run migrate && npm run seeder && npm run setup:admin"
   },
   "keywords": [],
   "author": "",
