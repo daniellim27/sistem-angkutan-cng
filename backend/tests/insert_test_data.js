@@ -30,7 +30,23 @@ const insertTestData = async () => {
       ON CONFLICT (category_name) DO NOTHING;
     `);
 
-    // 2. Insert SPBG-ONLY transactions (SPBG category + SPBG fields, no CNG keywords)
+    // 2. Get category IDs after insertion
+    console.log("📝 Getting category IDs...");
+    const categoryResult = await db.pool.query(`
+      SELECT id, category_name FROM cash_categories 
+      WHERE category_name IN (
+        'CNG Fuel Purchase', 'CNG Equipment Maintenance', 'CNG Insurance', 
+        'SPBG Deposit', 'SPBG Refund'
+      )
+      ORDER BY category_name
+    `);
+    
+    const categoryMap = {};
+    categoryResult.rows.forEach(cat => {
+      categoryMap[cat.category_name] = cat.id;
+    });
+
+    // 3. Insert SPBG-ONLY transactions (SPBG category + SPBG fields, no CNG keywords)
     console.log("📝 Inserting SPBG-ONLY transactions...");
     await db.pool.query(`
       INSERT INTO cash_transactions (
@@ -38,28 +54,28 @@ const insertTestData = async () => {
         transaction_date, account, spbg_location, gas_volume_m3, calculation_method, 
         jisdor_rate, gas_filling_cost, no_nota, created_at
       ) VALUES 
-      ('debit', 1, 1500000.00, 'Pengisian gas untuk truck B1234ABC - Jakarta SPBG Center', 'SPBG-JKT-001-2025', '2025-08-01', 'Bank BCA', 'jakarta', 100.00, 'jisdor', 15000.00, 1500000.00, '{"INV-JKT-001", "INV-JKT-002"}', '2025-08-01 08:00:00+07'),
-      ('debit', 1, 750000.00, 'Pengisian gas untuk truck B5678DEF - Bandung SPBG Station', 'SPBG-BDG-002-2025', '2025-08-02', 'Bank Mandiri', 'bandung', 50.00, 'jisdor', 15000.00, 750000.00, '{"INV-BDG-001"}', '2025-08-02 09:30:00+07'),
-      ('debit', 1, 400000.00, 'Pengisian gas untuk truck B9012GHI - Surabaya SPBG Hub', 'SPBG-SBY-003-2025', '2025-08-03', 'Bank BNI', 'surabaya', 25.00, 'fixed', 16000.00, 400000.00, '{"INV-SBY-001", "INV-SBY-002", "INV-SBY-003"}', '2025-08-03 10:15:00+07'),
-      ('kredit', 6, 250000.00, 'Pengembalian deposit SPBG Semarang - tidak terpakai', 'REFUND-SMG-001-2025', '2025-08-04', 'Bank BCA', 'semarang', 15.00, 'fixed', 16666.67, 250000.00, '{"REF-SMG-001"}', '2025-08-04 14:20:00+07'),
-      ('debit', 1, 2000000.00, 'Pengisian gas premium untuk truck B3456JKL - Yogyakarta SPBG Station', 'SPBG-JOG-004-2025', '2025-08-05', 'Bank Mandiri', 'yogyakarta', 80.00, 'jisdor', 25000.00, 2000000.00, '{"INV-JOG-001", "INV-JOG-002"}', '2025-08-05 11:45:00+07');
+      ('debit', ${categoryMap['SPBG Gas Filling'] || 'NULL'}, 1500000.00, 'Pengisian gas untuk truck B1111XYZ - Jakarta SPBG Center', 'MOD2-SPBG-JKT-001-2025', '2025-08-01', 'Bank BCA', 'jakarta', 100.00, 'jisdor', 15000.00, 1500000.00, '{"MOD2-INV-JKT-001", "MOD2-INV-JKT-002"}', '2025-08-01 08:00:00+07'),
+      ('debit', ${categoryMap['SPBG Gas Filling'] || 'NULL'}, 750000.00, 'Pengisian gas untuk truck B2222ABC - Bandung SPBG Station', 'MOD2-SPBG-BDG-002-2025', '2025-08-02', 'Bank Mandiri', 'bandung', 50.00, 'jisdor', 15000.00, 750000.00, '{"MOD2-INV-BDG-001"}', '2025-08-02 09:30:00+07'),
+      ('debit', ${categoryMap['SPBG Gas Filling'] || 'NULL'}, 400000.00, 'Pengisian gas untuk truck B3333DEF - Surabaya SPBG Hub', 'MOD2-SPBG-SBY-003-2025', '2025-08-03', 'Bank BNI', 'surabaya', 25.00, 'fixed', 16000.00, 400000.00, '{"MOD2-INV-SBY-001", "MOD2-INV-SBY-002", "MOD2-INV-SBY-003"}', '2025-08-03 10:15:00+07'),
+      ('kredit', ${categoryMap['SPBG Refund'] || 'NULL'}, 250000.00, 'Pengembalian deposit SPBG Semarang - tidak terpakai', 'MOD2-REFUND-SMG-001-2025', '2025-08-04', 'Bank BCA', 'semarang', 15.00, 'fixed', 16666.67, 250000.00, '{"MOD2-REF-SMG-001"}', '2025-08-04 14:20:00+07'),
+      ('debit', ${categoryMap['SPBG Gas Filling'] || 'NULL'}, 2000000.00, 'Pengisian gas premium untuk truck B4444GHI - Yogyakarta SPBG Station', 'MOD2-SPBG-JOG-004-2025', '2025-08-05', 'Bank Mandiri', 'yogyakarta', 80.00, 'jisdor', 25000.00, 2000000.00, '{"MOD2-INV-JOG-001", "MOD2-INV-JOG-002"}', '2025-08-05 11:45:00+07');
     `);
 
-    // 3. Insert CNG-ONLY transactions (CNG categories, no SPBG fields, CNG keywords in description)
+    // 4. Insert CNG-ONLY transactions (CNG categories, no SPBG fields, CNG keywords in description)
     console.log("📝 Inserting CNG-ONLY transactions...");
     await db.pool.query(`
       INSERT INTO cash_transactions (
         transaction_type, category_id, amount, description, reference_number, 
         transaction_date, account, created_at
       ) VALUES 
-      ('debit', 2, 500000.00, 'Pembelian bahan bakar CNG untuk depot Jakarta - 50 m³ @ Rp 10,000/m³', 'CNG-FUEL-001-2025', '2025-08-01', 'Bank BCA', '2025-08-01 07:30:00+07'),
-      ('debit', 3, 1200000.00, 'Maintenance sistem CNG truck B1234ABC - ganti regulator dan selang', 'CNG-MAINT-001-2025', '2025-08-02', 'Bank Mandiri', '2025-08-02 13:45:00+07'),
-      ('debit', 4, 800000.00, 'Asuransi tahunan peralatan CNG - coverage kerusakan dan kecelakaan', 'CNG-INS-001-2025', '2025-08-03', 'Bank BNI', '2025-08-03 16:20:00+07'),
-      ('debit', 5, 1000000.00, 'Deposit awal di SPBG Jakarta Center - untuk pengisian gas reguler', 'SPBG-DEP-001-2025', '2025-08-04', 'Bank BCA', '2025-08-04 09:15:00+07'),
-      ('debit', 2, 300000.00, 'Pengisian gas CNG untuk truck B5678DEF - 30 m³ @ Rp 10,000/m³', 'CNG-GAS-001-2025', '2025-08-05', 'Bank Mandiri', '2025-08-05 15:30:00+07');
+      ('debit', ${categoryMap['CNG Fuel Purchase'] || 'NULL'}, 500000.00, 'Pembelian bahan bakar CNG untuk depot Jakarta - 50 m³ @ Rp 10,000/m³', 'MOD2-CNG-FUEL-001-2025', '2025-08-01', 'Bank BCA', '2025-08-01 07:30:00+07'),
+      ('debit', ${categoryMap['CNG Equipment Maintenance'] || 'NULL'}, 1200000.00, 'Maintenance sistem CNG truck B5555JKL - ganti regulator dan selang', 'MOD2-CNG-MAINT-001-2025', '2025-08-02', 'Bank Mandiri', '2025-08-02 13:45:00+07'),
+      ('debit', ${categoryMap['CNG Insurance'] || 'NULL'}, 800000.00, 'Asuransi tahunan peralatan CNG - coverage kerusakan dan kecelakaan', 'MOD2-CNG-INS-001-2025', '2025-08-03', 'Bank BNI', '2025-08-03 16:20:00+07'),
+      ('debit', ${categoryMap['SPBG Deposit'] || 'NULL'}, 1000000.00, 'Deposit awal di SPBG Jakarta Center - untuk pengisian gas reguler', 'MOD2-SPBG-DEP-001-2025', '2025-08-04', 'Bank BCA', '2025-08-04 09:15:00+07'),
+      ('debit', ${categoryMap['CNG Fuel Purchase'] || 'NULL'}, 300000.00, 'Pengisian gas CNG untuk truck B6666MNO - 30 m³ @ Rp 10,000/m³', 'MOD2-CNG-GAS-001-2025', '2025-08-05', 'Bank Mandiri', '2025-08-05 15:30:00+07');
     `);
 
-    // 4. Insert BOTH CNG & SPBG transactions (CNG categories + SPBG fields + CNG keywords)
+    // 5. Insert BOTH CNG & SPBG transactions (CNG categories + SPBG fields + CNG keywords)
     console.log("📝 Inserting BOTH CNG & SPBG transactions...");
     await db.pool.query(`
       INSERT INTO cash_transactions (
@@ -67,25 +83,41 @@ const insertTestData = async () => {
         transaction_date, account, spbg_location, gas_volume_m3, calculation_method, 
         jisdor_rate, gas_filling_cost, no_nota, created_at
       ) VALUES 
-      ('debit', 2, 1800000.00, 'Pengisian gas CNG untuk truck B9999XYZ - Medan SPBG Hub', 'CNG-SPBG-MDN-001-2025', '2025-08-06', 'Bank BCA', 'medan', 120.00, 'jisdor', 15000.00, 1800000.00, '{"INV-MDN-001", "INV-MDN-002"}', '2025-08-06 10:00:00+07'),
-      ('debit', 3, 900000.00, 'Maintenance sistem CNG + pengisian gas di Palembang SPBG', 'CNG-SPBG-PLG-001-2025', '2025-08-07', 'Bank Mandiri', 'palembang', 60.00, 'fixed', 15000.00, 900000.00, '{"INV-PLG-001"}', '2025-08-07 11:30:00+07'),
-      ('debit', 4, 1500000.00, 'Asuransi CNG + gas filling di Makassar SPBG Center', 'CNG-SPBG-MKS-001-2025', '2025-08-08', 'Bank BNI', 'makassar', 100.00, 'jisdor', 15000.00, 1500000.00, '{"INV-MKS-001", "INV-MKS-002"}', '2025-08-08 14:15:00+07');
+      ('debit', ${categoryMap['CNG Fuel Purchase'] || 'NULL'}, 1800000.00, 'Pengisian gas CNG untuk truck B9999XYZ - Medan SPBG Hub', 'MOD2-CNG-SPBG-MDN-001-2025', '2025-08-06', 'Bank BCA', 'medan', 120.00, 'jisdor', 15000.00, 1800000.00, '{"MOD2-INV-MDN-001", "MOD2-INV-MDN-002"}', '2025-08-06 10:00:00+07'),
+      ('debit', ${categoryMap['CNG Equipment Maintenance'] || 'NULL'}, 900000.00, 'Maintenance sistem CNG + pengisian gas di Palembang SPBG', 'MOD2-CNG-SPBG-PLG-001-2025', '2025-08-07', 'Bank Mandiri', 'palembang', 60.00, 'fixed', 15000.00, 900000.00, '{"MOD2-INV-PLG-001"}', '2025-08-07 11:30:00+07'),
+      ('debit', ${categoryMap['CNG Insurance'] || 'NULL'}, 1500000.00, 'Asuransi CNG + gas filling di Makassar SPBG Center', 'MOD2-CNG-SPBG-MKS-001-2025', '2025-08-08', 'Bank BNI', 'makassar', 100.00, 'jisdor', 15000.00, 1500000.00, '{"MOD2-INV-MKS-001", "MOD2-INV-MKS-002"}', '2025-08-08 14:15:00+07');
     `);
 
-    // 5. Insert NON-CNG & NON-SPBG transactions (regular categories, no CNG/SPBG keywords, no SPBG fields)
+    // 6. Get regular category IDs
+    console.log("📝 Getting regular category IDs...");
+    const regularCategoryResult = await db.pool.query(`
+      SELECT id, category_name FROM cash_categories 
+      WHERE category_name IN (
+        'Setoran Modal', 'Pendapatan Operasional', 'Pendapatan Lain-lain', 
+        'Biaya Kantor', 'Gaji Staf', 'Pembelian Aset', 'Biaya Operasional'
+      )
+      ORDER BY category_name
+    `);
+    
+    const regularCategoryMap = {};
+    regularCategoryResult.rows.forEach(cat => {
+      regularCategoryMap[cat.category_name] = cat.id;
+    });
+
+    // 7. Insert NON-CNG & NON-SPBG transactions (regular categories, no CNG/SPBG keywords, no SPBG fields)
     console.log("📝 Inserting NON-CNG & NON-SPBG transactions...");
     await db.pool.query(`
       INSERT INTO cash_transactions (
         transaction_type, category_id, amount, description, reference_number, 
         transaction_date, account, created_at
       ) VALUES 
-      ('debit', 27, 5000000.00, 'Setoran modal awal untuk operasional perusahaan', 'MODAL-001-2025', '2025-08-09', 'Bank BCA', '2025-08-09 09:00:00+07'),
-      ('debit', 28, 2500000.00, 'Pendapatan dari pengiriman barang Jakarta-Bandung', 'PENDAPATAN-001-2025', '2025-08-10', 'Bank Mandiri', '2025-08-10 10:30:00+07'),
-      ('kredit', 30, 800000.00, 'Biaya kantor - pembelian printer dan kertas', 'KANTOR-001-2025', '2025-08-11', 'Bank BCA', '2025-08-11 11:45:00+07'),
-      ('kredit', 34, 3000000.00, 'Gaji staf bulan Agustus 2025', 'GAJI-001-2025', '2025-08-12', 'Bank Mandiri', '2025-08-12 12:00:00+07'),
-      ('kredit', 34, 15000000.00, 'Pembelian truck baru untuk operasional', 'ASET-001-2025', '2025-08-13', 'Bank BNI', '2025-08-13 13:15:00+07'),
-      ('kredit', 35, 1200000.00, 'Biaya BBM solar untuk truck diesel', 'BBM-001-2025', '2025-08-14', 'Bank BCA', '2025-08-14 14:30:00+07'),
-      ('debit', 29, 500000.00, 'Pendapatan sewa gudang', 'SEWA-001-2025', '2025-08-15', 'Bank Mandiri', '2025-08-15 15:45:00+07');
+      ('debit', ${regularCategoryMap['Setoran Modal'] || 'NULL'}, 5000000.00, 'Setoran modal awal untuk operasional perusahaan', 'MOD2-MODAL-001-2025', '2025-08-09', 'Bank BCA', '2025-08-09 09:00:00+07'),
+      ('debit', ${regularCategoryMap['Pendapatan Operasional'] || 'NULL'}, 2500000.00, 'Pendapatan dari pengiriman barang Jakarta-Bandung', 'MOD2-PENDAPATAN-001-2025', '2025-08-10', 'Bank Mandiri', '2025-08-10 10:30:00+07'),
+      ('kredit', ${regularCategoryMap['Biaya Kantor'] || 'NULL'}, 800000.00, 'Biaya kantor - pembelian printer dan kertas', 'MOD2-KANTOR-001-2025', '2025-08-11', 'Bank BCA', '2025-08-11 11:45:00+07'),
+      ('kredit', ${regularCategoryMap['Gaji Staf'] || 'NULL'}, 3000000.00, 'Gaji staf bulan Agustus 2025', 'MOD2-GAJI-001-2025', '2025-08-12', 'Bank Mandiri', '2025-08-12 12:00:00+07'),
+      ('kredit', ${regularCategoryMap['Pembelian Aset'] || 'NULL'}, 15000000.00, 'Pembelian truck baru untuk operasional', 'MOD2-ASET-001-2025', '2025-08-13', 'Bank BNI', '2025-08-13 13:15:00+07'),
+      ('kredit', ${regularCategoryMap['Biaya Operasional'] || 'NULL'}, 1200000.00, 'Biaya BBM solar untuk truck diesel', 'MOD2-BBM-001-2025', '2025-08-14', 'Bank BCA', '2025-08-14 14:30:00+07'),
+      ('debit', ${regularCategoryMap['Pendapatan Lain-lain'] || 'NULL'}, 500000.00, 'Pendapatan sewa gudang', 'MOD2-SEWA-001-2025', '2025-08-15', 'Bank Mandiri', '2025-08-15 15:45:00+07');
     `);
 
     // 6. Insert sample deposit groups (if they don't exist)
@@ -195,9 +227,9 @@ const insertTestData = async () => {
     const categories = await db.pool.query('SELECT id, category_name FROM infrastructure_categories ORDER BY id');
     const locations = await db.pool.query('SELECT id, location_name FROM infrastructure_locations ORDER BY id');
     
-    const categoryMap = {};
+    const infraCategoryMap = {};
     categories.rows.forEach(cat => {
-      categoryMap[cat.category_name] = cat.id;
+      infraCategoryMap[cat.category_name] = cat.id;
     });
     
     const locationMap = {};
@@ -212,21 +244,21 @@ const insertTestData = async () => {
         min_quantity, average_unit_price, total_value, 
         notes, created_at
       ) VALUES 
-      ('INF-001', 'Excavator CAT 320D', ${categoryMap['Heavy Machinery']}, ${locationMap['Jakarta Central Depot']}, 'PT Heavy Equipment Indonesia', 'unit', 2, 2500000000.00, 12500000000.00, 'Heavy duty excavator for construction projects', '2025-08-01 08:00:00+07'),
-      ('INF-002', 'Bulldozer Komatsu D65', ${categoryMap['Heavy Machinery']}, ${locationMap['Bandung Regional Hub']}, 'PT Komatsu Indonesia', 'unit', 1, 1800000000.00, 5400000000.00, 'Bulldozer for land clearing and grading', '2025-08-01 09:00:00+07'),
-      ('INF-003', 'Crane Mobile 25 Ton', ${categoryMap['Heavy Machinery']}, ${locationMap['Surabaya Port Facility']}, 'PT Crane Solutions', 'unit', 1, 1200000000.00, 2400000000.00, 'Mobile crane for lifting operations', '2025-08-01 10:00:00+07'),
-      ('INF-004', 'Dump Truck Hino 500', ${categoryMap['Transportation Equipment']}, ${locationMap['Jakarta Central Depot']}, 'PT Hino Motors', 'unit', 5, 450000000.00, 5400000000.00, 'Heavy duty dump truck for material transport', '2025-08-01 11:00:00+07'),
-      ('INF-005', 'Forklift Toyota 3 Ton', ${categoryMap['Transportation Equipment']}, ${locationMap['Bandung Regional Hub']}, 'PT Toyota Material Handling', 'unit', 3, 180000000.00, 1440000000.00, 'Electric forklift for warehouse operations', '2025-08-01 12:00:00+07'),
-      ('INF-006', 'Safety Helmet Standard', ${categoryMap['Safety Equipment']}, ${locationMap['Jakarta Central Depot']}, 'PT Safety Gear Indonesia', 'pcs', 50, 75000.00, 11250000.00, 'Standard safety helmet for construction workers', '2025-08-01 13:00:00+07'),
-      ('INF-007', 'Safety Vest Reflective', ${categoryMap['Safety Equipment']}, ${locationMap['Bandung Regional Hub']}, 'PT Safety Gear Indonesia', 'pcs', 30, 45000.00, 4500000.00, 'High visibility safety vest', '2025-08-01 14:00:00+07'),
-      ('INF-008', 'First Aid Kit Complete', ${categoryMap['Safety Equipment']}, ${locationMap['Surabaya Port Facility']}, 'PT Medical Supplies', 'set', 10, 250000.00, 6250000.00, 'Complete first aid kit for emergency response', '2025-08-01 15:00:00+07'),
-      ('INF-009', 'Measuring Tape 50m', ${categoryMap['Tools & Instruments']}, ${locationMap['Medan Distribution Center']}, 'PT Precision Tools', 'pcs', 20, 150000.00, 7500000.00, 'Professional measuring tape for construction', '2025-08-01 16:00:00+07'),
-      ('INF-010', 'Level Laser Digital', ${categoryMap['Tools & Instruments']}, ${locationMap['Makassar Logistics Base']}, 'PT Precision Tools', 'pcs', 5, 800000.00, 9600000.00, 'Digital laser level for precise measurements', '2025-08-01 17:00:00+07'),
-      ('INF-011', 'Two Way Radio Motorola', ${categoryMap['Communication Systems']}, ${locationMap['Yogyakarta Workshop']}, 'PT Communication Solutions', 'pcs', 15, 350000.00, 14000000.00, 'Professional two-way radio for site communication', '2025-08-01 18:00:00+07'),
-      ('INF-012', 'Generator 50 KVA', ${categoryMap['Power & Electrical']}, ${locationMap['Jakarta Central Depot']}, 'PT Power Solutions', 'unit', 2, 15000000.00, 60000000.00, 'Diesel generator for backup power supply', '2025-08-01 19:00:00+07'),
-      ('INF-013', 'Welding Machine Inverter', ${categoryMap['Tools & Instruments']}, ${locationMap['Bandung Regional Hub']}, 'PT Welding Equipment', 'unit', 3, 2500000.00, 20000000.00, 'Inverter welding machine for metal work', '2025-08-01 20:00:00+07'),
-      ('INF-014', 'Concrete Mixer 1 Bag', ${categoryMap['Heavy Machinery']}, ${locationMap['Surabaya Port Facility']}, 'PT Construction Equipment', 'unit', 4, 8000000.00, 80000000.00, 'Portable concrete mixer for small projects', '2025-08-01 21:00:00+07'),
-      ('INF-015', 'Air Compressor 100 PSI', ${categoryMap['Power & Electrical']}, ${locationMap['Medan Distribution Center']}, 'PT Air Systems', 'unit', 2, 12000000.00, 72000000.00, 'High pressure air compressor for pneumatic tools', '2025-08-01 22:00:00+07')
+      ('INF-001', 'Excavator CAT 320D', ${infraCategoryMap['Heavy Machinery']}, ${locationMap['Jakarta Central Depot']}, 'PT Heavy Equipment Indonesia', 'unit', 2, 2500000000.00, 12500000000.00, 'Heavy duty excavator for construction projects', '2025-08-01 08:00:00+07'),
+      ('INF-002', 'Bulldozer Komatsu D65', ${infraCategoryMap['Heavy Machinery']}, ${locationMap['Bandung Regional Hub']}, 'PT Komatsu Indonesia', 'unit', 1, 1800000000.00, 5400000000.00, 'Bulldozer for land clearing and grading', '2025-08-01 09:00:00+07'),
+      ('INF-003', 'Crane Mobile 25 Ton', ${infraCategoryMap['Heavy Machinery']}, ${locationMap['Surabaya Port Facility']}, 'PT Crane Solutions', 'unit', 1, 1200000000.00, 2400000000.00, 'Mobile crane for lifting operations', '2025-08-01 10:00:00+07'),
+      ('INF-004', 'Dump Truck Hino 500', ${infraCategoryMap['Transportation Equipment']}, ${locationMap['Jakarta Central Depot']}, 'PT Hino Motors', 'unit', 5, 450000000.00, 5400000000.00, 'Heavy duty dump truck for material transport', '2025-08-01 11:00:00+07'),
+      ('INF-005', 'Forklift Toyota 3 Ton', ${infraCategoryMap['Transportation Equipment']}, ${locationMap['Bandung Regional Hub']}, 'PT Toyota Material Handling', 'unit', 3, 180000000.00, 1440000000.00, 'Electric forklift for warehouse operations', '2025-08-01 12:00:00+07'),
+      ('INF-006', 'Safety Helmet Standard', ${infraCategoryMap['Safety Equipment']}, ${locationMap['Jakarta Central Depot']}, 'PT Safety Gear Indonesia', 'pcs', 50, 75000.00, 11250000.00, 'Standard safety helmet for construction workers', '2025-08-01 13:00:00+07'),
+      ('INF-007', 'Safety Vest Reflective', ${infraCategoryMap['Safety Equipment']}, ${locationMap['Bandung Regional Hub']}, 'PT Safety Gear Indonesia', 'pcs', 30, 45000.00, 4500000.00, 'High visibility safety vest', '2025-08-01 14:00:00+07'),
+      ('INF-008', 'First Aid Kit Complete', ${infraCategoryMap['Safety Equipment']}, ${locationMap['Surabaya Port Facility']}, 'PT Medical Supplies', 'set', 10, 250000.00, 6250000.00, 'Complete first aid kit for emergency response', '2025-08-01 15:00:00+07'),
+      ('INF-009', 'Measuring Tape 50m', ${infraCategoryMap['Tools & Instruments']}, ${locationMap['Medan Distribution Center']}, 'PT Precision Tools', 'pcs', 20, 150000.00, 7500000.00, 'Professional measuring tape for construction', '2025-08-01 16:00:00+07'),
+      ('INF-010', 'Level Laser Digital', ${infraCategoryMap['Tools & Instruments']}, ${locationMap['Makassar Logistics Base']}, 'PT Precision Tools', 'pcs', 5, 800000.00, 9600000.00, 'Digital laser level for precise measurements', '2025-08-01 17:00:00+07'),
+      ('INF-011', 'Two Way Radio Motorola', ${infraCategoryMap['Communication Systems']}, ${locationMap['Yogyakarta Workshop']}, 'PT Communication Solutions', 'pcs', 15, 350000.00, 14000000.00, 'Professional two-way radio for site communication', '2025-08-01 18:00:00+07'),
+      ('INF-012', 'Generator 50 KVA', ${infraCategoryMap['Power & Electrical']}, ${locationMap['Jakarta Central Depot']}, 'PT Power Solutions', 'unit', 2, 15000000.00, 60000000.00, 'Diesel generator for backup power supply', '2025-08-01 19:00:00+07'),
+      ('INF-013', 'Welding Machine Inverter', ${infraCategoryMap['Tools & Instruments']}, ${locationMap['Bandung Regional Hub']}, 'PT Welding Equipment', 'unit', 3, 2500000.00, 20000000.00, 'Inverter welding machine for metal work', '2025-08-01 20:00:00+07'),
+      ('INF-014', 'Concrete Mixer 1 Bag', ${infraCategoryMap['Heavy Machinery']}, ${locationMap['Surabaya Port Facility']}, 'PT Construction Equipment', 'unit', 4, 8000000.00, 80000000.00, 'Portable concrete mixer for small projects', '2025-08-01 21:00:00+07'),
+      ('INF-015', 'Air Compressor 100 PSI', ${infraCategoryMap['Power & Electrical']}, ${locationMap['Medan Distribution Center']}, 'PT Air Systems', 'unit', 2, 12000000.00, 72000000.00, 'High pressure air compressor for pneumatic tools', '2025-08-01 22:00:00+07')
       ON CONFLICT (item_code) DO NOTHING;
     `);
 

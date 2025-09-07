@@ -95,42 +95,42 @@ const insertVehicleExpenseTestData = async () => {
         transaction_date, account, vehicle_id, no_nota, created_at
       ) VALUES 
       -- Regular Debit Transactions (Income)
-      ('debit', ${insuranceCategoryId}, 2500000.00, 'Klaim asuransi kendaraan B1234ABC - kecelakaan ringan', 'INS-CLAIM-001-2025', '2025-01-01', 'Ewaldo', ${vehicle1Id}, '{"NOTA-INS-001"}', '2025-01-01 08:00:00+07'),
-      ('debit', ${insuranceCategoryId}, 1800000.00, 'Klaim asuransi kendaraan B5678DEF - kerusakan mesin', 'INS-CLAIM-002-2025', '2025-01-02', 'Malvin', ${vehicle2Id}, '{"NOTA-INS-002"}', '2025-01-02 09:30:00+07'),
+      ('debit', ${insuranceCategoryId}, 2500000.00, 'Klaim asuransi kendaraan B1234ABC - kecelakaan ringan', 'VEH-INS-CLAIM-001-2025', '2025-01-01', 'Ewaldo', ${vehicle1Id}, '{"VEH-NOTA-INS-001"}', '2025-01-01 08:00:00+07'),
+      ('debit', ${insuranceCategoryId}, 1800000.00, 'Klaim asuransi kendaraan B5678DEF - kerusakan mesin', 'VEH-INS-CLAIM-002-2025', '2025-01-02', 'Malvin', ${vehicle2Id}, '{"VEH-NOTA-INS-002"}', '2025-01-02 09:30:00+07'),
       
       -- Regular Kredit Transactions (Expenses)
-      ('kredit', ${fuelCategoryId}, 500000.00, 'Pengisian BBM untuk B1234ABC - 50 liter', 'FUEL-001-2025', '2025-01-03', 'Ewaldo', ${vehicle1Id}, '{"NOTA-FUEL-001"}', '2025-01-03 10:15:00+07'),
-      ('kredit', ${fuelCategoryId}, 750000.00, 'Pengisian BBM untuk B5678DEF - 75 liter', 'FUEL-002-2025', '2025-01-04', 'Malvin', ${vehicle2Id}, '{"NOTA-FUEL-002"}', '2025-01-04 11:30:00+07'),
-      ('kredit', ${serviceCategoryId}, 1200000.00, 'Servis rutin B9012GHI - ganti oli dan filter', 'SERVICE-001-2025', '2025-01-05', 'Company', ${vehicle3Id}, '{"NOTA-SERVICE-001"}', '2025-01-05 12:45:00+07'),
-      ('kredit', ${repairCategoryId}, 2500000.00, 'Perbaikan rem B3456JKL - ganti kampas rem', 'REPAIR-001-2025', '2025-01-06', 'General', ${vehicle4Id}, '{"NOTA-REPAIR-001"}', '2025-01-06 13:20:00+07'),
-      ('kredit', ${tollCategoryId}, 150000.00, 'Biaya tol B1234ABC - Jakarta-Bandung', 'TOLL-001-2025', '2025-01-07', 'Ewaldo', ${vehicle1Id}, '{"NOTA-TOLL-001"}', '2025-01-07 14:10:00+07'),
-      ('kredit', ${tireCategoryId}, 800000.00, 'Ganti ban B5678DEF - 2 ban belakang', 'TIRE-001-2025', '2025-01-08', 'Malvin', ${vehicle2Id}, '{"NOTA-TIRE-001"}', '2025-01-08 15:30:00+07'),
-      ('kredit', ${oilCategoryId}, 300000.00, 'Ganti oli B9012GHI - oli mesin dan transmisi', 'OIL-001-2025', '2025-01-09', 'Company', ${vehicle3Id}, '{"NOTA-OIL-001"}', '2025-01-09 16:45:00+07'),
-      ('kredit', ${sparePartCategoryId}, 450000.00, 'Ganti filter udara B3456JKL', 'SPARE-001-2025', '2025-01-10', 'General', ${vehicle4Id}, '{"NOTA-SPARE-001"}', '2025-01-10 17:15:00+07'),
+      ('kredit', ${fuelCategoryId}, 500000.00, 'Pengisian BBM untuk B1234ABC - 50 liter', 'VEH-FUEL-001-2025', '2025-01-03', 'Ewaldo', ${vehicle1Id}, '{"VEH-NOTA-FUEL-001"}', '2025-01-03 10:15:00+07'),
+      ('kredit', ${fuelCategoryId}, 750000.00, 'Pengisian BBM untuk B5678DEF - 75 liter', 'VEH-FUEL-002-2025', '2025-01-04', 'Malvin', ${vehicle2Id}, '{"VEH-NOTA-FUEL-002"}', '2025-01-04 11:30:00+07'),
+      ('kredit', ${serviceCategoryId}, 1200000.00, 'Servis rutin B9012GHI - ganti oli dan filter', 'VEH-SERVICE-001-2025', '2025-01-05', 'Company', ${vehicle3Id}, '{"VEH-NOTA-SERVICE-001"}', '2025-01-05 12:45:00+07'),
+      ('kredit', ${repairCategoryId}, 2500000.00, 'Perbaikan rem B3456JKL - ganti kampas rem', 'VEH-REPAIR-001-2025', '2025-01-06', 'General', ${vehicle4Id}, '{"VEH-NOTA-REPAIR-001"}', '2025-01-06 13:20:00+07'),
+      ('kredit', ${tollCategoryId}, 150000.00, 'Biaya tol B1234ABC - Jakarta-Bandung', 'VEH-TOLL-001-2025', '2025-01-07', 'Ewaldo', ${vehicle1Id}, '{"VEH-NOTA-TOLL-001"}', '2025-01-07 14:10:00+07'),
+      ('kredit', ${tireCategoryId}, 800000.00, 'Ganti ban B5678DEF - 2 ban belakang', 'VEH-TIRE-001-2025', '2025-01-08', 'Malvin', ${vehicle2Id}, '{"VEH-NOTA-TIRE-001"}', '2025-01-08 15:30:00+07'),
+      ('kredit', ${oilCategoryId}, 300000.00, 'Ganti oli B9012GHI - oli mesin dan transmisi', 'VEH-OIL-001-2025', '2025-01-09', 'Company', ${vehicle3Id}, '{"VEH-NOTA-OIL-001"}', '2025-01-09 16:45:00+07'),
+      ('kredit', ${sparePartCategoryId}, 450000.00, 'Ganti filter udara B3456JKL', 'VEH-SPARE-001-2025', '2025-01-10', 'General', ${vehicle4Id}, '{"VEH-NOTA-SPARE-001"}', '2025-01-10 17:15:00+07'),
       
       -- Debit Tempo Transactions (Income Tempo)
-      ('debit_tempo', ${insuranceCategoryId}, 3000000.00, 'Klaim asuransi B7890MNO - pending approval', 'INS-TEMPO-001-2025', '2025-01-11', 'Ewaldo', ${vehicle5Id}, '{"NOTA-INS-TEMPO-001"}', '2025-01-11 18:00:00+07'),
-      ('debit_tempo', ${insuranceCategoryId}, 2200000.00, 'Klaim asuransi B1234ABC - dalam proses', 'INS-TEMPO-002-2025', '2025-01-12', 'Malvin', ${vehicle1Id}, '{"NOTA-INS-TEMPO-002"}', '2025-01-12 19:30:00+07'),
+      ('debit_tempo', ${insuranceCategoryId}, 3000000.00, 'Klaim asuransi B7890MNO - pending approval', 'VEH-INS-TEMPO-001-2025', '2025-01-11', 'Ewaldo', ${vehicle5Id}, '{"VEH-NOTA-INS-TEMPO-001"}', '2025-01-11 18:00:00+07'),
+      ('debit_tempo', ${insuranceCategoryId}, 2200000.00, 'Klaim asuransi B1234ABC - dalam proses', 'VEH-INS-TEMPO-002-2025', '2025-01-12', 'Malvin', ${vehicle1Id}, '{"VEH-NOTA-INS-TEMPO-002"}', '2025-01-12 19:30:00+07'),
       
       -- Kredit Tempo Transactions (Expense Tempo)
-      ('kredit_tempo', ${serviceCategoryId}, 1800000.00, 'Servis besar B5678DEF - pembayaran tempo 30 hari', 'SERVICE-TEMPO-001-2025', '2025-01-13', 'Company', ${vehicle2Id}, '{"NOTA-SERVICE-TEMPO-001"}', '2025-01-13 20:15:00+07'),
-      ('kredit_tempo', ${repairCategoryId}, 3500000.00, 'Overhaul mesin B9012GHI - pembayaran tempo 45 hari', 'REPAIR-TEMPO-001-2025', '2025-01-14', 'General', ${vehicle3Id}, '{"NOTA-REPAIR-TEMPO-001"}', '2025-01-14 21:00:00+07'),
-      ('kredit_tempo', ${tireCategoryId}, 1200000.00, 'Ganti 4 ban B3456JKL - pembayaran tempo 15 hari', 'TIRE-TEMPO-001-2025', '2025-01-15', 'Ewaldo', ${vehicle4Id}, '{"NOTA-TIRE-TEMPO-001"}', '2025-01-15 22:30:00+07'),
-      ('kredit_tempo', ${maintenanceCategoryId}, 900000.00, 'Maintenance rutin B7890MNO - pembayaran tempo 20 hari', 'MAINT-TEMPO-001-2025', '2025-01-16', 'Malvin', ${vehicle5Id}, '{"NOTA-MAINT-TEMPO-001"}', '2025-01-16 23:45:00+07'),
+      ('kredit_tempo', ${serviceCategoryId}, 1800000.00, 'Servis besar B5678DEF - pembayaran tempo 30 hari', 'VEH-SERVICE-TEMPO-001-2025', '2025-01-13', 'Company', ${vehicle2Id}, '{"VEH-NOTA-SERVICE-TEMPO-001"}', '2025-01-13 20:15:00+07'),
+      ('kredit_tempo', ${repairCategoryId}, 3500000.00, 'Overhaul mesin B9012GHI - pembayaran tempo 45 hari', 'VEH-REPAIR-TEMPO-001-2025', '2025-01-14', 'General', ${vehicle3Id}, '{"VEH-NOTA-REPAIR-TEMPO-001"}', '2025-01-14 21:00:00+07'),
+      ('kredit_tempo', ${tireCategoryId}, 1200000.00, 'Ganti 4 ban B3456JKL - pembayaran tempo 15 hari', 'VEH-TIRE-TEMPO-001-2025', '2025-01-15', 'Ewaldo', ${vehicle4Id}, '{"VEH-NOTA-TIRE-TEMPO-001"}', '2025-01-15 22:30:00+07'),
+      ('kredit_tempo', ${maintenanceCategoryId}, 900000.00, 'Maintenance rutin B7890MNO - pembayaran tempo 20 hari', 'VEH-MAINT-TEMPO-001-2025', '2025-01-16', 'Malvin', ${vehicle5Id}, '{"VEH-NOTA-MAINT-TEMPO-001"}', '2025-01-16 23:45:00+07'),
       
       -- More recent transactions for testing filters
-      ('kredit', ${fuelCategoryId}, 600000.00, 'Pengisian BBM untuk B1234ABC - 60 liter', 'FUEL-003-2025', '2025-01-17', 'Ewaldo', ${vehicle1Id}, '{"NOTA-FUEL-003"}', '2025-01-17 08:30:00+07'),
-      ('kredit', ${serviceCategoryId}, 800000.00, 'Servis AC B5678DEF', 'SERVICE-002-2025', '2025-01-18', 'Malvin', ${vehicle2Id}, '{"NOTA-SERVICE-002"}', '2025-01-18 09:45:00+07'),
-      ('kredit', ${tollCategoryId}, 200000.00, 'Biaya tol B9012GHI - Bandung-Surabaya', 'TOLL-002-2025', '2025-01-19', 'Company', ${vehicle3Id}, '{"NOTA-TOLL-002"}', '2025-01-19 10:20:00+07'),
-      ('kredit_tempo', ${repairCategoryId}, 2800000.00, 'Perbaikan transmisi B3456JKL - pembayaran tempo 30 hari', 'REPAIR-TEMPO-002-2025', '2025-01-20', 'General', ${vehicle4Id}, '{"NOTA-REPAIR-TEMPO-002"}', '2025-01-20 11:35:00+07'),
-      ('debit_tempo', ${insuranceCategoryId}, 1500000.00, 'Klaim asuransi B7890MNO - kerusakan akibat banjir', 'INS-TEMPO-003-2025', '2025-01-21', 'Ewaldo', ${vehicle5Id}, '{"NOTA-INS-TEMPO-003"}', '2025-01-21 12:50:00+07'),
+      ('kredit', ${fuelCategoryId}, 600000.00, 'Pengisian BBM untuk B1234ABC - 60 liter', 'VEH-FUEL-003-2025', '2025-01-17', 'Ewaldo', ${vehicle1Id}, '{"VEH-NOTA-FUEL-003"}', '2025-01-17 08:30:00+07'),
+      ('kredit', ${serviceCategoryId}, 800000.00, 'Servis AC B5678DEF', 'VEH-SERVICE-002-2025', '2025-01-18', 'Malvin', ${vehicle2Id}, '{"VEH-NOTA-SERVICE-002"}', '2025-01-18 09:45:00+07'),
+      ('kredit', ${tollCategoryId}, 200000.00, 'Biaya tol B9012GHI - Bandung-Surabaya', 'VEH-TOLL-002-2025', '2025-01-19', 'Company', ${vehicle3Id}, '{"VEH-NOTA-TOLL-002"}', '2025-01-19 10:20:00+07'),
+      ('kredit_tempo', ${repairCategoryId}, 2800000.00, 'Perbaikan transmisi B3456JKL - pembayaran tempo 30 hari', 'VEH-REPAIR-TEMPO-002-2025', '2025-01-20', 'General', ${vehicle4Id}, '{"VEH-NOTA-REPAIR-TEMPO-002"}', '2025-01-20 11:35:00+07'),
+      ('debit_tempo', ${insuranceCategoryId}, 1500000.00, 'Klaim asuransi B7890MNO - kerusakan akibat banjir', 'VEH-INS-TEMPO-003-2025', '2025-01-21', 'Ewaldo', ${vehicle5Id}, '{"VEH-NOTA-INS-TEMPO-003"}', '2025-01-21 12:50:00+07'),
       
       -- Mixed account transactions
-      ('kredit', ${fuelCategoryId}, 400000.00, 'Pengisian BBM untuk B3456JKL - 40 liter', 'FUEL-004-2025', '2025-01-22', 'General', ${vehicle4Id}, '{"NOTA-FUEL-004"}', '2025-01-22 13:15:00+07'),
-      ('kredit', ${oilCategoryId}, 250000.00, 'Ganti oli B7890MNO - oli mesin', 'OIL-002-2025', '2025-01-23', 'Malvin', ${vehicle5Id}, '{"NOTA-OIL-002"}', '2025-01-23 14:30:00+07'),
-      ('kredit', ${sparePartCategoryId}, 600000.00, 'Ganti filter bahan bakar B1234ABC', 'SPARE-002-2025', '2025-01-24', 'Company', ${vehicle1Id}, '{"NOTA-SPARE-002"}', '2025-01-24 15:45:00+07'),
-      ('kredit_tempo', ${serviceCategoryId}, 1500000.00, 'Servis komprehensif B5678DEF - pembayaran tempo 25 hari', 'SERVICE-TEMPO-002-2025', '2025-01-25', 'Ewaldo', ${vehicle2Id}, '{"NOTA-SERVICE-TEMPO-002"}', '2025-01-25 16:00:00+07'),
-      ('debit_tempo', ${insuranceCategoryId}, 2000000.00, 'Klaim asuransi B9012GHI - kerusakan akibat tabrakan', 'INS-TEMPO-004-2025', '2025-01-26', 'Malvin', ${vehicle3Id}, '{"NOTA-INS-TEMPO-004"}', '2025-01-26 17:15:00+07')
+      ('kredit', ${fuelCategoryId}, 400000.00, 'Pengisian BBM untuk B3456JKL - 40 liter', 'VEH-FUEL-004-2025', '2025-01-22', 'General', ${vehicle4Id}, '{"VEH-NOTA-FUEL-004"}', '2025-01-22 13:15:00+07'),
+      ('kredit', ${oilCategoryId}, 250000.00, 'Ganti oli B7890MNO - oli mesin', 'VEH-OIL-002-2025', '2025-01-23', 'Malvin', ${vehicle5Id}, '{"VEH-NOTA-OIL-002"}', '2025-01-23 14:30:00+07'),
+      ('kredit', ${sparePartCategoryId}, 600000.00, 'Ganti filter bahan bakar B1234ABC', 'VEH-SPARE-002-2025', '2025-01-24', 'Company', ${vehicle1Id}, '{"VEH-NOTA-SPARE-002"}', '2025-01-24 15:45:00+07'),
+      ('kredit_tempo', ${serviceCategoryId}, 1500000.00, 'Servis komprehensif B5678DEF - pembayaran tempo 25 hari', 'VEH-SERVICE-TEMPO-002-2025', '2025-01-25', 'Ewaldo', ${vehicle2Id}, '{"VEH-NOTA-SERVICE-TEMPO-002"}', '2025-01-25 16:00:00+07'),
+      ('debit_tempo', ${insuranceCategoryId}, 2000000.00, 'Klaim asuransi B9012GHI - kerusakan akibat tabrakan', 'VEH-INS-TEMPO-004-2025', '2025-01-26', 'Malvin', ${vehicle3Id}, '{"VEH-NOTA-INS-TEMPO-004"}', '2025-01-26 17:15:00+07')
     `);
 
     // 6. Insert some transactions without vehicle_id (non-vehicle expenses) to test filtering
@@ -140,8 +140,8 @@ const insertVehicleExpenseTestData = async () => {
         transaction_type, category_id, amount, description, reference_number, 
         transaction_date, account, no_nota, created_at
       ) VALUES 
-      ('kredit', ${fuelCategoryId}, 1000000.00, 'Pengisian BBM generator - bukan kendaraan', 'GEN-FUEL-001-2025', '2025-01-27', 'General', '{"NOTA-GEN-001"}', '2025-01-27 18:30:00+07'),
-      ('debit', ${insuranceCategoryId}, 500000.00, 'Klaim asuransi gedung - bukan kendaraan', 'BUILD-INS-001-2025', '2025-01-28', 'Company', '{"NOTA-BUILD-001"}', '2025-01-28 19:45:00+07')
+      ('kredit', ${fuelCategoryId}, 1000000.00, 'Pengisian BBM generator - bukan kendaraan', 'VEH-GEN-FUEL-001-2025', '2025-01-27', 'General', '{"VEH-NOTA-GEN-001"}', '2025-01-27 18:30:00+07'),
+      ('debit', ${insuranceCategoryId}, 500000.00, 'Klaim asuransi gedung - bukan kendaraan', 'VEH-BUILD-INS-001-2025', '2025-01-28', 'Company', '{"VEH-NOTA-BUILD-001"}', '2025-01-28 19:45:00+07')
     `);
 
     console.log("✅ Vehicle Expense Cash test data insertion completed successfully!");
