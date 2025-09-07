@@ -46,6 +46,7 @@ const webBukuKasRoutes = require("./routes/web/bukuKas.routes");
 const webPaymentsRoutes = require("./routes/web/payments.routes");
 const webExpenseRoutes = require("./routes/web/expense.routes");
 const webBudgetRequestRoutes = require("./routes/web/budgetRequest.routes");
+const webInfrastructureRoutes = require("./routes/web/infrastructure.routes");
 const legacyRitasePaymentsRoutes = require("./routes/web/ritase.payments.legacy.route");
 const utilsRoutes = require("./routes/utils.routes");
 const webDepositGroupRoutes = require("./routes/web/depositGroup.routes");
@@ -111,6 +112,7 @@ initializeDatabase().then(() => {
           big_delivery_orders: "/api/web/big-delivery-orders",
           vehicles: "/api/web/vehicles",
           stock: "/api/web/stock",
+          infrastructure: "/api/web/infrastructure",
           services: "/api/web/services",
           tires: "/api/web/tires",
           cash: "/api/web/cash",
@@ -167,6 +169,7 @@ initializeDatabase().then(() => {
   app.use("/api/web/payments", webPaymentsRoutes);
   app.use("/api/web/expenses", webExpenseRoutes);
   app.use("/api/web/budget-requests", webBudgetRequestRoutes);
+  app.use("/api/web/infrastructure", webInfrastructureRoutes);
   app.use("/api/web/ritase-payments", legacyRitasePaymentsRoutes);
   app.use("/api/web/deposit-groups", webDepositGroupRoutes);
   app.use("/api/web/utils", utilsRoutes);
@@ -191,7 +194,7 @@ initializeDatabase().then(() => {
     );
     console.log(
       "🌐 Web API: /api/web/purchase-orders, /api/web/delivery-orders, /api/web/vehicles, " +
-        "/api/web/stock, /api/web/services, /api/web/tires, /api/web/payments, /api/web/tracking"
+        "/api/web/stock, /api/web/infrastructure, /api/web/services, /api/web/tires, /api/web/payments, /api/web/tracking"
     );
     console.log("📍 GPS Tracking API: /api/tracking, /api/web/tracking");
     console.log("🔗 IoT API: /api/v1/iot/data, /api/web/delivery-orders/:id/sensordata");

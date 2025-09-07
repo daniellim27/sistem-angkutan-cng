@@ -152,6 +152,160 @@ const insertTestData = async () => {
       ON CONFLICT (po_number) DO NOTHING;
     `);
 
+    // 9. Insert Infrastructure Inventory test data
+    console.log("📝 Inserting Infrastructure Inventory test data...");
+    
+    // Insert infrastructure categories (if they don't exist)
+    await db.pool.query(`
+      INSERT INTO infrastructure_categories (category_name, description) VALUES
+      ('Heavy Machinery', 'Excavators, bulldozers, cranes, and other heavy construction equipment'),
+      ('Transportation Equipment', 'Trucks, trailers, forklifts, and other transport vehicles'),
+      ('Safety Equipment', 'Safety gear, protective equipment, and emergency response tools'),
+      ('Tools & Instruments', 'Hand tools, measuring instruments, and specialized equipment'),
+      ('Communication Systems', 'Radios, phones, and other communication devices'),
+      ('Power & Electrical', 'Generators, electrical equipment, and power distribution systems')
+      ON CONFLICT (category_name) DO NOTHING;
+    `);
+
+    // Insert infrastructure locations (if they don't exist)
+    await db.pool.query(`
+      INSERT INTO infrastructure_locations (location_name, location_code, description) VALUES
+      ('Jakarta Central Depot', 'JKT-CENTRAL', 'Main storage facility for Jakarta operations - Jl. Gatot Subroto No. 123, Jakarta Selatan'),
+      ('Bandung Regional Hub', 'BDG-HUB', 'Regional distribution center for West Java - Jl. Soekarno Hatta No. 456, Bandung'),
+      ('Surabaya Port Facility', 'SBY-PORT', 'Port-based storage for East Java operations - Jl. Raya Gresik No. 789, Surabaya'),
+      ('Medan Distribution Center', 'MDN-DIST', 'Northern Sumatra distribution hub - Jl. Gatot Subroto No. 321, Medan'),
+      ('Makassar Logistics Base', 'MKS-LOG', 'Eastern Indonesia logistics center - Jl. Veteran No. 654, Makassar'),
+      ('Yogyakarta Workshop', 'JOG-WORK', 'Maintenance and repair facility - Jl. Malioboro No. 987, Yogyakarta')
+      ON CONFLICT (location_name) DO NOTHING;
+    `);
+
+    // Get category and location IDs
+    const categories = await db.pool.query('SELECT id, category_name FROM infrastructure_categories ORDER BY id');
+    const locations = await db.pool.query('SELECT id, location_name FROM infrastructure_locations ORDER BY id');
+    
+    const categoryMap = {};
+    categories.rows.forEach(cat => {
+      categoryMap[cat.category_name] = cat.id;
+    });
+    
+    const locationMap = {};
+    locations.rows.forEach(loc => {
+      locationMap[loc.location_name] = loc.id;
+    });
+
+    // Insert infrastructure items with initial stock
+    await db.pool.query(`
+      INSERT INTO infrastructure_items (
+        item_code, item_name, category_id, location_id, supplier, unit, 
+        min_quantity, average_unit_price, total_value, 
+        notes, created_at
+      ) VALUES 
+      ('INF-001', 'Excavator CAT 320D', ${categoryMap['Heavy Machinery']}, ${locationMap['Jakarta Central Depot']}, 'PT Heavy Equipment Indonesia', 'unit', 2, 2500000000.00, 12500000000.00, 'Heavy duty excavator for construction projects', '2025-08-01 08:00:00+07'),
+      ('INF-002', 'Bulldozer Komatsu D65', ${categoryMap['Heavy Machinery']}, ${locationMap['Bandung Regional Hub']}, 'PT Komatsu Indonesia', 'unit', 1, 1800000000.00, 5400000000.00, 'Bulldozer for land clearing and grading', '2025-08-01 09:00:00+07'),
+      ('INF-003', 'Crane Mobile 25 Ton', ${categoryMap['Heavy Machinery']}, ${locationMap['Surabaya Port Facility']}, 'PT Crane Solutions', 'unit', 1, 1200000000.00, 2400000000.00, 'Mobile crane for lifting operations', '2025-08-01 10:00:00+07'),
+      ('INF-004', 'Dump Truck Hino 500', ${categoryMap['Transportation Equipment']}, ${locationMap['Jakarta Central Depot']}, 'PT Hino Motors', 'unit', 5, 450000000.00, 5400000000.00, 'Heavy duty dump truck for material transport', '2025-08-01 11:00:00+07'),
+      ('INF-005', 'Forklift Toyota 3 Ton', ${categoryMap['Transportation Equipment']}, ${locationMap['Bandung Regional Hub']}, 'PT Toyota Material Handling', 'unit', 3, 180000000.00, 1440000000.00, 'Electric forklift for warehouse operations', '2025-08-01 12:00:00+07'),
+      ('INF-006', 'Safety Helmet Standard', ${categoryMap['Safety Equipment']}, ${locationMap['Jakarta Central Depot']}, 'PT Safety Gear Indonesia', 'pcs', 50, 75000.00, 11250000.00, 'Standard safety helmet for construction workers', '2025-08-01 13:00:00+07'),
+      ('INF-007', 'Safety Vest Reflective', ${categoryMap['Safety Equipment']}, ${locationMap['Bandung Regional Hub']}, 'PT Safety Gear Indonesia', 'pcs', 30, 45000.00, 4500000.00, 'High visibility safety vest', '2025-08-01 14:00:00+07'),
+      ('INF-008', 'First Aid Kit Complete', ${categoryMap['Safety Equipment']}, ${locationMap['Surabaya Port Facility']}, 'PT Medical Supplies', 'set', 10, 250000.00, 6250000.00, 'Complete first aid kit for emergency response', '2025-08-01 15:00:00+07'),
+      ('INF-009', 'Measuring Tape 50m', ${categoryMap['Tools & Instruments']}, ${locationMap['Medan Distribution Center']}, 'PT Precision Tools', 'pcs', 20, 150000.00, 7500000.00, 'Professional measuring tape for construction', '2025-08-01 16:00:00+07'),
+      ('INF-010', 'Level Laser Digital', ${categoryMap['Tools & Instruments']}, ${locationMap['Makassar Logistics Base']}, 'PT Precision Tools', 'pcs', 5, 800000.00, 9600000.00, 'Digital laser level for precise measurements', '2025-08-01 17:00:00+07'),
+      ('INF-011', 'Two Way Radio Motorola', ${categoryMap['Communication Systems']}, ${locationMap['Yogyakarta Workshop']}, 'PT Communication Solutions', 'pcs', 15, 350000.00, 14000000.00, 'Professional two-way radio for site communication', '2025-08-01 18:00:00+07'),
+      ('INF-012', 'Generator 50 KVA', ${categoryMap['Power & Electrical']}, ${locationMap['Jakarta Central Depot']}, 'PT Power Solutions', 'unit', 2, 15000000.00, 60000000.00, 'Diesel generator for backup power supply', '2025-08-01 19:00:00+07'),
+      ('INF-013', 'Welding Machine Inverter', ${categoryMap['Tools & Instruments']}, ${locationMap['Bandung Regional Hub']}, 'PT Welding Equipment', 'unit', 3, 2500000.00, 20000000.00, 'Inverter welding machine for metal work', '2025-08-01 20:00:00+07'),
+      ('INF-014', 'Concrete Mixer 1 Bag', ${categoryMap['Heavy Machinery']}, ${locationMap['Surabaya Port Facility']}, 'PT Construction Equipment', 'unit', 4, 8000000.00, 80000000.00, 'Portable concrete mixer for small projects', '2025-08-01 21:00:00+07'),
+      ('INF-015', 'Air Compressor 100 PSI', ${categoryMap['Power & Electrical']}, ${locationMap['Medan Distribution Center']}, 'PT Air Systems', 'unit', 2, 12000000.00, 72000000.00, 'High pressure air compressor for pneumatic tools', '2025-08-01 22:00:00+07')
+      ON CONFLICT (item_code) DO NOTHING;
+    `);
+
+    // Get infrastructure item IDs for creating batches and transactions
+    const items = await db.pool.query('SELECT id, item_code, item_name FROM infrastructure_items ORDER BY id');
+    const itemMap = {};
+    items.rows.forEach(item => {
+      itemMap[item.item_code] = item.id;
+    });
+
+    // Insert infrastructure batches for each item
+    await db.pool.query(`
+      INSERT INTO infrastructure_batches (
+        item_id, batch_number, quantity, original_quantity, unit_price, purchase_date, expired_date, 
+        supplier, notes, created_at
+      ) VALUES 
+      (${itemMap['INF-001']}, 'BATCH-INF-001-001', 2, 2, 2500000000.00, '2025-07-15', '2030-07-15', 'PT Heavy Equipment Indonesia', 'Initial batch - Jakarta operations', '2025-08-01 08:00:00+07'),
+      (${itemMap['INF-001']}, 'BATCH-INF-001-002', 3, 3, 2500000000.00, '2025-08-01', '2030-08-01', 'PT Heavy Equipment Indonesia', 'Additional batch - expansion project', '2025-08-01 08:00:00+07'),
+      (${itemMap['INF-002']}, 'BATCH-INF-002-001', 1, 1, 1800000000.00, '2025-07-20', '2030-07-20', 'PT Komatsu Indonesia', 'Initial batch - Bandung operations', '2025-08-01 09:00:00+07'),
+      (${itemMap['INF-002']}, 'BATCH-INF-002-002', 2, 2, 1800000000.00, '2025-08-01', '2030-08-01', 'PT Komatsu Indonesia', 'Additional batch - regional expansion', '2025-08-01 09:00:00+07'),
+      (${itemMap['INF-003']}, 'BATCH-INF-003-001', 2, 2, 1200000000.00, '2025-07-25', '2030-07-25', 'PT Crane Solutions', 'Initial batch - Surabaya port operations', '2025-08-01 10:00:00+07'),
+      (${itemMap['INF-004']}, 'BATCH-INF-004-001', 5, 5, 450000000.00, '2025-07-10', '2030-07-10', 'PT Hino Motors', 'Initial batch - Jakarta fleet', '2025-08-01 11:00:00+07'),
+      (${itemMap['INF-004']}, 'BATCH-INF-004-002', 7, 7, 450000000.00, '2025-08-01', '2030-08-01', 'PT Hino Motors', 'Additional batch - fleet expansion', '2025-08-01 11:00:00+07'),
+      (${itemMap['INF-005']}, 'BATCH-INF-005-001', 4, 4, 180000000.00, '2025-07-18', '2030-07-18', 'PT Toyota Material Handling', 'Initial batch - Bandung warehouse', '2025-08-01 12:00:00+07'),
+      (${itemMap['INF-005']}, 'BATCH-INF-005-002', 4, 4, 180000000.00, '2025-08-01', '2030-08-01', 'PT Toyota Material Handling', 'Additional batch - warehouse expansion', '2025-08-01 12:00:00+07'),
+      (${itemMap['INF-006']}, 'BATCH-INF-006-001', 75, 75, 75000.00, '2025-07-05', '2027-07-05', 'PT Safety Gear Indonesia', 'Initial batch - Jakarta safety equipment', '2025-08-01 13:00:00+07'),
+      (${itemMap['INF-006']}, 'BATCH-INF-006-002', 75, 75, 75000.00, '2025-08-01', '2027-08-01', 'PT Safety Gear Indonesia', 'Additional batch - safety stock', '2025-08-01 13:00:00+07'),
+      (${itemMap['INF-007']}, 'BATCH-INF-007-001', 50, 50, 45000.00, '2025-07-12', '2027-07-12', 'PT Safety Gear Indonesia', 'Initial batch - Bandung safety equipment', '2025-08-01 14:00:00+07'),
+      (${itemMap['INF-007']}, 'BATCH-INF-007-002', 50, 50, 45000.00, '2025-08-01', '2027-08-01', 'PT Safety Gear Indonesia', 'Additional batch - safety stock', '2025-08-01 14:00:00+07'),
+      (${itemMap['INF-008']}, 'BATCH-INF-008-001', 15, 15, 250000.00, '2025-07-08', '2027-07-08', 'PT Medical Supplies', 'Initial batch - Surabaya medical supplies', '2025-08-01 15:00:00+07'),
+      (${itemMap['INF-008']}, 'BATCH-INF-008-002', 10, 10, 250000.00, '2025-08-01', '2027-08-01', 'PT Medical Supplies', 'Additional batch - medical stock', '2025-08-01 15:00:00+07'),
+      (${itemMap['INF-009']}, 'BATCH-INF-009-001', 25, 25, 150000.00, '2025-07-14', '2028-07-14', 'PT Precision Tools', 'Initial batch - Medan measuring tools', '2025-08-01 16:00:00+07'),
+      (${itemMap['INF-009']}, 'BATCH-INF-009-002', 25, 25, 150000.00, '2025-08-01', '2028-08-01', 'PT Precision Tools', 'Additional batch - tool stock', '2025-08-01 16:00:00+07'),
+      (${itemMap['INF-010']}, 'BATCH-INF-010-001', 6, 6, 800000.00, '2025-07-22', '2028-07-22', 'PT Precision Tools', 'Initial batch - Makassar precision tools', '2025-08-01 17:00:00+07'),
+      (${itemMap['INF-010']}, 'BATCH-INF-010-002', 6, 6, 800000.00, '2025-08-01', '2028-08-01', 'PT Precision Tools', 'Additional batch - precision stock', '2025-08-01 17:00:00+07'),
+      (${itemMap['INF-011']}, 'BATCH-INF-011-001', 20, 20, 350000.00, '2025-07-16', '2028-07-16', 'PT Communication Solutions', 'Initial batch - Yogyakarta communication', '2025-08-01 18:00:00+07'),
+      (${itemMap['INF-011']}, 'BATCH-INF-011-002', 20, 20, 350000.00, '2025-08-01', '2028-08-01', 'PT Communication Solutions', 'Additional batch - communication stock', '2025-08-01 18:00:00+07'),
+      (${itemMap['INF-012']}, 'BATCH-INF-012-001', 2, 2, 15000000.00, '2025-07-28', '2030-07-28', 'PT Power Solutions', 'Initial batch - Jakarta power equipment', '2025-08-01 19:00:00+07'),
+      (${itemMap['INF-012']}, 'BATCH-INF-012-002', 2, 2, 15000000.00, '2025-08-01', '2030-08-01', 'PT Power Solutions', 'Additional batch - power backup', '2025-08-01 19:00:00+07'),
+      (${itemMap['INF-013']}, 'BATCH-INF-013-001', 4, 4, 2500000.00, '2025-07-19', '2028-07-19', 'PT Welding Equipment', 'Initial batch - Bandung welding equipment', '2025-08-01 20:00:00+07'),
+      (${itemMap['INF-013']}, 'BATCH-INF-013-002', 4, 4, 2500000.00, '2025-08-01', '2028-08-01', 'PT Welding Equipment', 'Additional batch - welding stock', '2025-08-01 20:00:00+07'),
+      (${itemMap['INF-014']}, 'BATCH-INF-014-001', 5, 5, 8000000.00, '2025-07-26', '2030-07-26', 'PT Construction Equipment', 'Initial batch - Surabaya construction equipment', '2025-08-01 21:00:00+07'),
+      (${itemMap['INF-014']}, 'BATCH-INF-014-002', 5, 5, 8000000.00, '2025-08-01', '2030-08-01', 'PT Construction Equipment', 'Additional batch - construction stock', '2025-08-01 21:00:00+07'),
+      (${itemMap['INF-015']}, 'BATCH-INF-015-001', 3, 3, 12000000.00, '2025-07-30', '2030-07-30', 'PT Air Systems', 'Initial batch - Medan air systems', '2025-08-01 22:00:00+07'),
+      (${itemMap['INF-015']}, 'BATCH-INF-015-002', 3, 3, 12000000.00, '2025-08-01', '2030-08-01', 'PT Air Systems', 'Additional batch - air systems stock', '2025-08-01 22:00:00+07');
+    `);
+
+    // Get batch IDs for creating transactions
+    const batches = await db.pool.query('SELECT id, batch_number, item_id FROM infrastructure_batches ORDER BY id');
+    const batchMap = {};
+    batches.rows.forEach(batch => {
+      batchMap[batch.batch_number] = batch.id;
+    });
+
+    // Insert infrastructure transactions (initial stock entries)
+    await db.pool.query(`
+      INSERT INTO infrastructure_transactions (
+        item_id, batch_id, transaction_type, quantity, unit_price, total_amount, 
+        reference_type, notes, transaction_date, created_at
+      ) VALUES 
+      (${itemMap['INF-001']}, ${batchMap['BATCH-INF-001-001']}, 'in', 2, 2500000000.00, 5000000000.00, 'initial_stock', 'Initial stock entry - Jakarta operations', '2025-08-01', '2025-08-01 08:00:00+07'),
+      (${itemMap['INF-001']}, ${batchMap['BATCH-INF-001-002']}, 'in', 3, 2500000000.00, 7500000000.00, 'initial_stock', 'Initial stock entry - expansion project', '2025-08-01', '2025-08-01 08:00:00+07'),
+      (${itemMap['INF-002']}, ${batchMap['BATCH-INF-002-001']}, 'in', 1, 1800000000.00, 1800000000.00, 'initial_stock', 'Initial stock entry - Bandung operations', '2025-08-01', '2025-08-01 09:00:00+07'),
+      (${itemMap['INF-002']}, ${batchMap['BATCH-INF-002-002']}, 'in', 2, 1800000000.00, 3600000000.00, 'initial_stock', 'Initial stock entry - regional expansion', '2025-08-01', '2025-08-01 09:00:00+07'),
+      (${itemMap['INF-003']}, ${batchMap['BATCH-INF-003-001']}, 'in', 2, 1200000000.00, 2400000000.00, 'initial_stock', 'Initial stock entry - Surabaya port operations', '2025-08-01', '2025-08-01 10:00:00+07'),
+      (${itemMap['INF-004']}, ${batchMap['BATCH-INF-004-001']}, 'in', 5, 450000000.00, 2250000000.00, 'initial_stock', 'Initial stock entry - Jakarta fleet', '2025-08-01', '2025-08-01 11:00:00+07'),
+      (${itemMap['INF-004']}, ${batchMap['BATCH-INF-004-002']}, 'in', 7, 450000000.00, 3150000000.00, 'initial_stock', 'Initial stock entry - fleet expansion', '2025-08-01', '2025-08-01 11:00:00+07'),
+      (${itemMap['INF-005']}, ${batchMap['BATCH-INF-005-001']}, 'in', 4, 180000000.00, 720000000.00, 'initial_stock', 'Initial stock entry - Bandung warehouse', '2025-08-01', '2025-08-01 12:00:00+07'),
+      (${itemMap['INF-005']}, ${batchMap['BATCH-INF-005-002']}, 'in', 4, 180000000.00, 720000000.00, 'initial_stock', 'Initial stock entry - warehouse expansion', '2025-08-01', '2025-08-01 12:00:00+07'),
+      (${itemMap['INF-006']}, ${batchMap['BATCH-INF-006-001']}, 'in', 75, 75000.00, 5625000.00, 'initial_stock', 'Initial stock entry - Jakarta safety equipment', '2025-08-01', '2025-08-01 13:00:00+07'),
+      (${itemMap['INF-006']}, ${batchMap['BATCH-INF-006-002']}, 'in', 75, 75000.00, 5625000.00, 'initial_stock', 'Initial stock entry - safety stock', '2025-08-01', '2025-08-01 13:00:00+07'),
+      (${itemMap['INF-007']}, ${batchMap['BATCH-INF-007-001']}, 'in', 50, 45000.00, 2250000.00, 'initial_stock', 'Initial stock entry - Bandung safety equipment', '2025-08-01', '2025-08-01 14:00:00+07'),
+      (${itemMap['INF-007']}, ${batchMap['BATCH-INF-007-002']}, 'in', 50, 45000.00, 2250000.00, 'initial_stock', 'Initial stock entry - safety stock', '2025-08-01', '2025-08-01 14:00:00+07'),
+      (${itemMap['INF-008']}, ${batchMap['BATCH-INF-008-001']}, 'in', 15, 250000.00, 3750000.00, 'initial_stock', 'Initial stock entry - Surabaya medical supplies', '2025-08-01', '2025-08-01 15:00:00+07'),
+      (${itemMap['INF-008']}, ${batchMap['BATCH-INF-008-002']}, 'in', 10, 250000.00, 2500000.00, 'initial_stock', 'Initial stock entry - medical stock', '2025-08-01', '2025-08-01 15:00:00+07'),
+      (${itemMap['INF-009']}, ${batchMap['BATCH-INF-009-001']}, 'in', 25, 150000.00, 3750000.00, 'initial_stock', 'Initial stock entry - Medan measuring tools', '2025-08-01', '2025-08-01 16:00:00+07'),
+      (${itemMap['INF-009']}, ${batchMap['BATCH-INF-009-002']}, 'in', 25, 150000.00, 3750000.00, 'initial_stock', 'Initial stock entry - tool stock', '2025-08-01', '2025-08-01 16:00:00+07'),
+      (${itemMap['INF-010']}, ${batchMap['BATCH-INF-010-001']}, 'in', 6, 800000.00, 4800000.00, 'initial_stock', 'Initial stock entry - Makassar precision tools', '2025-08-01', '2025-08-01 17:00:00+07'),
+      (${itemMap['INF-010']}, ${batchMap['BATCH-INF-010-002']}, 'in', 6, 800000.00, 4800000.00, 'initial_stock', 'Initial stock entry - precision stock', '2025-08-01', '2025-08-01 17:00:00+07'),
+      (${itemMap['INF-011']}, ${batchMap['BATCH-INF-011-001']}, 'in', 20, 350000.00, 7000000.00, 'initial_stock', 'Initial stock entry - Yogyakarta communication', '2025-08-01', '2025-08-01 18:00:00+07'),
+      (${itemMap['INF-011']}, ${batchMap['BATCH-INF-011-002']}, 'in', 20, 350000.00, 7000000.00, 'initial_stock', 'Initial stock entry - communication stock', '2025-08-01', '2025-08-01 18:00:00+07'),
+      (${itemMap['INF-012']}, ${batchMap['BATCH-INF-012-001']}, 'in', 2, 15000000.00, 30000000.00, 'initial_stock', 'Initial stock entry - Jakarta power equipment', '2025-08-01', '2025-08-01 19:00:00+07'),
+      (${itemMap['INF-012']}, ${batchMap['BATCH-INF-012-002']}, 'in', 2, 15000000.00, 30000000.00, 'initial_stock', 'Initial stock entry - power backup', '2025-08-01', '2025-08-01 19:00:00+07'),
+      (${itemMap['INF-013']}, ${batchMap['BATCH-INF-013-001']}, 'in', 4, 2500000.00, 10000000.00, 'initial_stock', 'Initial stock entry - Bandung welding equipment', '2025-08-01', '2025-08-01 20:00:00+07'),
+      (${itemMap['INF-013']}, ${batchMap['BATCH-INF-013-002']}, 'in', 4, 2500000.00, 10000000.00, 'initial_stock', 'Initial stock entry - welding stock', '2025-08-01', '2025-08-01 20:00:00+07'),
+      (${itemMap['INF-014']}, ${batchMap['BATCH-INF-014-001']}, 'in', 5, 8000000.00, 40000000.00, 'initial_stock', 'Initial stock entry - Surabaya construction equipment', '2025-08-01', '2025-08-01 21:00:00+07'),
+      (${itemMap['INF-014']}, ${batchMap['BATCH-INF-014-002']}, 'in', 5, 8000000.00, 40000000.00, 'initial_stock', 'Initial stock entry - construction stock', '2025-08-01', '2025-08-01 21:00:00+07'),
+      (${itemMap['INF-015']}, ${batchMap['BATCH-INF-015-001']}, 'in', 3, 12000000.00, 36000000.00, 'initial_stock', 'Initial stock entry - Medan air systems', '2025-08-01', '2025-08-01 22:00:00+07'),
+      (${itemMap['INF-015']}, ${batchMap['BATCH-INF-015-002']}, 'in', 3, 12000000.00, 36000000.00, 'initial_stock', 'Initial stock entry - air systems stock', '2025-08-01', '2025-08-01 22:00:00+07');
+    `);
+
     console.log("✅ Comprehensive Module 2 test data inserted successfully!");
 
     // Verify the data was inserted with detailed breakdown
@@ -159,6 +313,13 @@ const insertTestData = async () => {
     const categoryCount = await db.pool.query('SELECT COUNT(*) as total FROM cash_categories');
     const depositCount = await db.pool.query('SELECT COUNT(*) as total FROM deposit_groups');
     const poCount = await db.pool.query('SELECT COUNT(*) as total FROM purchase_orders WHERE po_number LIKE \'PO/SPBG-TEST%\'');
+    
+    // Infrastructure data counts
+    const infraCategoryCount = await db.pool.query('SELECT COUNT(*) as total FROM infrastructure_categories');
+    const infraLocationCount = await db.pool.query('SELECT COUNT(*) as total FROM infrastructure_locations');
+    const infraItemCount = await db.pool.query('SELECT COUNT(*) as total FROM infrastructure_items');
+    const infraBatchCount = await db.pool.query('SELECT COUNT(*) as total FROM infrastructure_batches');
+    const infraTransactionCount = await db.pool.query('SELECT COUNT(*) as total FROM infrastructure_transactions');
     
     // Check deposit group connections
     const poWithDepositGroup = await db.pool.query('SELECT COUNT(*) as total FROM purchase_orders WHERE deposit_group_id IS NOT NULL');
@@ -183,6 +344,13 @@ const insertTestData = async () => {
     console.log(`   - Total SPBG Purchase Orders: ${poCount.rows[0].total}`);
     console.log(`   - Purchase Orders with Deposit Groups: ${poWithDepositGroup.rows[0].total}`);
     
+    console.log("\n🏗️ Infrastructure Inventory Data:");
+    console.log(`   - Infrastructure Categories: ${infraCategoryCount.rows[0].total}`);
+    console.log(`   - Infrastructure Locations: ${infraLocationCount.rows[0].total}`);
+    console.log(`   - Infrastructure Items: ${infraItemCount.rows[0].total}`);
+    console.log(`   - Infrastructure Batches: ${infraBatchCount.rows[0].total}`);
+    console.log(`   - Infrastructure Transactions: ${infraTransactionCount.rows[0].total}`);
+    
     console.log("\n🏗️ Deposit Group & Purchase Order Connections:");
     poByDepositGroup.rows.forEach(row => {
       console.log(`   - ${row.group_name}: ${row.po_count} POs, Total Value: Rp ${parseInt(row.total_value || 0).toLocaleString('id-ID')}`);
@@ -205,6 +373,42 @@ const insertTestData = async () => {
     console.log(`   - Purchase orders have realistic unit prices and total amounts`);
     console.log(`   - Different PO statuses: confirmed, partial, completed`);
     console.log(`   - All POs are properly linked to their respective deposit groups`);
+
+    // Infrastructure inventory summary
+    const infraByCategory = await db.pool.query(`
+      SELECT ic.category_name, COUNT(ii.id) as item_count, SUM(ii.total_value) as total_value
+      FROM infrastructure_categories ic 
+      LEFT JOIN infrastructure_items ii ON ic.id = ii.category_id 
+      GROUP BY ic.id, ic.category_name 
+      ORDER BY ic.id
+    `);
+    
+    const infraByLocation = await db.pool.query(`
+      SELECT il.location_name, COUNT(ii.id) as item_count, SUM(ii.total_value) as total_value
+      FROM infrastructure_locations il 
+      LEFT JOIN infrastructure_items ii ON il.id = ii.location_id 
+      GROUP BY il.id, il.location_name 
+      ORDER BY il.id
+    `);
+
+    console.log("\n🏗️ Infrastructure Inventory by Category:");
+    infraByCategory.rows.forEach(row => {
+      console.log(`   - ${row.category_name}: ${row.item_count} items, Total Value: Rp ${parseInt(row.total_value || 0).toLocaleString('id-ID')}`);
+    });
+
+    console.log("\n🏗️ Infrastructure Inventory by Location:");
+    infraByLocation.rows.forEach(row => {
+      console.log(`   - ${row.location_name}: ${row.item_count} items, Total Value: Rp ${parseInt(row.total_value || 0).toLocaleString('id-ID')}`);
+    });
+
+    console.log("\n💡 Infrastructure Inventory Testing Features:");
+    console.log(`   - 6 categories: Heavy Machinery, Transportation, Safety, Tools, Communication, Power`);
+    console.log(`   - 6 locations: Jakarta, Bandung, Surabaya, Medan, Makassar, Yogyakarta`);
+    console.log(`   - 15 infrastructure items with realistic pricing and quantities`);
+    console.log(`   - Each item has 2 batches for FIFO testing`);
+    console.log(`   - All items have initial stock transactions`);
+    console.log(`   - Expiration dates set for consumable items (safety equipment, tools)`);
+    console.log(`   - Infrastructure locations will appear as accounts in cash book`);
 
     process.exit(0);
   } catch (err) {

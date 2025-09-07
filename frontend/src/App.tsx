@@ -30,6 +30,9 @@ import BigDOCreatePage from "./pages/BigDOCreatePage";
 import BigDODetailPage from "./pages/BigDODetailPage";
 import StockManagementPage from "./pages/StockManagement";
 import StockCreatePage from "./pages/StockCreate";
+import InfrastructureManagementPage from "./pages/InfrastructureManagement";
+import InfrastructureCreatePage from "./pages/InfrastructureCreate";
+import InfrastructureHistoryPage from "./pages/InfrastructureHistory";
 import ServiceManagementPage from "./pages/ServiceManagement";
 import ServiceCreatePage from "./pages/ServiceCreate";
 import ServiceDetailPage from "./pages/ServiceDetail";
@@ -163,6 +166,12 @@ function App() {
           <Route path="stock/:id/batches" element={<StockBatchesPage />} />
 
           {/* ========================= */}
+
+          {/* Infrastructure Inventory Routes */}
+          <Route path="infrastructure" element={<InfrastructureManagementPage />} />
+          <Route path="infrastructure/create" element={<InfrastructureCreatePage />} />
+          <Route path="infrastructure/edit/:id" element={<InfrastructureCreatePage />} />
+          <Route path="infrastructure/:id/history" element={<InfrastructureHistoryPage />} />
 
           {/* Service Management Routes */}
           <Route

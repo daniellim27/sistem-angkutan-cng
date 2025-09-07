@@ -49,6 +49,13 @@ const setupIotRawDataModel = require("./iotRawData.model");
 
 // NEW: Budget Request Model
 const setupBudgetRequestModel = require("./budgetRequest.model");
+
+// NEW: Infrastructure Inventory Models
+const setupInfrastructureCategoryModel = require("./infrastructureCategory.model");
+const setupInfrastructureLocationModel = require("./infrastructureLocation.model");
+const setupInfrastructureItemModel = require("./infrastructureItem.model");
+const setupInfrastructureBatchModel = require("./infrastructureBatch.model");
+const setupInfrastructureTransactionModel = require("./infrastructureTransaction.model");
 // Initialize Sequelize connection using your .env variables
 const sequelize = new Sequelize(
   process.env.DB_NAME,
@@ -119,6 +126,13 @@ db.IotRawData = setupIotRawDataModel(sequelize);
 
 // Budget Request model
 db.BudgetRequest = setupBudgetRequestModel(sequelize);
+
+// Infrastructure Inventory models
+db.InfrastructureCategory = setupInfrastructureCategoryModel(sequelize);
+db.InfrastructureLocation = setupInfrastructureLocationModel(sequelize);
+db.InfrastructureItem = setupInfrastructureItemModel(sequelize);
+db.InfrastructureBatch = setupInfrastructureBatchModel(sequelize);
+db.InfrastructureTransaction = setupInfrastructureTransactionModel(sequelize);
 const {
   User,
   DriverProfile,
@@ -152,6 +166,11 @@ const {
   ExchangeRate,
   IotRawData,
   BudgetRequest,
+  InfrastructureCategory,
+  InfrastructureLocation,
+  InfrastructureItem,
+  InfrastructureBatch,
+  InfrastructureTransaction,
 } = db;
 
 // User <-> Profile Associations (One-to-One)
@@ -567,6 +586,53 @@ DeliveryOrder.hasMany(IotRawData, {
 IotRawData.belongsTo(DeliveryOrder, {
   foreignKey: "delivery_order_id",
   as: "deliveryOrder",
+});
+
+// === Infrastructure Inventory Associations ===
+InfrastructureCategory.hasMany(InfrastructureItem, {
+  foreignKey: "category_id",
+  as: "items",
+});
+InfrastructureItem.belongsTo(InfrastructureCategory, {
+  foreignKey: "category_id",
+  as: "category",
+});
+
+InfrastructureLocation.hasMany(InfrastructureItem, {
+  foreignKey: "location_id",
+  as: "items",
+});
+InfrastructureItem.belongsTo(InfrastructureLocation, {
+  foreignKey: "location_id",
+  as: "location",
+});
+
+InfrastructureItem.hasMany(InfrastructureTransaction, {
+  foreignKey: "item_id",
+  as: "transactions",
+});
+InfrastructureItem.hasMany(InfrastructureBatch, {
+  foreignKey: "item_id",
+  as: "batches",
+});
+
+InfrastructureBatch.belongsTo(InfrastructureItem, {
+  foreignKey: "item_id",
+  as: "infrastructureItem",
+});
+
+InfrastructureTransaction.belongsTo(InfrastructureBatch, {
+  foreignKey: "batch_id",
+  as: "batch",
+});
+
+InfrastructureBatch.hasMany(InfrastructureTransaction, {
+  foreignKey: "batch_id",
+  as: "transactions",
+});
+InfrastructureTransaction.belongsTo(InfrastructureItem, {
+  foreignKey: "item_id",
+  as: "infrastructureItem",
 });
 
 module.exports = db;

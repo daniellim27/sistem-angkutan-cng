@@ -19,6 +19,7 @@ const MainLayout = () => {
     if (path.startsWith("/vehicles")) return "Fleet Management";
     if (path.startsWith("/drivers")) return "Driver Management";
     if (path.startsWith("/stock")) return "Inventory Management";
+    if (path.startsWith("/infrastructure")) return "Infrastructure Inventory";
     if (path.startsWith("/services")) return "Service History";
     if (path.startsWith("/cash")) return "Cash Book";
     if (path.startsWith("/ritase")) return "Ritase Dashboard";
@@ -344,6 +345,22 @@ const MainLayout = () => {
                 <span className="text-xl mr-3">📦</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
                   Inventory Management
+                </span>
+              </Link>
+            </li>
+            <li className="mb-4">
+              <Link
+                to="/infrastructure"
+                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
+                  isActiveLink("/infrastructure")
+                    ? "bg-gray-700 border-l-4 border-blue-500"
+                    : ""
+                }`}
+                title="Infrastructure Inventory"
+              >
+                <span className="text-xl mr-3">🏗️</span>
+                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
+                  Infrastructure Inventory
                 </span>
               </Link>
             </li>
