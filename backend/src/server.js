@@ -41,6 +41,7 @@ const webStockRoutes = require("./routes/web/stock.routes");
 const webServiceRoutes = require("./routes/web/service.routes");
 const webTireRoutes = require("./routes/web/tire.routes");
 const webCashRoutes = require("./routes/web/cash.routes");
+const webCashCoordinatorRoutes = require("./routes/web/cash-coordinator.routes");
 const webRitaseRoutes = require("./routes/web/ritase.routes");
 const webBukuKasRoutes = require("./routes/web/bukuKas.routes");
 const webPaymentsRoutes = require("./routes/web/payments.routes");
@@ -164,6 +165,7 @@ initializeDatabase().then(() => {
   app.use("/api/web/services", webServiceRoutes);
   app.use("/api/web/tires", webTireRoutes);
   app.use("/api/web/cash", webCashRoutes);
+  app.use("/api/web/cash-coordinator", webCashCoordinatorRoutes);
   app.use("/api/web/ritase", webRitaseRoutes);
   app.use("/api/web/buku-kas", webBukuKasRoutes);
   app.use("/api/web/payments", webPaymentsRoutes);

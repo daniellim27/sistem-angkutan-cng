@@ -22,6 +22,7 @@ const MainLayout = () => {
     if (path.startsWith("/infrastructure")) return "Infrastructure Inventory";
     if (path.startsWith("/services")) return "Service History";
     if (path.startsWith("/cash")) return "Cash Book";
+    if (path.startsWith("/cash-coordinator")) return "Cash Coordinator";
     if (path.startsWith("/ritase")) return "Ritase Dashboard";
     if (path.startsWith("/buku-kas")) return "Cash Book";
     if (path.startsWith("/tempo")) return "Credit Book";
@@ -418,6 +419,22 @@ const MainLayout = () => {
                 <span className="text-xl mr-3">💰</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
                   Cash Book
+                </span>
+              </Link>
+            </li>
+            <li className="mb-4">
+              <Link
+                to="/cash-coordinator"
+                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
+                  isActiveLink("/cash-coordinator")
+                    ? "bg-gray-700 border-l-4 border-blue-500"
+                    : ""
+                }`}
+                title="Cash Coordinator"
+              >
+                <span className="text-xl mr-3">👥</span>
+                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
+                  Cash Coordinator
                 </span>
               </Link>
             </li>

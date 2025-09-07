@@ -46,6 +46,7 @@ import TireInventoryEditPage from "./pages/TireInventoryEdit";
 import RemovedTiresPage from "./pages/RemovedTires";
 import StockBatchesPage from "./pages/StockBatches";
 import CashManagementPage from "./pages/CashManagement";
+import CashCoordinatorPage from "./pages/CashCoordinator";
 import TempoManagementPage from "./pages/CashTempoManagement";
 import StockHistoryPage from "./pages/StockHistory";
 import VehicleServiceHistory from "./pages/VehicleServiceHistory";
@@ -183,6 +184,7 @@ function App() {
           <Route path="services/:id" element={<ServiceDetailPage />} />
           <Route path="services/edit/:id" element={<ServiceEditPage />} />
           <Route path="cash" element={<CashManagementPage />} />
+          <Route path="cash-coordinator" element={<CashCoordinatorPage />} />
           <Route path="tempo" element={<TempoManagementPage />} />
           <Route path="deposit-groups" element={<DepositGroupManagement />} />
           <Route path="budget-requests" element={<BudgetRequestManagement />} />

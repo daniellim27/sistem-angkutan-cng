@@ -61,6 +61,7 @@ apiClient.interceptors.response.use(
     // Skip interceptor for endpoints that need full response with pagination/stats
     if (
       response.config.url?.includes("/cash/") ||
+      response.config.url?.includes("/cash-coordinator/") ||
       response.config.url?.includes("/big-delivery-orders") ||
       response.config.url?.includes("/trips") ||
       response.config.url?.includes("/purchase-orders") ||
