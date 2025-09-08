@@ -86,6 +86,7 @@ const legacyRitasePaymentsRoutes = require("./routes/web/ritase.payments.legacy.
 const utilsRoutes = require("./routes/utils.routes");
 const webDepositGroupRoutes = require("./routes/web/depositGroup.routes");
 const trackingRoutes = require("./routes/tracking.routes");
+const gasStationRoutes = require("./routes/gasStation.routes");
 const scheduledScrapingService = require("./services/scheduledScraper");
 
 const app = express();
@@ -215,6 +216,10 @@ initializeDatabase().then(() => {
   // Add tracking routes for both web and mobile access
   app.use("/api/tracking", trackingRoutes);
   app.use("/api/web/tracking", trackingRoutes);
+
+  // Add gas station routes
+  app.use("/api/gas-stations", gasStationRoutes);
+  app.use("/api/web/gas-stations", gasStationRoutes);
 
   app.use("/api/utils", utilsRoutes);
 

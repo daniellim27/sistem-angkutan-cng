@@ -3,6 +3,8 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import apiClient from '../api/axiosConfig';
+import GasStationToolbar from './GasStationToolbar';
+import { GasStationApi, GasStation } from '../api/gasStationApi';
 
 // Fix for default markers
 const DefaultIcon = L.Icon.Default as any;
@@ -240,6 +242,10 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
   const [showTrails, setShowTrails] = useState(false); // Default to false
   const [loadingTrails, setLoadingTrails] = useState(false);
   
+  // Gas Station state
+  const [gasStations, setGasStations] = useState<GasStation[]>([]);
+  const [loadingGasStations, setLoadingGasStations] = useState(false);
+  
   // Fixed trail duration - 24 hours only
   const trailHours = 24;
 
@@ -306,6 +312,21 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
       fetchTrailData();
     }, 1000); // 1 second debounce
   }, [showTrails, fetchTrailData, onTrailsUpdate]);
+
+  // Gas Station fetching function
+  const fetchGasStations = useCallback(async () => {
+    try {
+      setLoadingGasStations(true);
+      const response = await GasStationApi.getAllGasStations();
+      if (response.success) {
+        setGasStations(response.data);
+      }
+    } catch (err: any) {
+      console.error('Error fetching gas stations:', err);
+    } finally {
+      setLoadingGasStations(false);
+    }
+  }, []);
 
   // Fetch tracking data
   const fetchTrackingData = useCallback(async () => {
@@ -466,6 +487,11 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showTrails, deliveryOrderId, vehicleId]); // Removed trailHours since it's now constant
 
+  // Effect for gas stations
+  useEffect(() => {
+    fetchGasStations();
+  }, [fetchGasStations]);
+
   // Calculate map center
   const getMapCenter = (): [number, number] => {
     if (selectedVehicle) {
@@ -542,12 +568,12 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
             <span>Show Vehicle Trails</span>
           </label>
 
-          {showTrails && (
-            <>
-              {loadingTrails && (
-                <span className="text-gray-500">Loading trails...</span>
-              )}
-            </>
+          {showTrails && loadingTrails && (
+            <span className="text-gray-500">Loading trails...</span>
+          )}
+
+          {loadingGasStations && (
+            <span className="text-gray-500">Loading gas stations...</span>
           )}
         </div>
 
@@ -565,6 +591,9 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
                     <span className="text-yellow-600">⚠️ Mixed device IDs detected</span>
                   )}
                 </>
+              )}
+              {gasStations.length > 0 && (
+                <span>⛽ Gas stations: {gasStations.length}</span>
               )}
             </div>
           </div>
@@ -682,6 +711,20 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
               </Popup>
             </Marker>
           ))}
+
+          {/* Gas Station Toolbar */}
+          <GasStationToolbar
+            gasStations={gasStations}
+            onGasStationsUpdate={setGasStations}
+            onMarkerAdded={(gasStation) => {
+              console.log('Gas station added:', gasStation);
+            }}
+            onMarkerDeleted={(gasStationId) => {
+              console.log('Gas station deleted:', gasStationId);
+            }}
+            editMode={true}
+            onEditModeChange={() => {}}
+          />
         </MapContainer>
       </div>
     </div>

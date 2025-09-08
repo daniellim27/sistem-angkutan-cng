@@ -2,7 +2,7 @@
 import axios from "axios";
 
 const BASE_API_URL =
-  process.env.REACT_APP_API_URL || "http://localhost:3000/api";
+  process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 const WEB_API_URL = BASE_API_URL.endsWith("/web")
   ? BASE_API_URL
   : `${BASE_API_URL}/web`;
@@ -68,7 +68,8 @@ apiClient.interceptors.response.use(
       response.config.url?.includes("/purchase-orders") ||
       response.config.url?.includes("/payments") ||
       response.config.url?.includes("/delivery-orders") ||
-      response.config.url?.includes("/tracking/")
+      response.config.url?.includes("/tracking/") ||
+      response.config.url?.includes("/gas-stations")
     ) {
       return response; // Return full response for these endpoints
     }

@@ -41,6 +41,9 @@ const setupDepositGroupMemberModel = require("./depositGroupMember.model");
 // GPS Tracking Model
 const setupDriverLocationModel = require("./driverLocation.model");
 
+// Gas Station Model
+const setupGasStationModel = require("./gasStation.model");
+
 // NEW: Exchange Rate Model for JISDOR scraping
 const setupExchangeRateModel = require("./exchangeRate.model");
 
@@ -120,6 +123,9 @@ db.DepositGroupMember = setupDepositGroupMemberModel(sequelize);
 // GPS Tracking Model
 db.DriverLocation = setupDriverLocationModel(sequelize);
 
+// Gas Station Model
+db.GasStation = setupGasStationModel(sequelize);
+
 // Exchange Rate and IoT models
 db.ExchangeRate = setupExchangeRateModel(sequelize);
 db.IotRawData = setupIotRawDataModel(sequelize);
@@ -163,6 +169,7 @@ const {
   DepositGroup,
   DepositGroupMember,
   DriverLocation,
+  GasStation,
   ExchangeRate,
   IotRawData,
   BudgetRequest,
@@ -643,6 +650,32 @@ InfrastructureBatch.hasMany(InfrastructureTransaction, {
 InfrastructureTransaction.belongsTo(InfrastructureItem, {
   foreignKey: "item_id",
   as: "infrastructureItem",
+});
+
+// === Gas Station Associations ===
+// Association with User (Creator)
+GasStation.belongsTo(User, {
+  foreignKey: 'created_by',
+  as: 'creator',
+  onDelete: 'RESTRICT',
+});
+
+// Association with User (Updater)
+GasStation.belongsTo(User, {
+  foreignKey: 'updated_by',
+  as: 'updater',
+  onDelete: 'SET NULL',
+});
+
+// User to GasStation (reverse associations)
+User.hasMany(GasStation, {
+  foreignKey: 'created_by',
+  as: 'createdGasStations',
+});
+
+User.hasMany(GasStation, {
+  foreignKey: 'updated_by',
+  as: 'updatedGasStations',
 });
 
 module.exports = db;
