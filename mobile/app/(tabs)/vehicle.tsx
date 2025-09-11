@@ -92,12 +92,9 @@ export default function VehicleScreen() {
 
       const activeOrders = ordersResponse.data.filter((order: any) =>
         [
-          "assigned",
-          "otw_to_load_location",
-          "at_load_location",
+          "at_spbu",
           "otw_to_unload_location",
           "at_unload_location",
-          "otw_to_base",
         ].includes(order.status)
       );
 

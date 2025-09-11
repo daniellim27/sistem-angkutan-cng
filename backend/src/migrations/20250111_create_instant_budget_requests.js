@@ -39,7 +39,7 @@ module.exports = {
       status: {
         type: DataTypes.STRING(20),
         allowNull: false,
-        defaultValue: 'pending'
+        defaultValue: 'approved' // ✅ DEFAULT TO APPROVED FOR INSTANT APPROVAL
       },
       approved_by: {
         type: DataTypes.INTEGER,
@@ -81,57 +81,11 @@ module.exports = {
     await queryInterface.addIndex('budget_requests', ['status']);
     await queryInterface.addIndex('budget_requests', ['created_at']);
 
-    // Add foreign key constraints
-    await queryInterface.addConstraint('budget_requests', {
-      fields: ['delivery_order_id'],
-      type: 'foreign key',
-      name: 'fk_budget_requests_delivery_order_id',
-      references: {
-        table: 'delivery_orders',
-        field: 'id'
-      },
-      onDelete: 'CASCADE',
-      onUpdate: 'CASCADE'
-    });
-
-    await queryInterface.addConstraint('budget_requests', {
-      fields: ['driver_id'],
-      type: 'foreign key',
-      name: 'fk_budget_requests_driver_id',
-      references: {
-        table: 'users',
-        field: 'id'
-      },
-      onDelete: 'CASCADE',
-      onUpdate: 'CASCADE'
-    });
-
-    await queryInterface.addConstraint('budget_requests', {
-      fields: ['approved_by'],
-      type: 'foreign key',
-      name: 'fk_budget_requests_approved_by',
-      references: {
-        table: 'users',
-        field: 'id'
-      },
-      onDelete: 'SET NULL',
-      onUpdate: 'CASCADE'
-    });
+    // Add composite index for common queries
+    await queryInterface.addIndex('budget_requests', ['driver_id', 'delivery_order_id']);
   },
 
   async down(queryInterface, Sequelize) {
-    // Remove foreign key constraints
-    await queryInterface.removeConstraint('budget_requests', 'fk_budget_requests_approved_by');
-    await queryInterface.removeConstraint('budget_requests', 'fk_budget_requests_driver_id');
-    await queryInterface.removeConstraint('budget_requests', 'fk_budget_requests_delivery_order_id');
-    
-    // Remove indexes
-    await queryInterface.removeIndex('budget_requests', ['created_at']);
-    await queryInterface.removeIndex('budget_requests', ['status']);
-    await queryInterface.removeIndex('budget_requests', ['driver_id']);
-    await queryInterface.removeIndex('budget_requests', ['delivery_order_id']);
-    
-    // Drop table
     await queryInterface.dropTable('budget_requests');
   }
 };

@@ -132,9 +132,9 @@ router.patch(
 );
 
 router.patch(
-  "/:id/arrive-at-load",
+  "/:id/depart-spbu",
   checkRole(["driver"]),
-  doController.arriveAtLoadLocation
+  doController.departFromSPBU
 );
 
 // Confirm load endpoint (sudah ada dari implementasi sebelumnya)

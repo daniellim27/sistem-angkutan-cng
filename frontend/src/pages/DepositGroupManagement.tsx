@@ -643,16 +643,16 @@ const DepositGroupManagement = () => {
                     />
                   </div>
 
-                  {/* Load Location */}
+                  {/* SPBU Location */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Load Location
+                      SPBU Location
                     </label>
                     <input
                       type="text"
                       value={poFormData.load_location}
                       onChange={(e) => setPOFormData(prev => ({ ...prev, load_location: e.target.value }))}
-                      placeholder="Enter load location"
+                      placeholder="Enter SPBU location"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     />
                   </div>

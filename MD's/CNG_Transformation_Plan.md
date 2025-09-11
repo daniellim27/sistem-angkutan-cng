@@ -56,13 +56,8 @@ This document outlines the comprehensive transformation plan for converting the 
    - Gas filling cost calculation (JISDOR rate vs Fixed cost)
    - Transaction history and balance tracking
 
-3. **IoT Integration**
-   - Pressure sensors (in/out)
-   - Temperature monitoring
-   - Meter pulse counting
-   - Real-time data display
 
-4. **Enhanced Driver Management**
+3. **Enhanced Driver Management**
    - Expense approval workflow
    - Receipt photo uploads
    - Financial summary per trip
@@ -112,16 +107,6 @@ CREATE TABLE spbg_transactions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- IoT data table
-CREATE TABLE iot_raw_data (
-  id SERIAL PRIMARY KEY,
-  delivery_order_id INTEGER NOT NULL REFERENCES delivery_orders(id),
-  pressure_in NUMERIC(10, 2),
-  pressure_out NUMERIC(10, 2),
-  temperature NUMERIC(10, 2),
-  meter_pulse INTEGER,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
 ```
 
 #### 1.2 Model Updates
@@ -179,9 +164,6 @@ POST /api/v1/web/spbg/fill - Record gas filling
 GET /api/v1/web/spbg/balance - Get current balance
 GET /api/v1/web/spbg/transactions - Get transaction history
 
-// IoT integration
-POST /api/v1/iot/data - Receive sensor data
-GET /api/v1/web/do/:id/sensordata - Get latest sensor data
 
 // Enhanced driver expenses
 GET /api/v1/web/driver-expenses - Get all expenses
@@ -207,7 +189,6 @@ PUT /api/v1/web/driver-expenses/:id - Update expense status
 - `frontend/src/components/Tracking/LiveMap.tsx` - Google Maps integration
 - `frontend/src/components/Tracking/RouteHistory.tsx` - Route visualization
 - `frontend/src/components/Finance/SPBGDepositForm.tsx` - Deposit form
-- `frontend/src/components/IoT/SensorDataDisplay.tsx` - Real-time sensor display
 
 #### 3.4 Dependencies to Install
 ```bash
@@ -254,10 +235,6 @@ expo install expo-notifications
    - Drivers record gas fillings via mobile
    - Automatic cost calculation using JISDOR rates
 
-3. **IoT Data Flow**
-   - Arduino/sensors send data to `/api/v1/iot/data`
-   - Backend stores in `iot_raw_data`
-   - Web admin displays real-time sensor readings
 
 #### 5.2 Testing Strategy
 1. **Unit Tests**
@@ -268,7 +245,6 @@ expo install expo-notifications
 2. **Integration Tests**
    - End-to-end tracking flow
    - SPBG deposit and transaction flow
-   - IoT data pipeline
 
 3. **User Acceptance Testing**
    - Driver mobile app workflow
@@ -428,119 +404,8 @@ exports.recordGasFilling = async (req, res, next) => {
 };
 ```
 
-### 3. IoT Integration Implementation
 
-#### IoT Data Controller
-```javascript
-// backend/src/controllers/iotController.js
-exports.receiveData = async (req, res, next) => {
-  const { delivery_order_id, pressure_in, pressure_out, temperature, meter_pulse } = req.body;
-  
-  if (!delivery_order_id) {
-    return res.status(400).json({ message: 'delivery_order_id is required' });
-  }
-  
-  try {
-    const iotData = await IoTRawData.create({
-      delivery_order_id,
-      pressure_in,
-      pressure_out,
-      temperature,
-      meter_pulse
-    });
-    
-    // Emit real-time update for web admin
-    req.app.get('io').emit('iotDataUpdate', {
-      delivery_order_id,
-      data: iotData
-    });
-    
-    res.status(201).json({ message: 'Data received successfully' });
-  } catch (error) {
-    next(error);
-  }
-};
-```
 
-#### Real-time Sensor Display Component
-```typescript
-// frontend/src/components/IoT/SensorDataDisplay.tsx
-import { useEffect, useState } from 'react';
-import { Line } from 'recharts';
-
-interface SensorData {
-  pressure_in: number;
-  pressure_out: number;
-  temperature: number;
-  meter_pulse: number;
-  created_at: string;
-}
-
-const SensorDataDisplay: React.FC<{ deliveryOrderId: string }> = ({ deliveryOrderId }) => {
-  const [sensorData, setSensorData] = useState<SensorData[]>([]);
-  
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await api.get(`/web/delivery-orders/${deliveryOrderId}/sensordata`);
-        setSensorData(response.data);
-      } catch (error) {
-        console.error('Failed to fetch sensor data:', error);
-      }
-    };
-    
-    // Initial fetch
-    fetchData();
-    
-    // Poll every 5 seconds
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, [deliveryOrderId]);
-  
-  return (
-    <div className="bg-white p-4 rounded-lg shadow">
-      <h3 className="text-lg font-semibold mb-4">Real-time Sensor Data</h3>
-      
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div className="text-center">
-          <div className="text-2xl font-bold text-blue-600">
-            {sensorData[sensorData.length - 1]?.pressure_in || 0}
-          </div>
-          <div className="text-sm text-gray-600">Pressure In (bar)</div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-green-600">
-            {sensorData[sensorData.length - 1]?.pressure_out || 0}
-          </div>
-          <div className="text-sm text-gray-600">Pressure Out (bar)</div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-orange-600">
-            {sensorData[sensorData.length - 1]?.temperature || 0}
-          </div>
-          <div className="text-sm text-gray-600">Temperature (°C)</div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-purple-600">
-            {sensorData[sensorData.length - 1]?.meter_pulse || 0}
-          </div>
-          <div className="text-sm text-gray-600">Meter Pulse</div>
-        </div>
-      </div>
-      
-      {sensorData.length > 0 && (
-        <Line
-          data={sensorData}
-          dataKey="pressure_in"
-          stroke="#3B82F6"
-          strokeWidth={2}
-          dot={false}
-        />
-      )}
-    </div>
-  );
-};
-```
 
 ## Migration Strategy
 

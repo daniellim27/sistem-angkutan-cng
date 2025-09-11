@@ -38,11 +38,7 @@ exports.getAllBigDeliveryOrders = async (req, res, next) => {
           model: DeliveryOrder,
           as: "mainDeliveryOrder",
           include: [
-            {
-              model: PurchaseOrder,
-              as: "purchaseOrder",
-              attributes: ["po_number", "customer_name", "item_name"],
-            },
+            // Removed PO include - DOs are now standalone
           ],
         },
         {
@@ -86,7 +82,7 @@ exports.getAllBigDeliveryOrders = async (req, res, next) => {
       delivery_summary: {
         main_do: {
           customer: bigDO.mainDeliveryOrder?.customer_name,
-          po_number: bigDO.mainDeliveryOrder?.purchaseOrder?.po_number,
+          po_number: null, // No longer available - DOs are standalone
           status: bigDO.mainDeliveryOrder?.status,
         },
         tambahan_count: bigDO.tambahan?.length || 0,
@@ -364,10 +360,7 @@ exports.createBigDeliveryOrder = async (req, res, next) => {
           model: DeliveryOrder,
           as: "mainDeliveryOrder",
           include: [
-            {
-              model: PurchaseOrder,
-              as: "purchaseOrder",
-            },
+            // Removed PO include - DOs are now standalone
           ],
         },
         {
@@ -424,10 +417,7 @@ exports.getBigDeliveryOrderById = async (req, res, next) => {
           model: DeliveryOrder,
           as: "mainDeliveryOrder",
           include: [
-            {
-              model: PurchaseOrder,
-              as: "purchaseOrder",
-            },
+            // Removed PO include - DOs are now standalone
           ],
         },
         {

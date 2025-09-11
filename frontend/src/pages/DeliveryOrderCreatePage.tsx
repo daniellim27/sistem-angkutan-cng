@@ -24,36 +24,27 @@ interface DeliveryOrder {
   gas_filling_cost?: number;
 }
 
-interface PurchaseOrder {
-  id: number;
-  po_number: string;
-  customer_name: string;
-  item_name: string;
-  unit_price: number;
-  total_quantity: number;
-  unit: string;
-  status: string;
-}
-
 const DeliveryOrderCreatePage = () => {
-  const { poId } = useParams();
   const navigate = useNavigate();
-  const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrder | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Enhanced form data with gas filling fields
+  // Standalone DO form data with all required fields
   const [formData, setFormData] = useState({
     customer_name: '',
     item_name: '',
+    unit: 'kubik', // DOs always use kubik
     unit_price: '',
     minimal_load_quantity: '',
-    actual_load_quantity: '',
-    final_amount: '',
-    total_amount: '',
+    driver_id: '',
+    vehicle_id: '',
+    load_location: '',
+    unload_location: '',
+    trip_allowance: '0',
+    gaji: '0',
+    do_name: '',
     paid_amount: '0',
-    payment_status: 'pending',
     // Gas filling fields
     gas_volume_m3: '',
     spbg_location: '',
@@ -62,36 +53,34 @@ const DeliveryOrderCreatePage = () => {
     gas_filling_cost: ''
   });
 
+  // State for multiple unload locations
+  const [unloadLocations, setUnloadLocations] = useState<string[]>(['']);
+
   // SPBG locations for selection
   const spbgLocations: { value: string; label: string }[] = [];
 
   // Gas calculation methods
   const calculationMethods: { value: string; label: string }[] = [];
 
-  useEffect(() => {
-    if (poId) {
-      fetchPurchaseOrder();
-    }
-  }, [poId]);
+  // Add state for drivers and vehicles
+  const [drivers, setDrivers] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
 
-  const fetchPurchaseOrder = async () => {
+  useEffect(() => {
+    fetchDriversAndVehicles();
+  }, []);
+
+  const fetchDriversAndVehicles = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get(`/purchase-orders/${poId}`);
-      const po = response.data.data || response.data;
-      setPurchaseOrder(po);
-      
-      // Pre-fill form with PO data
-      setFormData(prev => ({
-        ...prev,
-        customer_name: po.customer_name || '',
-        item_name: po.item_name || '',
-        unit_price: po.unit_price?.toString() || '',
-        minimal_load_quantity: po.total_quantity?.toString() || '',
-        total_amount: (po.unit_price * po.total_quantity)?.toString() || ''
-      }));
+      const [driversRes, vehiclesRes] = await Promise.all([
+        apiClient.get('/users?role=driver'),
+        apiClient.get('/vehicles')
+      ]);
+      setDrivers(driversRes.data.data || driversRes.data || []);
+      setVehicles(vehiclesRes.data.data || vehiclesRes.data || []);
     } catch (err) {
-      setError('Failed to fetch purchase order details.');
+      setError('Failed to fetch drivers and vehicles.');
       console.error(err);
     } finally {
       setLoading(false);
@@ -123,6 +112,33 @@ const DeliveryOrderCreatePage = () => {
     }
   };
 
+  // Functions to handle multiple unload locations
+  const addUnloadLocation = () => {
+    setUnloadLocations(prev => [...prev, '']);
+  };
+
+  const removeUnloadLocation = (index: number) => {
+    if (unloadLocations.length > 1) {
+      setUnloadLocations(prev => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateUnloadLocation = (index: number, value: string) => {
+    setUnloadLocations(prev => {
+      const newLocations = [...prev];
+      newLocations[index] = value;
+      return newLocations;
+    });
+    
+    // Keep the main unload_location field in sync with the first location for backward compatibility
+    if (index === 0) {
+      setFormData(prev => ({
+        ...prev,
+        unload_location: value
+      }));
+    }
+  };
+
   const calculateGasFillingCost = () => {
     const volume = parseFloat(formData.gas_volume_m3);
     if (!volume) {
@@ -151,22 +167,23 @@ const DeliveryOrderCreatePage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!purchaseOrder) return;
-
     try {
       setSubmitting(true);
       
       const payload = {
-        purchase_order_id: purchaseOrder.id,
         customer_name: formData.customer_name,
         item_name: formData.item_name,
+        unit: 'kubik', // Force kubik for DOs
         unit_price: parseFloat(formData.unit_price),
         minimal_load_quantity: parseFloat(formData.minimal_load_quantity),
-        actual_load_quantity: parseFloat(formData.actual_load_quantity) || parseFloat(formData.minimal_load_quantity),
-        final_amount: parseFloat(formData.final_amount),
-        total_amount: parseFloat(formData.total_amount),
-        paid_amount: parseFloat(formData.paid_amount),
-        payment_status: formData.payment_status,
+        driver_id: parseInt(formData.driver_id),
+        vehicle_id: parseInt(formData.vehicle_id),
+        load_location: formData.load_location,
+        unload_location: formData.unload_location,
+        additional_unload_locations: unloadLocations.filter(loc => loc.trim() !== ''), // Include additional unload locations
+        trip_allowance: parseFloat(formData.trip_allowance),
+        gaji: parseFloat(formData.gaji),
+        do_name: formData.do_name,
         // Include gas filling data
         gas_volume_m3: formData.gas_volume_m3 ? parseFloat(formData.gas_volume_m3) : null,
         spbg_location: formData.spbg_location || null,
@@ -189,13 +206,17 @@ const DeliveryOrderCreatePage = () => {
     setFormData({
       customer_name: '',
       item_name: '',
+      unit: 'kubik', // DOs always use kubik
       unit_price: '',
       minimal_load_quantity: '',
-      actual_load_quantity: '',
-      final_amount: '',
-      total_amount: '',
+      driver_id: '',
+      vehicle_id: '',
+      load_location: '',
+      unload_location: '',
+      trip_allowance: '0',
+      gaji: '0',
+      do_name: '',
       paid_amount: '0',
-      payment_status: 'pending',
       // Reset gas filling fields
       gas_volume_m3: '',
       spbg_location: '',
@@ -203,29 +224,17 @@ const DeliveryOrderCreatePage = () => {
       jisdor_rate: '',
       gas_filling_cost: ''
     });
+    // Reset unload locations
+    setUnloadLocations(['']);
   };
 
-  if (loading) return <div className="text-center p-8">Loading purchase order details...</div>;
-
-  if (!purchaseOrder) {
-    return (
-      <div className="text-center p-8">
-        <div className="text-red-600 mb-4">Purchase order not found.</div>
-        <button
-          onClick={() => navigate('/purchase-orders')}
-          className="bg-blue-500 hover:bg-blue-700 text-white px-4 py-2 rounded"
-        >
-          Back to Purchase Orders
-        </button>
-      </div>
-    );
-  }
+  if (loading) return <div className="text-center p-8">Loading drivers and vehicles...</div>;
 
   return (
     <div className="p-6">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-800">Create Delivery Order</h1>
-        <p className="text-gray-600">From Purchase Order: {purchaseOrder.po_number}</p>
+        <p className="text-gray-600">Create a standalone delivery order with all required details</p>
       </div>
 
       {error && (
@@ -270,6 +279,63 @@ const DeliveryOrderCreatePage = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
+                Unit *
+              </label>
+              <select
+                name="unit"
+                value={formData.unit}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed"
+                disabled
+                required
+              >
+                <option value="kubik">Kubik (m³)</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">Delivery orders always use cubic meters (m³)</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Driver *
+              </label>
+              <select
+                name="driver_id"
+                value={formData.driver_id}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              >
+                <option value="">Select Driver</option>
+                {drivers.map((driver: any) => (
+                  <option key={driver.id} value={driver.id}>
+                    {driver.driverProfile?.full_name || driver.username}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Vehicle *
+              </label>
+              <select
+                name="vehicle_id"
+                value={formData.vehicle_id}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              >
+                <option value="">Select Vehicle</option>
+                {vehicles.map((vehicle: any) => (
+                  <option key={vehicle.id} value={vehicle.id}>
+                    {vehicle.license_plate} - {vehicle.type}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Unit Price (IDR) *
               </label>
               <input
@@ -300,40 +366,87 @@ const DeliveryOrderCreatePage = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Actual Load Quantity
+                DO Name
               </label>
               <input
-                type="number"
-                name="actual_load_quantity"
-                value={formData.actual_load_quantity}
+                type="text"
+                name="do_name"
+                value={formData.do_name}
                 onChange={handleInputChange}
-                step="0.01"
-                placeholder="Leave empty to use minimal quantity"
+                placeholder="Optional descriptive name"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Total Amount (IDR)
+                SPBU Location *
               </label>
               <input
-                type="number"
-                name="total_amount"
-                value={formData.total_amount}
-                readOnly
-                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                type="text"
+                name="load_location"
+                value={formData.load_location}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter SPBU (Gas Station) location"
+                required
               />
+            </div>
+
+            {/* Multiple Unload Locations */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Unload Locations *
+              </label>
+              <div className="space-y-2">
+                {unloadLocations.map((location, index) => (
+                  <div key={index} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={location}
+                      onChange={(e) => updateUnloadLocation(index, e.target.value)}
+                      placeholder={`Unload location ${index + 1}`}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required={index === 0} // First location is required
+                    />
+                    {unloadLocations.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeUnloadLocation(index)}
+                        className="px-3 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+                        title="Remove location"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addUnloadLocation}
+                  className="inline-flex items-center px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  Add Unload Location
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Add multiple unload locations for this delivery order. First location is required.
+              </p>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Final Amount (IDR)
+                Trip Allowance (IDR) *
               </label>
               <input
                 type="number"
-                name="final_amount"
-                value={formData.final_amount}
+                name="trip_allowance"
+                value={formData.trip_allowance}
                 onChange={handleInputChange}
                 step="0.01"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -343,18 +456,17 @@ const DeliveryOrderCreatePage = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Payment Status
+                Gaji (IDR) *
               </label>
-              <select
-                name="payment_status"
-                value={formData.payment_status}
+              <input
+                type="number"
+                name="gaji"
+                value={formData.gaji}
                 onChange={handleInputChange}
+                step="0.01"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="pending">Pending</option>
-                <option value="partial">Partial</option>
-                <option value="paid">Paid</option>
-              </select>
+                required
+              />
             </div>
 
             <div>

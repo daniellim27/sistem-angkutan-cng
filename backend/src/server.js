@@ -54,12 +54,10 @@ const deliveryOrderRoutes = require("./routes/deliveryOrder.routes");
 const bigDeliveryOrderRoutes = require("./routes/bigDeliveryOrder.routes");
 const userRoutes = require("./routes/user.routes");
 const driverExpenseRoutes = require("./routes/driverExpense.routes");
-const budgetRequestRoutes = require("./routes/budgetRequest.routes");
+const instantBudgetRequestRoutes = require("./routes/instantBudgetRequest.routes");
 const vehicleRoutes = require("./routes/vehicle.routes");
 const driverRoutes = require("./routes/driver.routes");
 
-// === Import IoT Routes ===
-const iotRoutes = require("./routes/iot.routes");
 
 // === Import Exchange Rate Routes ===
 const webExchangeRateRoutes = require("./routes/web/exchangeRates.routes");
@@ -70,6 +68,7 @@ const webDeliveryOrderRoutes = require("./routes/web/deliveryOrder.routes");
 const webBigDeliveryOrderRoutes = require("./routes/web/bigDeliveryOrder.routes");
 const webVehicleRoutes = require("./routes/web/vehicle.routes");
 const webDriverRoutes = require("./routes/web/driver.routes");
+const webUserRoutes = require("./routes/web/user.routes");
 const webStockRoutes = require("./routes/web/stock.routes");
 const webServiceRoutes = require("./routes/web/service.routes");
 const webTireRoutes = require("./routes/web/tire.routes");
@@ -79,7 +78,7 @@ const webRitaseRoutes = require("./routes/web/ritase.routes");
 const webBukuKasRoutes = require("./routes/web/bukuKas.routes");
 const webPaymentsRoutes = require("./routes/web/payments.routes");
 const webExpenseRoutes = require("./routes/web/expense.routes");
-const webBudgetRequestRoutes = require("./routes/web/budgetRequest.routes");
+const webInstantBudgetRequestRoutes = require("./routes/web/instantBudgetRequest.routes");
 const webInfrastructureRoutes = require("./routes/web/infrastructure.routes");
 const webVehicleExpenseRoutes = require("./routes/vehicleExpenseRoutes");
 const legacyRitasePaymentsRoutes = require("./routes/web/ritase.payments.legacy.route");
@@ -147,6 +146,7 @@ initializeDatabase().then(() => {
           delivery_orders: "/api/web/delivery-orders",
           big_delivery_orders: "/api/web/big-delivery-orders",
           vehicles: "/api/web/vehicles",
+          users: "/api/web/users",
           stock: "/api/web/stock",
           infrastructure: "/api/web/infrastructure",
           services: "/api/web/services",
@@ -158,12 +158,6 @@ initializeDatabase().then(() => {
         },
         exchange_rates: "/api/web/exchange-rates",
         tracking: "/api/web/tracking",
-      },
-      iot: {
-        data: "/api/v1/iot/data",
-        latest: "/api/v1/iot/data/:delivery_order_id/latest",
-        history: "/api/v1/iot/data/:delivery_order_id/history",
-        sensor_data: "/api/web/delivery-orders/:id/sensordata",
       },
       tracking: {
         api: "/api/tracking",
@@ -181,11 +175,9 @@ initializeDatabase().then(() => {
   app.use("/api/delivery-orders", deliveryOrderRoutes);
   app.use("/api/big-delivery-orders", bigDeliveryOrderRoutes);
   app.use("/api/driver-expenses", driverExpenseRoutes);
-  app.use("/api/budget-requests", budgetRequestRoutes);
+  app.use("/api/budget-requests", instantBudgetRequestRoutes);
   app.use("/api/drivers", driverRoutes);
 
-  // === IoT Routes ===
-  app.use("/api/v1/iot", iotRoutes);
 
   // Static uploads
   app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
@@ -196,6 +188,7 @@ initializeDatabase().then(() => {
   app.use("/api/web/big-delivery-orders", webBigDeliveryOrderRoutes);
   app.use("/api/web/vehicles", webVehicleRoutes);
   app.use("/api/web/drivers", webDriverRoutes);
+  app.use("/api/web/users", webUserRoutes);
   app.use("/api/web/stock", webStockRoutes);
   app.use("/api/web/services", webServiceRoutes);
   app.use("/api/web/tires", webTireRoutes);
@@ -205,7 +198,7 @@ initializeDatabase().then(() => {
   app.use("/api/web/buku-kas", webBukuKasRoutes);
   app.use("/api/web/payments", webPaymentsRoutes);
   app.use("/api/web/expenses", webExpenseRoutes);
-  app.use("/api/web/budget-requests", webBudgetRequestRoutes);
+  app.use("/api/web/budget-requests", webInstantBudgetRequestRoutes);
   app.use("/api/web/infrastructure", webInfrastructureRoutes);
   app.use("/api/web/vehicle-expense-cash", webVehicleExpenseRoutes);
   app.use("/api/web/ritase-payments", legacyRitasePaymentsRoutes);
@@ -239,7 +232,6 @@ initializeDatabase().then(() => {
         "/api/web/stock, /api/web/infrastructure, /api/web/services, /api/web/tires, /api/web/payments, /api/web/tracking"
     );
     console.log("📍 GPS Tracking API: /api/tracking, /api/web/tracking");
-    console.log("🔗 IoT API: /api/v1/iot/data, /api/web/delivery-orders/:id/sensordata");
     
     // Start GPS tracking service
     if (process.env.INOVATRACKS_USERNAME && process.env.INOVATRACKS_PASSWORD) {

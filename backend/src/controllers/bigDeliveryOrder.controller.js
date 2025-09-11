@@ -66,7 +66,7 @@ exports.getDriverActiveBigDO = async (req, res, next) => {
       delivery_orders: bigDO.tambahan.map((dOrder) => ({
         id: dOrder.id,
         do_number: dOrder.do_number,
-        po_number: dOrder.purchaseOrder?.po_number,
+        po_number: null, // No longer available - DOs are standalone
         customer_name: dOrder.customer_name,
         item_name: dOrder.item_name,
         minimal_load_quantity: dOrder.minimal_load_quantity,

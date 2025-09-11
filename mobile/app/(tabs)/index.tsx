@@ -36,12 +36,9 @@ interface DeliveryOrder {
   minimal_load_quantity: number;
   actual_load_quantity?: number;
   status:
-    | "assigned"
-    | "otw_to_load_location"
-    | "at_load_location"
+    | "at_spbu"
     | "otw_to_unload_location"
     | "at_unload_location"
-    | "otw_to_base"
     | "completed"
     | "cancelled";
   load_location: string;
@@ -112,10 +109,9 @@ const DriverDashboard = () => {
 
       // Show success message
       const messages = {
-        start_to_load: "Berhasil memulai perjalanan ke lokasi muat",
-        arrive_at_load: "Berhasil tiba di lokasi muat",
+        depart_spbu: "Berhasil berangkat dari SPBU",
         arrive_at_unload: "Berhasil tiba di lokasi bongkar",
-        start_return: "Berhasil memulai perjalanan pulang",
+        start_return: "Tugas berhasil diselesaikan",
         complete: "Tugas berhasil diselesaikan",
       };
 
@@ -156,23 +152,7 @@ const DriverDashboard = () => {
     const isUpdating = updatingStatus === order.id;
 
     switch (order.status) {
-      case "assigned":
-        return {
-          action: "start_to_load",
-          label: "Berangkat ke Lokasi Muat",
-          icon: "truck",
-          color: "#3498db",
-          disabled: isUpdating,
-        };
-      case "otw_to_load_location":
-        return {
-          action: "arrive_at_load",
-          label: "Tiba di Lokasi Muat",
-          icon: "map-marker-alt",
-          color: "#f39c12",
-          disabled: isUpdating,
-        };
-      case "at_load_location":
+      case "at_spbu":
         return {
           action: "navigate_to_confirm",
           label: "Konfirmasi Muatan & Berangkat",
@@ -192,14 +172,6 @@ const DriverDashboard = () => {
       case "at_unload_location":
         return {
           action: "start_return",
-          label: "Mulai Perjalanan Pulang",
-          icon: "home",
-          color: "#1abc9c",
-          disabled: isUpdating,
-        };
-      case "otw_to_base":
-        return {
-          action: "complete",
           label: "Selesaikan Tugas",
           icon: "check-circle",
           color: "#27ae60",

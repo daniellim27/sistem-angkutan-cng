@@ -47,14 +47,12 @@ exports.createDeliveryOrder = async (req, res, next) => {
   const transaction = await sequelize.transaction();
   try {
     const {
-      purchase_order_id,
-      standalone_po_number, // For standalone DOs
       vehicle_id,
       driver_id,
       customer_name,
       item_name,
       minimal_load_quantity,
-      unit,
+      unit, // Unit input (will be overridden to kubik)
       unit_price,
       total_amount,
       trip_allowance = 0,
@@ -72,65 +70,30 @@ exports.createDeliveryOrder = async (req, res, next) => {
       do_name,
     } = req.body;
 
+    // Force unit to always be 'kubik' for delivery orders
+    const finalUnit = "kubik";
+
     // Enhanced validation with numeric checks
     if (
       !vehicle_id ||
       !driver_id ||
+      !customer_name ||
+      !item_name ||
+      !unit_price ||
       !minimal_load_quantity ||
-      isNaN(parseFloat(minimal_load_quantity))
+      isNaN(parseFloat(minimal_load_quantity)) ||
+      isNaN(parseFloat(unit_price))
     ) {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
         message:
-          "Missing or invalid required fields: vehicle_id, driver_id, minimal_load_quantity (must be number)",
+          "Missing or invalid required fields: vehicle_id, driver_id, customer_name, item_name, unit_price, minimal_load_quantity (must be numbers)",
       });
     }
 
-    // Enhanced unit validation
-    if (unit && !["kilogram", "ton", "kubik"].includes(unit)) {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        message: "Invalid unit. Must be one of: kilogram, ton, kubik",
-      });
-    }
-
-    // Early item validation against PO (from incoming)
-    let po;
-    if (purchase_order_id && item_name) {
-      po = await PurchaseOrder.findByPk(purchase_order_id, { transaction });
-      if (!po) {
-        await transaction.rollback();
-        return res
-          .status(400)
-          .json({ success: false, message: "Purchase Order not found" });
-      }
-      const poItems = po.item_name
-        ? po.item_name.split(",").map((i) => i.trim().toLowerCase())
-        : [];
-      if (!poItems.includes(item_name.trim().toLowerCase())) {
-        await transaction.rollback();
-        return res
-          .status(400)
-          .json({ success: false, message: `Invalid item_name for PO` });
-      }
-    }
-
-    let finalUnit = unit || (po ? po.unit : "ton");
-    let finalUnitPrice = unit_price;
-
-    // Get unit and unit_price from PO if not provided
-    if (purchase_order_id && (!finalUnit || !finalUnitPrice)) {
-      if (po) {
-        if (!finalUnit) {
-          finalUnit = po.unit || "ton";
-        }
-        if (!finalUnitPrice) {
-          finalUnitPrice = po.unit_price;
-        }
-      }
-    }
+    // Unit is always kubik for DOs - no validation needed
+    const finalUnitPrice = unit_price;
 
     // Enhanced driver availability check
     const activeDriverDelivery = await DeliveryOrder.findOne({
@@ -138,12 +101,9 @@ exports.createDeliveryOrder = async (req, res, next) => {
         driver_id,
         status: {
           [Op.in]: [
-            "assigned",
-            "otw_to_load_location",
-            "at_load_location",
+            "at_spbu",
             "otw_to_unload_location",
             "at_unload_location",
-            "otw_to_base",
           ],
         },
       },
@@ -164,12 +124,9 @@ exports.createDeliveryOrder = async (req, res, next) => {
         vehicle_id,
         status: {
           [Op.in]: [
-            "assigned",
-            "otw_to_load_location",
-            "at_load_location",
+            "at_spbu",
             "otw_to_unload_location",
             "at_unload_location",
-            "otw_to_base",
           ],
         },
       },
@@ -234,12 +191,24 @@ exports.createDeliveryOrder = async (req, res, next) => {
       ongkosan ||
       calculateOngkosan(calculatedTotalAmount, trip_allowance, gaji);
 
-    // Create temporary DO instance for validation (from incoming)
-    const tempDO = DeliveryOrder.build({
-      purchase_order_id,
+    // Generate DO number if not provided
+    let finalDoNumber = do_number;
+    if (!finalDoNumber) {
+      const yearMonth = `${new Date().getFullYear()}${String(
+        new Date().getMonth() + 1
+      ).padStart(2, "0")}`;
+      const doCount = await DeliveryOrder.count({
+        where: { do_number: { [Op.like]: `DO-${yearMonth}-%` } },
+        transaction,
+      });
+      finalDoNumber = `DO-${yearMonth}-${String(doCount + 1).padStart(4, "0")}`;
+    }
+
+    // Create delivery order directly without PO dependency
+    const deliveryOrder = await DeliveryOrder.create({
       driver_id,
       vehicle_id,
-      do_number,
+      do_number: finalDoNumber,
       do_name,
       customer_name,
       item_name,
@@ -259,37 +228,11 @@ exports.createDeliveryOrder = async (req, res, next) => {
       additional_unload_locations, // Include additional unload locations
       payment_status,
       status,
-    });
-
-    // Validate remaining quantity (from incoming)
-    if (tempDO.validateQuantityAgainstPO) {
-      await tempDO.validateQuantityAgainstPO(false); // false for create
-    }
-
-    // Create delivery order (if validation passes)
-    const deliveryOrder = await DeliveryOrder.create(tempDO.dataValues, {
+    }, {
       transaction,
-      scope: "web",
     });
 
-    // Deposit group integration (from current)
-    if (purchase_order_id) {
-      const purchaseOrder = await PurchaseOrder.findByPk(purchase_order_id, {
-        attributes: ['id', 'deposit_group_id'],
-        transaction
-      });
-
-      if (purchaseOrder && purchaseOrder.deposit_group_id) {
-        // Automatically create deposit group membership
-        await DepositGroupMember.create({
-          group_id: purchaseOrder.deposit_group_id,
-          delivery_order_id: deliveryOrder.id,
-          quantity: minimal_load_quantity
-        }, { transaction });
-
-        console.log(`✅ Auto-added DO ${deliveryOrder.do_number} to deposit group ${purchaseOrder.deposit_group_id}`);
-      }
-    }
+    // Note: Deposit group integration removed - DOs are now standalone
 
     // Update vehicle status
     await Vehicle.update(
@@ -481,16 +424,7 @@ exports.getAllDeliveryOrders = async (req, res, next) => {
       {
         where: whereClause,
         include: [
-          {
-            model: PurchaseOrder,
-            as: "purchaseOrder",
-            attributes: [
-              "po_number",
-              "customer_name",
-              "total_quantity",
-              "unit",
-            ],
-          },
+          // Removed PO include - DOs are now standalone
           {
             model: User,
             as: "driver",
@@ -524,7 +458,7 @@ exports.getAllDeliveryOrders = async (req, res, next) => {
     // Enhanced data with computed fields and null checks (from incoming)
     const enhancedDOs = deliveryOrders.map((dOrder) => {
       const doData = dOrder.toJSON();
-      const orderUnit = doData.unit || doData.purchaseOrder?.unit || "ton";
+      const orderUnit = doData.unit || "ton"; // Unit is now directly stored in DO
 
       let actualTotalAmount = null;
       if (doData.actual_load_quantity && doData.unit_price && orderUnit) {
@@ -604,11 +538,7 @@ exports.getDeliveryOrderById = async (req, res, next) => {
 
     const deliveryOrder = await DeliveryOrder.findByPk(id, {
       include: [
-        {
-          model: PurchaseOrder,
-          as: "purchaseOrder",
-          attributes: ["po_number", "customer_name", "unit"],
-        },
+          // Removed PO include - DOs are now standalone
         {
           model: User,
           as: "driver",
@@ -672,9 +602,7 @@ exports.getDeliveryOrderById = async (req, res, next) => {
         },
         timeline: {
           created_at: doData.created_at,
-          departed_to_load_location_at: doData.departed_to_load_location_at,
-          arrived_at_load_location_at: doData.arrived_at_load_location_at,
-          departed_from_load_location_at: doData.departed_from_load_location_at,
+          departed_from_spbu_at: doData.departed_from_spbu_at,
           arrived_at_unload_location_at: doData.arrived_at_unload_location_at,
           departed_from_unload_location_at:
             doData.departed_from_unload_location_at,
@@ -920,18 +848,7 @@ exports.completeDeliveryOrder = async (req, res, next) => {
     // Find DO with PO and DepositGroup relationship
     const deliveryOrder = await DeliveryOrder.findByPk(id, {
       include: [
-        {
-          model: PurchaseOrder,
-          as: "purchaseOrder",
-          attributes: ["id", "deposit_group_id", "unit", "unit_price"],
-          include: [
-            {
-              model: DepositGroup,
-              as: "depositGroup",
-              attributes: ["id", "group_name", "status", "remaining_quantity", "balance"],
-            },
-          ],
-        },
+        // Removed PO include - DOs are now standalone
       ],
       transaction,
     });
@@ -1068,18 +985,7 @@ exports.completeDeliveryOrder = async (req, res, next) => {
     // Return updated DO with enriched data for the frontend
     const updatedDO = await DeliveryOrder.findByPk(id, {
       include: [
-        {
-          model: PurchaseOrder,
-          as: "purchaseOrder",
-          attributes: ["po_number", "customer_name", "unit", "deposit_group_id"],
-          include: [
-            {
-              model: DepositGroup,
-              as: "depositGroup",
-              attributes: ["id", "group_name", "status", "remaining_quantity", "balance"],
-            },
-          ],
-        },
+        // Removed PO include - DOs are now standalone
       ],
     });
 
@@ -1216,83 +1122,3 @@ exports.getDeliveryStatistics = async (req, res, next) => {
   }
 };
 
-/**
- * 🎯 GET SENSOR DATA FOR DELIVERY ORDER
- * GET /api/web/delivery-orders/:id/sensordata
- */
-exports.getSensorData = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { limit = 10 } = req.query;
-
-    // Validate delivery order exists
-    const deliveryOrder = await DeliveryOrder.findByPk(id);
-    if (!deliveryOrder) {
-      return res.status(404).json({
-        success: false,
-        message: 'Delivery order not found'
-      });
-    }
-
-    // Get latest sensor data from IoT table
-    const { IotRawData } = require('../../models');
-    
-    const latestSensorData = await IotRawData.findOne({
-      where: { delivery_order_id: id },
-      order: [['created_at', 'DESC']]
-    });
-
-    if (!latestSensorData) {
-      return res.json({
-        success: true,
-        data: null,
-        message: 'No sensor data available for this delivery order'
-      });
-    }
-
-    // Get recent sensor data history
-    const sensorDataHistory = await IotRawData.findAll({
-      where: { delivery_order_id: id },
-      order: [['created_at', 'DESC']],
-      limit: parseInt(limit),
-      attributes: [
-        'id',
-        'pressure_in',
-        'pressure_out', 
-        'temperature',
-        'meter_pulse',
-        'created_at'
-      ]
-    });
-
-    res.json({
-      success: true,
-      data: {
-        latest: {
-          id: latestSensorData.id,
-          pressure_in: latestSensorData.pressure_in,
-          pressure_out: latestSensorData.pressure_out,
-          temperature: latestSensorData.temperature,
-          meter_pulse: latestSensorData.meter_pulse,
-          created_at: latestSensorData.created_at
-        },
-        history: sensorDataHistory.map(record => ({
-          id: record.id,
-          pressure_in: record.pressure_in,
-          pressure_out: record.pressure_out,
-          temperature: record.temperature,
-          meter_pulse: record.meter_pulse,
-          created_at: record.created_at
-        }))
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Error getting sensor data:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to retrieve sensor data' 
-    });
-    next(error);
-  }
-};

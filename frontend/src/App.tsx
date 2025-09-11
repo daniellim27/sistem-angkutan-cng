@@ -17,11 +17,7 @@ import DriversPage from "./pages/Drivers";
 import DriverCreatePage from "./pages/DriverCreate";
 import DriverEditPage from "./pages/DriverEdit";
 import TripsPage from "./pages/Trips";
-import PurchaseOrderCreatePage from "./pages/PurchaseOrderCreate";
-import PurchaseOrderDetailPage from "./pages/PurchaseOrderDetail";
-import PurchaseOrderEditPage from "./pages/PurchaseOrderEdit";
 import DeliveryOrderCreatePage from "./pages/DeliveryOrderCreatePage";
-import CreateDeliveryFromPO from "./pages/CreateDeliveryFromPO";
 import DeliveryOrdersPage from "./pages/DeliveryOrders";
 import DeliveryOrderDetailPage from "./pages/DeliveryOrderDetail";
 import EditDeliveryOrder from "./pages/EditDeliveryOrder";
@@ -38,7 +34,7 @@ import ServiceCreatePage from "./pages/ServiceCreate";
 import ServiceDetailPage from "./pages/ServiceDetail";
 import ServiceEditPage from "./pages/ServiceEdit";
 import RitaseDashboard from "./pages/Ritase/RitaseDashboard";
-import POPaymentDetail from "./pages/Ritase/POPaymentDetail";
+// Removed POPaymentDetail - payment aggregation is now DO-based
 import DOPaymentManagement from "./pages/Ritase/DOPaymentManagement";
 import TireInventoryPage from "./pages/TireInventory";
 import TireInventoryCreatePage from "./pages/TireInventoryCreate";
@@ -54,14 +50,13 @@ import VehicleServiceHistory from "./pages/VehicleServiceHistory";
 import PaymentsRoutes from "./modules/payments/routes";
 import InvoiceDetail from "./pages/Ritase/InvoiceDetail";
 import DepositGroupManagement from "./pages/DepositGroupManagement";
-import BudgetRequestManagement from "./pages/BudgetRequestManagement";
 import DriverExpenseManagement from "./pages/DriverExpenseManagement";
 import LiveTracking from "./pages/LiveTracking";
 import TrackDeliveryDetail from "./pages/TrackDeliveryDetail";
 import { Toaster } from "react-hot-toast";
 
 import ComprehensiveRitaseTable from "./pages/Ritase/ComprehensiveRitaseTable";
-import POSpecificRitaseTable from "./pages/Ritase/POSpecificRitaseTable";
+// Removed POSpecificRitaseTable - ritase is now DO-based
 
 function App() {
   const { token } = useAuth();
@@ -89,12 +84,7 @@ function App() {
             element={<ComprehensiveRitaseTable />}
           />
 
-          <Route path="ritase/po/:poId" element={<POPaymentDetail />} />
-
-          <Route
-            path="ritase/po/:poId/table"
-            element={<POSpecificRitaseTable />}
-          />
+          {/* Removed PO-specific ritase routes - now DO-based */}
           <Route
             path="ritase/delivery-orders/:doId/payment"
             element={<DOPaymentManagement />}
@@ -129,15 +119,8 @@ function App() {
           <Route path="drivers/create" element={<DriverCreatePage />} />
           <Route path="drivers/edit/:id" element={<DriverEditPage />} />
 
-          {/* Trips/Purchase Orders Routes */}
+          {/* Trips Routes - PO routes removed, DOs are now standalone */}
           <Route path="trips" element={<TripsPage />} />
-          <Route path="trips/create-po" element={<PurchaseOrderCreatePage />} />
-          <Route path="trips/po/:id" element={<PurchaseOrderDetailPage />} />
-          <Route path="trips/po/:id/edit" element={<PurchaseOrderEditPage />} />
-          <Route
-            path="trips/po/:poId/create-do"
-            element={<CreateDeliveryFromPO />}
-          />
           {/* Delivery Orders Routes */}
           <Route path="delivery-orders" element={<DeliveryOrdersPage />} />
           <Route
@@ -189,7 +172,6 @@ function App() {
           <Route path="tempo" element={<TempoManagementPage />} />
           <Route path="vehicle-expense-cash" element={<VehicleExpenseCashPage />} />
           <Route path="deposit-groups" element={<DepositGroupManagement />} />
-          <Route path="budget-requests" element={<BudgetRequestManagement />} />
           <Route path="driver-expenses" element={<DriverExpenseManagement />} />
           <Route path="live-tracking" element={<LiveTracking />} />
           <Route path="track-delivery/:id" element={<TrackDeliveryDetail />} />

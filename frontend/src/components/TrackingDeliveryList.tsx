@@ -177,8 +177,8 @@ const TrackingDeliveryList: React.FC<TrackingDeliveryListProps> = ({ className =
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="active">Trackable Deliveries</option>
-              <option value="otw_to_load_location">On the way to Load</option>
-              <option value="at_load_location">At Load Location</option>
+              <option value="otw_to_load_location">On the way to SPBU</option>
+              <option value="at_load_location">At SPBU Location</option>
               <option value="otw_to_unload_location">On the way to Unload</option>
               <option value="at_unload_location">At Unload Location</option>
               <option value="otw_to_base">Returning to Base</option>

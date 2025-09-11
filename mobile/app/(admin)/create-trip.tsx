@@ -11,7 +11,7 @@ import {
   Alert,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
-import apiClient, { getPoDetailsForNewDo } from "../../src/services/api";
+import apiClient from "../../src/services/api";
 import MapSelector from "../../components/MapSelector"; // INI GAK ERROR, CUMAN VSCODE AJA YANG OON
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -27,21 +27,7 @@ interface Vehicle {
   license_plate: string;
   type: string;
 }
-interface PurchaseOrder {
-  id: number;
-  po_number: string;
-}
-interface PoDetails {
-  customer_name: string;
-  item_name: string;
-  total_quantity: number;
-  delivered_quantity: number;
-  remaining_quantity: number;
-  generated_do_number: string;
-  load_location: string;
-  unload_location: string;
-  has_location_data: boolean;
-}
+// Removed PO interfaces - DOs are now standalone
 interface Coordinates {
   latitude: number;
   longitude: number;
@@ -54,14 +40,15 @@ export default function CreateTrip() {
   const [masterData, setMasterData] = useState<{
     drivers: Driver[];
     vehicles: Vehicle[];
-    purchaseOrders: PurchaseOrder[];
-  }>({ drivers: [], vehicles: [], purchaseOrders: [] });
+  }>({ drivers: [], vehicles: [] });
 
   const [form, setForm] = useState({
-    purchase_order_id: "",
     do_number: "",
+    do_name: "",
     customer_name: "",
     item_name: "",
+    unit: "ton",
+    unit_price: "",
     minimal_load_quantity: "",
     driver_id: "",
     vehicle_id: "",
@@ -74,8 +61,6 @@ export default function CreateTrip() {
     unload_latitude: "",
     unload_longitude: "",
   });
-
-  const [poDetails, setPoDetails] = useState<PoDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,20 +69,18 @@ export default function CreateTrip() {
     "loading" | "unloading"
   >("loading");
 
-  // Fetch drivers, vehicles, and PO
+  // Fetch drivers and vehicles
   const fetchMasterData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [driversRes, vehiclesRes, poRes] = await Promise.all([
+      const [driversRes, vehiclesRes] = await Promise.all([
         apiClient.get("/users?role=driver&status=available"),
         apiClient.get("/vehicles?status=available"),
-        apiClient.get("/purchase-orders"),
       ]);
       setMasterData({
         drivers: driversRes.data,
         vehicles: vehiclesRes.data,
-        purchaseOrders: poRes.data,
       });
     } catch (err) {
       console.error("Error fetching master data:", err);
@@ -113,58 +96,7 @@ export default function CreateTrip() {
     }, [])
   );
 
-  const handlePoChange = async (poId: string) => {
-    setForm((prev) => ({
-      ...prev,
-      purchase_order_id: poId,
-      do_number: "",
-      customer_name: "",
-      item_name: "",
-      load_location: "",
-      unload_location: "",
-      load_latitude: "",
-      load_longitude: "",
-      unload_latitude: "",
-      unload_longitude: "",
-    }));
-    setPoDetails(null);
-    if (!poId) return;
-
-    setLoadingDetails(true);
-    setError(null);
-    try {
-      console.log(`Fetching PO details for ID: ${poId}`);
-      const { data } = await getPoDetailsForNewDo(poId);
-      console.log("Received PO details:", data);
-
-      setPoDetails(data);
-      // Auto-fill form fields
-      setForm((prev) => ({
-        ...prev,
-        do_number: data.generated_do_number,
-        customer_name: data.customer_name,
-        item_name: data.item_name,
-        // === AUTO-FILL LOKASI DARI PO ===
-        load_location: data.load_location || "",
-        unload_location: data.unload_location || "",
-        load_latitude: data.load_latitude ? data.load_latitude.toString() : "",
-        load_longitude: data.load_longitude
-          ? data.load_longitude.toString()
-          : "",
-        unload_latitude: data.unload_latitude
-          ? data.unload_latitude.toString()
-          : "",
-        unload_longitude: data.unload_longitude
-          ? data.unload_longitude.toString()
-          : "",
-      }));
-    } catch (err) {
-      console.error("Error fetching PO details:", err);
-      setError("Gagal mengambil detail Purchase Order.");
-    } finally {
-      setLoadingDetails(false);
-    }
-  };
+  // Removed PO change handler - DOs are now standalone
 
   // Function untuk handle map selection
   const handleMapLocationSelect = (location: Coordinates) => {
@@ -194,24 +126,14 @@ export default function CreateTrip() {
   const handleSubmit = async () => {
     setError(null);
 
+    // Basic validation for standalone DO
     if (
-      parseFloat(form.minimal_load_quantity) >
-      (poDetails?.remaining_quantity ?? 0)
-    ) {
-      Alert.alert(
-        "Validasi Gagal",
-        "Kuantitas DO tidak boleh melebihi sisa kuantitas di PO."
-      );
-      return;
-    }
-    if (
-      !form.do_number ||
       !form.customer_name ||
       !form.item_name ||
-      !form.minimal_load_quantity ||
-      !form.purchase_order_id ||
+      !form.unit_price ||
       !form.driver_id ||
       !form.vehicle_id ||
+      !form.minimal_load_quantity ||
       !form.trip_allowance ||
       !form.gaji ||
       !form.load_location ||
@@ -224,16 +146,30 @@ export default function CreateTrip() {
 
     setLoading(true);
     try {
-      const formData = new FormData();
+      const payload = {
+        customer_name: form.customer_name,
+        item_name: form.item_name,
+        unit: form.unit,
+        unit_price: parseFloat(form.unit_price),
+        minimal_load_quantity: parseFloat(form.minimal_load_quantity),
+        driver_id: parseInt(form.driver_id),
+        vehicle_id: parseInt(form.vehicle_id),
+        trip_allowance: parseFloat(form.trip_allowance),
+        gaji: parseFloat(form.gaji),
+        load_location: form.load_location,
+        unload_location: form.unload_location,
+        load_latitude: form.load_latitude ? parseFloat(form.load_latitude) : null,
+        load_longitude: form.load_longitude ? parseFloat(form.load_longitude) : null,
+        unload_latitude: form.unload_latitude ? parseFloat(form.unload_latitude) : null,
+        unload_longitude: form.unload_longitude ? parseFloat(form.unload_longitude) : null,
+        do_name: form.do_name || null,
+      };
 
-      // Append semua field
-      Object.entries(form).forEach(([key, value]) =>
-        formData.append(key, value)
-      );
-      await apiClient.post("/delivery-orders", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      router.replace("/(admin)");
+      await apiClient.post("/web/delivery-orders", payload);
+      
+      Alert.alert("Sukses", "Delivery Order berhasil dibuat!", [
+        { text: "OK", onPress: () => router.replace("/(admin)") },
+      ]);
     } catch (err: any) {
       console.error("Submit error:", err);
       setError("Gagal membuat trip. " + (err.response?.data?.message || ""));
@@ -258,96 +194,81 @@ export default function CreateTrip() {
       {error && <Text style={styles.error}>{error}</Text>}
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>1. Informasi Purchase Order</Text>
-        <Text style={styles.label}>Pilih Purchase Order</Text>
+        <Text style={styles.cardTitle}>1. Informasi Delivery Order</Text>
+        
+        <Text style={styles.label}>Nama Customer *</Text>
+        <TextInput
+          style={styles.input}
+          value={form.customer_name}
+          onChangeText={(value) => handleChange("customer_name", value)}
+          placeholder="Masukkan nama customer"
+        />
+
+        <Text style={styles.label}>Nama Item *</Text>
+        <TextInput
+          style={styles.input}
+          value={form.item_name}
+          onChangeText={(value) => handleChange("item_name", value)}
+          placeholder="Masukkan nama item"
+        />
+
+        <Text style={styles.label}>Unit *</Text>
         <View style={styles.select}>
           {Platform.OS === "web" ? (
             <select
-              value={form.purchase_order_id}
-              onChange={(e) => handlePoChange(e.target.value)}
+              value={form.unit}
+              onChange={(e) => handleChange("unit", e.target.value)}
             >
-              <option value="">-- Pilih PO --</option>
-              {masterData.purchaseOrders.map((po) => (
-                <option key={po.id} value={po.id}>
-                  {po.po_number}
-                </option>
-              ))}
+              <option value="ton">Ton</option>
+              <option value="kilogram">Kilogram</option>
+              <option value="kubik">Kubik</option>
             </select>
           ) : (
             <Picker
-              selectedValue={form.purchase_order_id}
-              onValueChange={(itemValue) => handlePoChange(itemValue)}
+              selectedValue={form.unit}
+              onValueChange={(itemValue) => handleChange("unit", itemValue)}
               style={{ width: "100%" }}
             >
-              <Picker.Item label="-- Pilih PO --" value="" />
-              {masterData.purchaseOrders.map((po) => (
-                <Picker.Item key={po.id} label={po.po_number} value={po.id} />
-              ))}
+              <Picker.Item label="Ton" value="ton" />
+              <Picker.Item label="Kilogram" value="kilogram" />
+              <Picker.Item label="Kubik" value="kubik" />
             </Picker>
           )}
         </View>
 
-        {loadingDetails && <ActivityIndicator style={{ marginVertical: 10 }} />}
+        <Text style={styles.label}>Harga per Unit (IDR) *</Text>
+        <TextInput
+          style={styles.input}
+          value={form.unit_price}
+          onChangeText={(value) => handleChange("unit_price", value)}
+          placeholder="Masukkan harga per unit"
+          keyboardType="numeric"
+        />
 
-        {poDetails && (
-          <View style={styles.autoFilledContainer}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Nomor DO</Text>
-              <Text style={styles.infoValue}>{form.do_number}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Customer</Text>
-              <Text style={styles.infoValue}>{form.customer_name}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Item</Text>
-              <Text style={styles.infoValue}>{form.item_name}</Text>
-            </View>
-            {/* === TAMPILKAN STATUS LOKASI === */}
-            <View style={styles.locationStatusContainer}>
-              <Text style={styles.locationStatusLabel}>Status Lokasi:</Text>
-              <Text
-                style={[
-                  styles.locationStatusValue,
-                  {
-                    color: poDetails.has_location_data ? "#28a745" : "#ffc107",
-                  },
-                ]}
-              >
-                {poDetails.has_location_data
-                  ? "✓ Lokasi tersedia dari PO"
-                  : "⚠ Lokasi perlu diisi manual"}
-              </Text>
-            </View>
-          </View>
-        )}
+        <Text style={styles.label}>Nama DO (Opsional)</Text>
+        <TextInput
+          style={styles.input}
+          value={form.do_name}
+          onChangeText={(value) => handleChange("do_name", value)}
+          placeholder="Nama deskriptif untuk DO ini"
+        />
       </View>
 
       {/* === SECTION 2: DETAIL MUATAN === */}
-      {poDetails && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>2. Detail Muatan</Text>
-          <View style={styles.quantityInfo}>
-            <Text>
-              Sisa di PO:{" "}
-              <Text style={{ fontWeight: "bold" }}>
-                {poDetails.remaining_quantity.toLocaleString("id-ID")} Ton
-              </Text>
-            </Text>
-          </View>
-          <Text style={styles.label}>Minimal Kuantitas Muatan (Ton)</Text>
-          <TextInput
-            style={styles.input}
-            value={form.minimal_load_quantity}
-            onChangeText={(v) => handleChange("minimal_load_quantity", v)}
-            placeholder={`Max: ${poDetails.remaining_quantity}`}
-            keyboardType="numeric"
-          />
-        </View>
-      )}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>2. Detail Muatan</Text>
+        
+        <Text style={styles.label}>Minimal Kuantitas Muatan *</Text>
+        <TextInput
+          style={styles.input}
+          value={form.minimal_load_quantity}
+          onChangeText={(v) => handleChange("minimal_load_quantity", v)}
+          placeholder="Masukkan kuantitas minimal"
+          keyboardType="numeric"
+        />
+      </View>
 
-      {/* === SECTION 3: LOKASI (BARU) === */}
-      {poDetails && (
+      {/* === SECTION 3: LOKASI === */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>3. Lokasi Pengiriman</Text>
 
@@ -411,10 +332,8 @@ export default function CreateTrip() {
             )}
           </View>
         </View>
-      )}
-
+      
       {/* === SECTION 4: PENUGASAN === */}
-      {poDetails && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>4. Penugasan Driver & Kendaraan</Text>
 
@@ -582,7 +501,6 @@ export default function CreateTrip() {
             </Text>
           </View>
         </View>
-      )}
 
       <MapSelector
         visible={showMapSelector}
@@ -613,13 +531,13 @@ export default function CreateTrip() {
       <TouchableOpacity
         style={[
           styles.submitButton,
-          (!poDetails || loading) && styles.disabledButton,
+          loading && styles.disabledButton,
         ]}
         onPress={() => {
           console.log("Button pressed!"); // Debug log
           handleSubmit();
         }}
-        disabled={!poDetails || loading}
+        disabled={loading}
       >
         <Text style={styles.submitButtonText}>
           {loading ? "Menyimpan..." : "Simpan Delivery Order"}

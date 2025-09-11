@@ -309,13 +309,13 @@ const ComprehensiveRitaseTable: React.FC = () => {
   useEffect(() => {
     const fetchPurchaseOrders = async () => {
       try {
-        const response = await apiClient.get("/purchase-orders");
+        const response = await apiClient.get("/web/ritase/delivery-orders");
         const orders = response.data.success
           ? response.data.data
           : response.data || [];
         setPurchaseOrders(orders);
       } catch (error) {
-        console.error("Failed to fetch purchase orders:", error);
+        console.error("Failed to fetch delivery orders:", error);
       }
     };
     fetchPurchaseOrders();

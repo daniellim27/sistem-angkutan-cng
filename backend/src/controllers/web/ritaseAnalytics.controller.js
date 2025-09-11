@@ -122,17 +122,7 @@ exports.getComprehensiveRitaseTable = async (req, res, next) => {
 
     // ✅ OPTIMIZED: Conditional includes for better performance
     const baseIncludes = [
-      {
-        model: PurchaseOrder,
-        as: "purchaseOrder",
-        attributes: [
-          "id",
-          "po_number",
-          "customer_name",
-          "item_name",
-          "created_at",
-        ],
-      },
+      // Removed PO include - DOs are now standalone
       vehicleInclude,
       {
         model: User,
@@ -804,17 +794,7 @@ exports.exportComprehensiveExcel = async (req, res, next) => {
 
     // Full includes (focus on accountant-useful data)
     const allIncludes = [
-      {
-        model: PurchaseOrder,
-        as: "purchaseOrder",
-        attributes: [
-          "id",
-          "po_number",
-          "customer_name",
-          "item_name",
-          "created_at",
-        ],
-      },
+      // Removed PO include - DOs are now standalone
       vehicleInclude,
       {
         model: User,
@@ -915,9 +895,8 @@ exports.exportComprehensiveExcel = async (req, res, next) => {
 
       return {
         do_number: orderData.do_number,
-        po_number: orderData.purchaseOrder?.po_number,
-        customer_name:
-          orderData.purchaseOrder?.customer_name || orderData.customer_name,
+        po_number: null, // No longer available - DOs are standalone
+        customer_name: orderData.customer_name,
         item_name: orderData.item_name,
         vehicle_plate: orderData.vehicle?.license_plate,
         driver_name:

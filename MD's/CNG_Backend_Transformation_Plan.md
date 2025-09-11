@@ -58,13 +58,8 @@ This document outlines the **backend-specific transformation plan** for converti
    - Gas filling cost calculation (JISDOR rate vs Fixed cost)
    - Transaction history and balance tracking
 
-3. **IoT Integration**
-   - Pressure sensors (in/out)
-   - Temperature monitoring
-   - Meter pulse counting
-   - Real-time data storage
 
-4. **Enhanced Driver Management**
+3. **Enhanced Driver Management**
    - Expense approval workflow
    - Receipt photo uploads
    - Financial summary per trip

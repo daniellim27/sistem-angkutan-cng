@@ -8,7 +8,6 @@ module.exports = (sequelize) => {
       id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
 
       // === FOREIGN KEYS ===
-      purchase_order_id: { type: DataTypes.INTEGER },
       driver_id: { type: DataTypes.INTEGER },
       vehicle_id: { type: DataTypes.INTEGER },
 
@@ -20,8 +19,8 @@ module.exports = (sequelize) => {
         comment: "Human-readable name for the delivery order",
       },
       customer_name: { type: DataTypes.STRING(100), allowNull: false },
-      // Item name diambil dari pilihan yang ada di PO (di tabel PO, nama item dipisah menggunakan koma)
-      item_name: { type: DataTypes.STRING(100) },
+      // Item name now directly specified for each DO
+      item_name: { type: DataTypes.STRING(100), allowNull: false },
 
       // === QUANTITY FIELDS ===
       minimal_load_quantity: {
@@ -40,8 +39,8 @@ module.exports = (sequelize) => {
       unit: {
         type: DataTypes.ENUM("kilogram", "ton", "kubik"),
         allowNull: false,
-        defaultValue: "ton",
-        comment: "Unit satuan barang (inherited from PO)",
+        defaultValue: "kubik",
+        comment: "Unit satuan barang - always kubik for DOs",
       },
       // === FINANCIAL FIELDS ===
       unit_price: {
@@ -275,8 +274,8 @@ module.exports = (sequelize) => {
   DeliveryOrder.prototype.getStatusText = function () {
     const statusMap = {
       assigned: "Ditugaskan",
-      otw_to_load_location: "Menuju Lokasi Muat",
-      at_load_location: "Di Lokasi Muat",
+      otw_to_load_location: "Menuju SPBU",
+      at_load_location: "Di SPBU",
       otw_to_unload_location: "Menuju Lokasi Bongkar",
       at_unload_location: "Di Lokasi Bongkar",
       otw_to_base: "Perjalanan Pulang",

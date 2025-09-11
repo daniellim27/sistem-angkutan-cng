@@ -337,7 +337,7 @@ const TrackDeliveryDetail: React.FC = () => {
                 <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {deliveryOrder.load_location && (
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Load Location:</dt>
+                      <dt className="text-sm font-medium text-gray-500">SPBU Location:</dt>
                       <dd className="text-sm text-gray-900 mt-1">{deliveryOrder.load_location}</dd>
                     </div>
                   )}

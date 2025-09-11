@@ -32,8 +32,8 @@ interface DeliveryOrderData {
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'assigned', label: 'Assigned' },
-  { value: 'otw_to_load_location', label: 'On the way to Load Location' },
-  { value: 'at_load_location', label: 'At Load Location' },
+  { value: 'otw_to_load_location', label: 'On the way to SPBU Location' },
+  { value: 'at_load_location', label: 'At SPBU Location' },
   { value: 'otw_to_unload_location', label: 'On the way to Unload Location' },
   { value: 'at_unload_location', label: 'At Unload Location' },
   { value: 'otw_to_base', label: 'On the way to Base' },
@@ -161,7 +161,7 @@ const EditDeliveryOrder: React.FC = () => {
     item_name: "",
     minimal_load_quantity: 0,
     actual_load_quantity: 0,
-    unit: "ton",
+    unit: "kubik", // DOs always use kubik
     unit_price: 0,
     load_location: "",
     unload_location: "",
@@ -484,12 +484,12 @@ const EditDeliveryOrder: React.FC = () => {
               name="unit"
               value={formData.unit}
               onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed"
+              disabled
             >
-              <option value="ton">Ton</option>
-              <option value="kilogram">Kilogram</option>
-              <option value="kubik">Kubik</option>
+              <option value="kubik">Kubik (m³)</option>
             </select>
+            <p className="text-xs text-gray-500 mt-1">Delivery orders always use cubic meters (m³)</p>
           </div>
 
           {/* Unit Price */}
@@ -705,11 +705,11 @@ const EditDeliveryOrder: React.FC = () => {
           )}
         </div>
 
-        {/* Load Locations */}
+        {/* SPBU Locations */}
         <div className="mt-6">
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-700">
-              Load Locations
+              SPBU Locations
             </label>
             <button
               type="button"
@@ -726,7 +726,7 @@ const EditDeliveryOrder: React.FC = () => {
                   type="text"
                   value={location}
                   onChange={(e) => updateLoadLocation(index, e.target.value)}
-                  placeholder={`Load location ${index + 1}`}
+                  placeholder={`SPBU location ${index + 1}`}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required={index === 0}
                 />

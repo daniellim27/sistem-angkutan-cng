@@ -59,18 +59,12 @@ const DeliveryOrderCard: React.FC<DeliveryOrderCardProps> = ({ deliveryOrder }) 
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "assigned":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "otw_to_load_location":
-        return "bg-blue-100 text-blue-800 border-blue-200";
-      case "at_load_location":
+      case "at_spbu":
         return "bg-purple-100 text-purple-800 border-purple-200";
       case "otw_to_unload_location":
-        return "bg-indigo-100 text-indigo-800 border-indigo-200";
+        return "bg-blue-100 text-blue-800 border-blue-200";
       case "at_unload_location":
         return "bg-orange-100 text-orange-800 border-orange-200";
-      case "otw_to_base":
-        return "bg-teal-100 text-teal-800 border-teal-200";
       case "completed":
         return "bg-green-100 text-green-800 border-green-200";
       case "cancelled":
@@ -82,18 +76,12 @@ const DeliveryOrderCard: React.FC<DeliveryOrderCardProps> = ({ deliveryOrder }) 
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "assigned":
-        return "📋";
-      case "otw_to_load_location":
-        return "🚛";
-      case "at_load_location":
-        return "📦";
+      case "at_spbu":
+        return "⛽";
       case "otw_to_unload_location":
         return "🚚";
       case "at_unload_location":
         return "📍";
-      case "otw_to_base":
-        return "🏠";
       case "completed":
         return "✅";
       case "cancelled":

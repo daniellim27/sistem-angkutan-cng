@@ -14,7 +14,167 @@ const {
 } = require("../../models");
 const { Op } = require("sequelize");
 
-// ✅ 1. Get PO List with Aggregated Payment Status (Main Ritase Dashboard)
+// NEW: DO-based payment aggregation (replaces PO-based)
+exports.getDeliveryOrdersWithPaymentStatus = async (req, res, next) => {
+  try {
+    const {
+      period = "month",
+      start_date,
+      end_date,
+      payment_status,
+    } = req.query;
+
+    // Build date filter
+    let dateFilter = {};
+    if (start_date && end_date) {
+      dateFilter = {
+        created_at: {
+          [Op.between]: [new Date(start_date), new Date(end_date)],
+        },
+      };
+    } else {
+      const now = new Date();
+      if (period === "month") {
+        const monthAgo = new Date(now.getFullYear(), now.getMonth(), 1);
+        dateFilter = { created_at: { [Op.gte]: monthAgo } };
+      } else if (period === "year") {
+        const yearAgo = new Date(now.getFullYear(), 0, 1);
+        dateFilter = { created_at: { [Op.gte]: yearAgo } };
+      }
+    }
+
+    // Get all DOs with their related data
+    const deliveryOrders = await DeliveryOrder.findAll({
+      where: {
+        ...dateFilter,
+        status: "completed", // Only completed DOs for payment analysis
+      },
+      include: [
+        {
+          model: Vehicle,
+          as: "vehicle",
+          attributes: ["license_plate", "type"],
+        },
+        {
+          model: User,
+          as: "driver",
+          attributes: ["username"],
+          include: [
+            {
+              model: DriverProfile,
+              as: "driverProfile",
+              attributes: ["full_name"],
+            },
+          ],
+        },
+        {
+          model: DeliveryOrderPayments,
+          as: "payments",
+          required: false,
+        },
+        {
+          model: DeliveryOrderInvoices,
+          as: "invoices",
+          required: false,
+        },
+      ],
+      order: [["created_at", "DESC"]],
+    });
+
+    const enrichedDOs = await Promise.all(
+      deliveryOrders.map(async (do_item) => {
+        // Calculate CORRECT billable amount (using DO.unit_price and quantity)
+        const actualQuantity =
+          parseFloat(do_item.actual_load_quantity) ||
+          parseFloat(do_item.minimal_load_quantity) ||
+          0;
+        const unitPrice = parseFloat(do_item.unit_price) || 0;
+        const calculatedBillableAmount = actualQuantity * unitPrice;
+
+        // Get ACTUAL payment amount from delivery_order_payments table
+        const actualPaidAmount =
+          (await DeliveryOrderPayments.sum("payment_amount", {
+            where: { delivery_order_id: do_item.id },
+          })) || 0;
+
+        // Calculate payment variance
+        const paymentVariance = actualPaidAmount - calculatedBillableAmount;
+
+        // Determine payment status
+        const payment_status_calculated =
+          actualPaidAmount >= calculatedBillableAmount
+            ? "lunas"
+            : actualPaidAmount > 0
+            ? "partial"
+            : "proses_tagihan";
+
+        return {
+          ...do_item.toJSON(),
+          calculated_billable_amount: calculatedBillableAmount,
+          actual_paid_amount: actualPaidAmount,
+          payment_variance: paymentVariance,
+          is_overpaid: paymentVariance > 0,
+          is_underpaid: paymentVariance < 0,
+          payment_status_calculated,
+        };
+      })
+    );
+
+    // Apply payment status filter if specified
+    let filteredDOs = enrichedDOs;
+    if (payment_status && payment_status !== "all") {
+      filteredDOs = enrichedDOs.filter(
+        (do_item) => do_item.payment_status_calculated === payment_status
+      );
+    }
+
+    // Calculate summary statistics
+    const summary = {
+      total_dos: filteredDOs.length,
+      total_calculated_amount: filteredDOs.reduce(
+        (sum, do_item) => sum + do_item.calculated_billable_amount,
+        0
+      ),
+      total_paid_amount: filteredDOs.reduce(
+        (sum, do_item) => sum + do_item.actual_paid_amount,
+        0
+      ),
+      total_variance: filteredDOs.reduce(
+        (sum, do_item) => sum + do_item.payment_variance,
+        0
+      ),
+      status_breakdown: {
+        lunas: filteredDOs.filter(
+          (do_item) => do_item.payment_status_calculated === "lunas"
+        ).length,
+        partial: filteredDOs.filter(
+          (do_item) => do_item.payment_status_calculated === "partial"
+        ).length,
+        proses_tagihan: filteredDOs.filter(
+          (do_item) => do_item.payment_status_calculated === "proses_tagihan"
+        ).length,
+      },
+    };
+
+    res.json({
+      success: true,
+      data: filteredDOs,
+      summary,
+      filters: {
+        period,
+        start_date,
+        end_date,
+        payment_status: payment_status || "all",
+      }
+    });
+  } catch (err) {
+    console.error("Error getting DOs with payment status:", err);
+    res.status(500).json({ success: false, message: err.message });
+    next(err);
+  }
+};
+
+// ✅ 1. Get PO List with Aggregated Payment Status (Main Ritase Dashboard) - DEPRECATED
 exports.getPurchaseOrdersWithPaymentStatus = async (req, res, next) => {
   try {
     const {

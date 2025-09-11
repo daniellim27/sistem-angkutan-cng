@@ -20,25 +20,6 @@ interface DriverExpense {
   };
 }
 
-interface BudgetRequest {
-  id: number;
-  requested_amount: string;
-  reason: string;
-  status: 'pending' | 'approved' | 'rejected';
-  rejection_reason?: string;
-  evidence_url?: string;
-  created_at: string;
-  approved_at?: string;
-  driver: {
-    id: number;
-    username: string;
-  };
-  approver?: {
-    id: number;
-    username: string;
-  };
-}
-
 interface DeliveryOrder {
   id: number;
   do_number: string;
@@ -65,7 +46,6 @@ interface DeliveryOrder {
   surat_jalan_photo_url?: string | string[];
   // Added financial and expense data
   expenses?: DriverExpense[];
-  budgetRequests?: BudgetRequest[];
   financial_summary?: {
     trip_allowance: number;
     gaji: number;

@@ -56,6 +56,27 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({
     // ✅ ADD: Delivery status configurations
     if (type === "delivery") {
       const configs = {
+        at_spbu: {
+          bg: "bg-purple-50",
+          text: "text-purple-700",
+          border: "border-purple-200",
+          icon: "⛽",
+          ring: "ring-purple-200",
+        },
+        otw_to_unload_location: {
+          bg: "bg-blue-50",
+          text: "text-blue-700",
+          border: "border-blue-200",
+          icon: "🚚",
+          ring: "ring-blue-200",
+        },
+        at_unload_location: {
+          bg: "bg-orange-50",
+          text: "text-orange-700",
+          border: "border-orange-200",
+          icon: "📍",
+          ring: "ring-orange-200",
+        },
         completed: {
           bg: "bg-green-50",
           text: "text-green-700",
@@ -63,19 +84,12 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({
           icon: "✅",
           ring: "ring-green-200",
         },
-        assigned: {
-          bg: "bg-blue-50",
-          text: "text-blue-700",
-          border: "border-blue-200",
-          icon: "📋",
-          ring: "ring-blue-200",
-        },
-        in_progress: {
-          bg: "bg-yellow-50",
-          text: "text-yellow-700",
-          border: "border-yellow-200",
-          icon: "🚛",
-          ring: "ring-yellow-200",
+        cancelled: {
+          bg: "bg-red-50",
+          text: "text-red-700",
+          border: "border-red-200",
+          icon: "❌",
+          ring: "ring-red-200",
         },
       };
       return (

@@ -47,11 +47,9 @@ const setupGasStationModel = require("./gasStation.model");
 // NEW: Exchange Rate Model for JISDOR scraping
 const setupExchangeRateModel = require("./exchangeRate.model");
 
-// NEW: IoT Raw Data Model
-const setupIotRawDataModel = require("./iotRawData.model");
-
-// NEW: Budget Request Model
+// NEW: Budget Request Model (re-added for instant approval)
 const setupBudgetRequestModel = require("./budgetRequest.model");
+
 
 // NEW: Infrastructure Inventory Models
 const setupInfrastructureCategoryModel = require("./infrastructureCategory.model");
@@ -126,11 +124,10 @@ db.DriverLocation = setupDriverLocationModel(sequelize);
 // Gas Station Model
 db.GasStation = setupGasStationModel(sequelize);
 
-// Exchange Rate and IoT models
+// Exchange Rate model
 db.ExchangeRate = setupExchangeRateModel(sequelize);
-db.IotRawData = setupIotRawDataModel(sequelize);
 
-// Budget Request model
+// Budget Request model (re-added for instant approval)
 db.BudgetRequest = setupBudgetRequestModel(sequelize);
 
 // Infrastructure Inventory models
@@ -171,7 +168,6 @@ const {
   DriverLocation,
   GasStation,
   ExchangeRate,
-  IotRawData,
   BudgetRequest,
   InfrastructureCategory,
   InfrastructureLocation,
@@ -187,15 +183,7 @@ DriverProfile.belongsTo(User, { foreignKey: "user_id", as: "user" });
 User.hasOne(AdminProfile, { foreignKey: "user_id", as: "adminProfile" });
 AdminProfile.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
-// Order-related Associations (One-to-Many)
-PurchaseOrder.hasMany(DeliveryOrder, {
-  as: "poDeliveryOrders",
-  foreignKey: "purchase_order_id",
-});
-DeliveryOrder.belongsTo(PurchaseOrder, {
-  as: "purchaseOrder",
-  foreignKey: "purchase_order_id",
-});
+// Note: Removed PO-DO associations as DOs are now standalone entities
 
 // User (as Driver) <-> DeliveryOrder
 User.hasMany(DeliveryOrder, {
@@ -252,7 +240,7 @@ DriverExpense.belongsTo(User, {
   as: "approvedBy",
 });
 
-// Budget Request Associations
+// Budget Request Associations (re-added for instant approval)
 User.hasMany(BudgetRequest, {
   foreignKey: "driver_id",
   as: "budgetRequests",
@@ -273,6 +261,7 @@ BudgetRequest.belongsTo(DeliveryOrder, {
   foreignKey: "delivery_order_id",
   as: "deliveryOrder",
 });
+
 
 // Vehicle Service Associations
 Vehicle.hasMany(VehicleService, {
@@ -595,15 +584,6 @@ DriverLocation.belongsTo(DeliveryOrder, {
   as: "deliveryOrder",
 });
 
-// === IoT Data Associations ===
-DeliveryOrder.hasMany(IotRawData, {
-  foreignKey: "delivery_order_id",
-  as: "iotData",
-});
-IotRawData.belongsTo(DeliveryOrder, {
-  foreignKey: "delivery_order_id",
-  as: "deliveryOrder",
-});
 
 // === Infrastructure Inventory Associations ===
 InfrastructureCategory.hasMany(InfrastructureItem, {

@@ -106,7 +106,7 @@ const DriverExpenseManagement: React.FC = () => {
         params.append('status', statusFilter);
       }
 
-      const response = await apiClient.get(`/web/expenses?${params}`);
+      const response = await apiClient.get(`/expenses?${params}`);
       setExpenses(response.data.expenses);
       setPagination(response.data.pagination);
     } catch (err: any) {
@@ -129,7 +129,7 @@ const DriverExpenseManagement: React.FC = () => {
         params.append('status', statusFilter);
       }
 
-      const response = await apiClient.get(`/web/budget-requests?${params}`);
+      const response = await apiClient.get(`/budget-requests?${params}`);
       setBudgetRequests(response.data.budgetRequests || response.data.requests || []);
       setPagination({
         total: response.data.total || response.data.budgetRequests?.length || 0,
@@ -195,7 +195,7 @@ const DriverExpenseManagement: React.FC = () => {
 
     setActionLoading(true);
     try {
-      await apiClient.put(`/web/expenses/${selectedExpense.id}/approve`);
+      await apiClient.put(`/expenses/${selectedExpense.id}/approve`);
       setShowApprovalModal(false);
       setSelectedExpense(null);
       fetchExpenses(); // Refresh the list
@@ -215,7 +215,7 @@ const DriverExpenseManagement: React.FC = () => {
 
     setActionLoading(true);
     try {
-      await apiClient.put(`/web/expenses/${selectedExpense.id}/reject`, {
+      await apiClient.put(`/expenses/${selectedExpense.id}/reject`, {
         rejection_reason: rejectionReason
       });
       setShowApprovalModal(false);
@@ -246,7 +246,7 @@ const DriverExpenseManagement: React.FC = () => {
 
     setActionLoading(true);
     try {
-      await apiClient.put(`/web/budget-requests/${selectedBudgetRequest.id}/approve`);
+      await apiClient.put(`/budget-requests/${selectedBudgetRequest.id}/approve`);
       setShowApprovalModal(false);
       setSelectedBudgetRequest(null);
       fetchBudgetRequests(); // Refresh the list
@@ -266,7 +266,7 @@ const DriverExpenseManagement: React.FC = () => {
 
     setActionLoading(true);
     try {
-      await apiClient.put(`/web/budget-requests/${selectedBudgetRequest.id}/reject`, {
+      await apiClient.put(`/budget-requests/${selectedBudgetRequest.id}/reject`, {
         rejection_reason: rejectionReason
       });
       setShowApprovalModal(false);

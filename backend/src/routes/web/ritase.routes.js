@@ -8,7 +8,14 @@ const { verifyToken, checkRole } = require("../../middlewares/auth.middleware");
 
 router.use(verifyToken);
 
-// ✅ PO-focused Ritase Routes (NEW)
+// ✅ DO-focused Ritase Routes (NEW - replaces PO-based)
+router.get(
+  "/delivery-orders",
+  checkRole(["admin", "owner"]),
+  ritaseController.getDeliveryOrdersWithPaymentStatus
+);
+
+// ✅ PO-focused Ritase Routes (DEPRECATED)
 router.get(
   "/purchase-orders",
   checkRole(["admin", "owner"]),

@@ -1,5 +1,5 @@
 // src/pages/DeliveryOrders.tsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import apiClient from "../api/axiosConfig";
 
@@ -40,31 +40,7 @@ interface DeliveryOrder {
   ongkosan?: number;
 }
 
-interface PurchaseOrder {
-  id: number;
-  po_number: string;
-  customer_name: string;
-  item_name: string;
-  total_quantity: number;
-  unit: string;
-  unit_price: string | null;
-  total_amount: string;
-  load_location: string | null;
-  unload_location: string | null;
-  order_date: string;
-  status: string;
-  notes: string | null;
-  remaining_quantity: number;
-  can_create_do: boolean;
-  fulfillment_status: string;
-  delivery_progress: {
-    total_deliveries: number;
-    completed_deliveries: number;
-    percentage: number;
-    delivered_units: number;
-    pending_units: number;
-  };
-}
+// Removed PurchaseOrder interface - DOs are now standalone
 
 const DeliveryOrdersPage = () => {
   const [searchParams] = useSearchParams();
@@ -80,11 +56,10 @@ const DeliveryOrdersPage = () => {
     completed: 0,
     cancelled: 0,
   });
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
-  const [showPODropdown, setShowPODropdown] = useState(false);
-  const [loadingPOs, setLoadingPOs] = useState(false);
+  // Removed purchaseOrders state - DOs are now standalone
+  // Removed PO dropdown state - DOs are now standalone
   const navigate = useNavigate();
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  // Removed dropdownRef - no longer needed
 
   const poId = searchParams.get("po_id");
 
@@ -98,9 +73,9 @@ const DeliveryOrdersPage = () => {
     return unitMap[unit as keyof typeof unitMap] || unit;
   };
 
-  // 🎯 Get unit with fallback
+  // 🎯 Get unit with fallback - DOs are always kubik
   const getOrderUnit = (order: DeliveryOrder) => {
-    return order.unit || order.purchaseOrder?.unit || "ton";
+    return "kubik"; // DOs always use kubik
   };
 
   useEffect(() => {
@@ -108,48 +83,13 @@ const DeliveryOrdersPage = () => {
   }, [statusFilter, poId, searchQuery]); // Add searchQuery to dependencies
 
   // Handle clicking outside dropdown to close it
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowPODropdown(false);
-      }
-    };
+  // Removed click outside handler for PO dropdown
 
-    if (showPODropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showPODropdown]);
-
-  const fetchPurchaseOrders = async () => {
-    try {
-      setLoadingPOs(true);
-      const response = await apiClient.get("/purchase-orders?page=1&limit=20");
-      if (response.data.success) {
-        setPurchaseOrders(response.data.data);
-      }
-    } catch (err) {
-      console.error("Failed to fetch purchase orders:", err);
-    } finally {
-      setLoadingPOs(false);
-    }
-  };
+  // Removed fetchPurchaseOrders - DOs are now standalone
 
   const handleAddDeliveryOrder = () => {
-    if (purchaseOrders.length === 0) {
-      fetchPurchaseOrders();
-    }
-    setShowPODropdown(!showPODropdown);
-  };
-
-  const handlePOClick = (po: PurchaseOrder) => {
-    if (po.can_create_do) {
-      navigate(`/trips/po/${po.id}/create-do`);
-    }
-    setShowPODropdown(false);
+    // Navigate directly to standalone DO creation
+    navigate('/delivery-orders/create');
   };
 
   const fetchDeliveryOrders = async () => {
@@ -182,10 +122,10 @@ const DeliveryOrdersPage = () => {
         : response.data || [];
       const stats = response.data.success ? response.data.stats : null;
 
-      // Ensure unit field exists with fallback
+      // Ensure unit field exists with fallback - DOs are always kubik
       const processedOrders = orders.map((order: DeliveryOrder) => ({
         ...order,
-        unit: order.unit || order.purchaseOrder?.unit || "ton",
+        unit: "kubik", // DOs always use kubik
       }));
 
       setDeliveryOrders(processedOrders);
@@ -204,18 +144,12 @@ const DeliveryOrdersPage = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "assigned":
-        return "bg-yellow-100 text-yellow-800";
-      case "otw_to_load_location":
-        return "bg-blue-100 text-blue-800";
-      case "at_load_location":
+      case "at_spbu":
         return "bg-purple-100 text-purple-800";
       case "otw_to_unload_location":
-        return "bg-indigo-100 text-indigo-800";
+        return "bg-blue-100 text-blue-800";
       case "at_unload_location":
         return "bg-orange-100 text-orange-800";
-      case "otw_to_base":
-        return "bg-teal-100 text-teal-800";
       case "completed":
         return "bg-green-100 text-green-800";
       case "cancelled":
@@ -248,118 +182,16 @@ const DeliveryOrdersPage = () => {
           )}
         </div>
         <div className="flex items-center space-x-3">
-          {/* Add Delivery Order Button with Dropdown */}
-          <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={handleAddDeliveryOrder}
-              disabled={loadingPOs}
-              className="bg-green-500 hover:bg-green-700 disabled:bg-green-300 text-white font-bold py-2 px-4 rounded flex items-center"
-            >
-              {loadingPOs ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Loading...
-                </>
-              ) : (
-                <>
-                  <span className="mr-2">+</span>
-                  Add Delivery Order
-                </>
-              )}
-            </button>
+          {/* Add Delivery Order Button - Direct Creation */}
+          <button
+            onClick={handleAddDeliveryOrder}
+            className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded flex items-center"
+          >
+            <span className="mr-2">+</span>
+            Add Delivery Order
+          </button>
             
-            {/* Purchase Orders Dropdown */}
-            {showPODropdown && (
-              <div className="absolute right-0 mt-2 w-96 bg-white border border-gray-300 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
-                <div className="p-3 border-b border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-800">Select Purchase Order</h3>
-                  <p className="text-sm text-gray-600">Choose a PO to create delivery orders from</p>
-                </div>
-                
-                {loadingPOs ? (
-                  <div className="p-4 text-center">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto"></div>
-                    <p className="text-sm text-gray-500 mt-2">Loading purchase orders...</p>
-                  </div>
-                ) : purchaseOrders.length === 0 ? (
-                  <div className="p-4 text-center text-gray-500">
-                    No purchase orders found
-                  </div>
-                ) : (
-                  <div className="p-2">
-                    {purchaseOrders.map((po) => (
-                      <div
-                        key={po.id}
-                        onClick={() => handlePOClick(po)}
-                        className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                          po.can_create_do
-                            ? 'hover:bg-blue-50 border border-gray-200 hover:border-blue-300'
-                            : 'bg-gray-100 border border-gray-300 cursor-not-allowed'
-                        }`}
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-2 mb-1">
-                              <span className="font-semibold text-gray-800">{po.po_number}</span>
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                po.can_create_do 
-                                  ? 'bg-green-100 text-green-800' 
-                                  : 'bg-gray-100 text-gray-600'
-                              }`}>
-                                {po.can_create_do ? 'Available' : 'Complete'}
-                              </span>
-                            </div>
-                            <p className="text-sm font-medium text-gray-700">{po.customer_name}</p>
-                            <p className="text-sm text-gray-600">{po.item_name}</p>
-                          </div>
-                          <div className="text-right text-sm">
-                            {po.can_create_do ? (
-                              <div className="text-green-600 font-semibold">
-                                <div className="text-lg">{po.remaining_quantity}</div>
-                                <div className="text-xs">{po.unit} remaining</div>
-                              </div>
-                            ) : (
-                              <div className="text-gray-500">
-                                <div className="text-lg">0</div>
-                                <div className="text-xs">{po.unit} remaining</div>
-                              </div>
-                            )}
-                            <div className="text-gray-500 text-xs mt-1">
-                              {po.delivery_progress.total_deliveries} deliveries
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {po.can_create_do ? (
-                          <div className="text-xs text-blue-600 font-medium flex items-center">
-                            <span className="mr-1">✓</span>
-                            Can create delivery orders
-                          </div>
-                        ) : (
-                          <div className="text-xs text-gray-500 flex items-center">
-                            <span className="mr-1">✗</span>
-                            All quantities fulfilled
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-                <div className="p-3 border-t border-gray-200 bg-gray-50">
-                  <p className="text-xs text-gray-600 text-center">
-                    Only POs with remaining quantities can create delivery orders
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-          
-          <Link to="/trips">
-            <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-              ← Back to Purchase Orders
-            </button>
-          </Link>
+          {/* PO dropdown removed - DOs are now standalone */}
         </div>
       </div>
 
@@ -388,8 +220,8 @@ const DeliveryOrdersPage = () => {
           >
             <option value="all">All Statuses</option>
             <option value="assigned">Assigned</option>
-            <option value="otw_to_load_location">On Way to Load</option>
-            <option value="at_load_location">At Load Location</option>
+            <option value="otw_to_load_location">On Way to SPBU</option>
+            <option value="at_load_location">At SPBU Location</option>
             <option value="otw_to_unload_location">On Way to Unload</option>
             <option value="at_unload_location">At Unload Location</option>
             <option value="otw_to_base">Returning to Base</option>
@@ -803,14 +635,12 @@ const DeliveryOrdersPage = () => {
           <h3 className="text-lg font-semibold text-gray-800 mb-3">
             Unit Distribution
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            {(["kilogram", "ton", "kubik"] as const).map((unit) => {
-              const unitOrders = deliveryOrders.filter(
-                (order) => getOrderUnit(order) === unit
-              );
+          <div className="grid grid-cols-1 gap-4 text-sm">
+            {(() => {
+              // Since all DOs are kubik, show only kubik statistics
+              const unit = "kubik";
+              const unitOrders = deliveryOrders; // All orders are kubik
               const unitDisplay = getUnitDisplay(unit);
-
-              if (unitOrders.length === 0) return null;
 
               return (
                 <div key={unit} className="bg-gray-50 p-3 rounded">
@@ -835,7 +665,7 @@ const DeliveryOrdersPage = () => {
                   </div>
                 </div>
               );
-            })}
+            })()}
           </div>
         </div>
       )}

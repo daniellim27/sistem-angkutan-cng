@@ -11,7 +11,6 @@ const MainLayout = () => {
   const getPageTitle = () => {
     const path = location.pathname;
     if (path === "/") return "CNG Dashboard";
-    if (path.startsWith("/trips")) return "Purchase Orders";
     if (path.startsWith("/delivery-orders")) return "Delivery Orders";
     if (path.startsWith("/big-dos")) return "Big Delivery Orders";
     if (path.startsWith("/live-tracking")) return "Live GPS Tracking";
@@ -28,7 +27,6 @@ const MainLayout = () => {
     if (path.startsWith("/tempo")) return "Credit Book";
     if (path.startsWith("/vehicle-expense-cash")) return "Kas Pengeluaran Mobil";
     if (path.startsWith("/deposit-groups")) return "Deposit Payments";
-    if (path.startsWith("/budget-requests")) return "Budget Request Management";
     if (path.startsWith("/driver-expenses")) return "Driver Expense Management";
     return "CNG Dashboard";
   };
@@ -170,22 +168,6 @@ const MainLayout = () => {
                 </div>
               </li>
             )}
-            <li className="mb-4">
-              <Link
-                to="/trips"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/trips")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Purchase Orders"
-              >
-                <span className="text-xl mr-3">📋</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Purchase Orders
-                </span>
-              </Link>
-            </li>
             <li className="mb-4">
               <Link
                 to="/delivery-orders"
@@ -468,22 +450,6 @@ const MainLayout = () => {
                 <span className="text-xl mr-3">🚗</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
                   Kas Pengeluaran Mobil
-                </span>
-              </Link>
-            </li>
-            <li className="mb-4">
-              <Link
-                to="/budget-requests"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/budget-requests")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Budget Request Management"
-              >
-                <span className="text-xl mr-3">💸</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Budget Requests
                 </span>
               </Link>
             </li>

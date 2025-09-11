@@ -79,7 +79,7 @@ exports.confirmLoad = async (req, res, next) => {
     }
 
     // Verifikasi status
-    if (deliveryOrder.status !== "at_load_location") {
+    if (deliveryOrder.status !== "at_spbu") {
       return res.status(400).json({
         message: `Tidak dapat konfirmasi muatan. Status saat ini: ${deliveryOrder.status}`,
       });
@@ -100,7 +100,7 @@ exports.confirmLoad = async (req, res, next) => {
       actual_load_quantity: actualQuantity,
       surat_jalan_photo_url, // now always an array
       status: "otw_to_unload_location",
-      departed_from_load_location_at: new Date(),
+      departed_from_spbu_at: new Date(),
     });
 
     // Calculate progress info
@@ -124,8 +124,8 @@ exports.confirmLoad = async (req, res, next) => {
         minimal_load_quantity: minimalQuantity,
         actual_load_quantity: actualQuantity,
         load_progress: loadProgress,
-        departed_from_load_location_at:
-          deliveryOrder.departed_from_load_location_at,
+        departed_from_spbu_at:
+          deliveryOrder.departed_from_spbu_at,
         surat_jalan_photo_url: surat_jalan_photo_url,
       },
     });
@@ -184,9 +184,9 @@ exports.getLoadStatus = async (req, res, next) => {
         deliveryOrder.surat_jalan_photo_url
       ),
       surat_jalan_photo_url: deliveryOrder.surat_jalan_photo_url,
-      departed_from_load_location_at:
-        deliveryOrder.departed_from_load_location_at,
-      can_confirm_load: deliveryOrder.status === "at_load_location",
+      departed_from_spbu_at:
+        deliveryOrder.departed_from_spbu_at,
+      can_confirm_load: deliveryOrder.status === "at_spbu",
     };
 
     if (

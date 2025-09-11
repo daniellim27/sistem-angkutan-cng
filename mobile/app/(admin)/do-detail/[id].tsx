@@ -301,7 +301,7 @@ const DODetailScreen = () => {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>📍 Location Information</Text>
 
-        {/* Load Location - Clickable */}
+        {/* SPBU Location - Clickable */}
         <TouchableOpacity
           style={styles.locationItem}
           onPress={() =>

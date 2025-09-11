@@ -844,7 +844,7 @@ const TripDetailScreen = () => {
     if (!trip) return null;
 
     switch (trip.status) {
-      case "at_load_location":
+      case "at_spbu":
         return (
           <TouchableOpacity
             style={[styles.statusActionButton, { backgroundColor: "#e67e22" }]}
@@ -971,7 +971,7 @@ const TripDetailScreen = () => {
         <View style={styles.detailCard}>
           <Text style={styles.cardTitle}>📍 Lokasi & Navigasi</Text>
 
-          {/* Load Location */}
+          {/* SPBU Location */}
           <TouchableOpacity
             style={styles.locationItem}
             onPress={() =>
@@ -1605,14 +1605,9 @@ const TripDetailScreen = () => {
 // HELPER FUNCTIONS
 const getStatusColor = (status: string) => {
   const colorMap: { [key: string]: string } = {
-    assigned: "#6c757d",
-    otw_to_load_location: "#f59e42",
-    at_load_location: "#3498db",
-    otw_to_unload_location: "#e67e22",
-    at_unload_location: "#e74c3c",
-    otw_to_destination: "#ffc107",
-    at_destination: "#17a2b8",
-    otw_to_base: "#fd7e14",
+    at_spbu: "#9b59b6",
+    otw_to_unload_location: "#3498db",
+    at_unload_location: "#e67e22",
     completed: "#28a745",
     cancelled: "#dc3545",
   };
@@ -1621,10 +1616,9 @@ const getStatusColor = (status: string) => {
 
 const getStatusText = (status: string) => {
   const statusMap = {
-    assigned: "Ditugaskan",
-    otw_to_destination: "Menuju Tujuan",
-    at_destination: "Di Tujuan",
-    otw_to_base: "Perjalanan Pulang",
+    at_spbu: "Di SPBU",
+    otw_to_unload_location: "Menuju Lokasi Bongkar",
+    at_unload_location: "Di Lokasi Bongkar",
     completed: "Selesai",
     cancelled: "Dibatalkan",
   };
@@ -1633,10 +1627,9 @@ const getStatusText = (status: string) => {
 
 const getStatusStyle = (status: string) => {
   const styleMap = {
-    assigned: { backgroundColor: "#6c757d" },
-    otw_to_destination: { backgroundColor: "#ffc107" },
-    at_destination: { backgroundColor: "#17a2b8" },
-    otw_to_base: { backgroundColor: "#fd7e14" },
+    at_spbu: { backgroundColor: "#9b59b6" },
+    otw_to_unload_location: { backgroundColor: "#3498db" },
+    at_unload_location: { backgroundColor: "#e67e22" },
     completed: { backgroundColor: "#28a745" },
     cancelled: { backgroundColor: "#dc3545" },
   };

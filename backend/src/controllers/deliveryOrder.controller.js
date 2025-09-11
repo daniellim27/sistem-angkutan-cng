@@ -66,12 +66,12 @@ exports.createDeliveryOrder = async (req, res, next) => {
     console.log("Request file:", req.file);
     console.log("=====================================");
     const {
-      purchase_order_id,
       driver_id,
       vehicle_id,
       do_number,
       customer_name,
       item_name,
+      unit, // Unit input (will be overridden to kubik)
       minimal_load_quantity, // <-- RENAMED
       unit_price,
       total_amount,
@@ -91,19 +91,19 @@ exports.createDeliveryOrder = async (req, res, next) => {
       gaji, // <-- FIELD BARU
     } = req.body;
 
+    // Force unit to always be 'kubik' for delivery orders
+    const finalUnit = "kubik";
+
     // Validasi sederhana
-    // CEK: Apakah driver sudah punya trip aktif (assigned, otw_to_load_location, at_load_location, otw_to_unload_location, at_unload_location, otw_to_base)
+    // CEK: Apakah driver sudah punya trip aktif (at_spbu, otw_to_unload_location, at_unload_location)
     const activeTrip = await DeliveryOrder.findOne({
       where: {
         driver_id,
         status: {
           [Op.in]: [
-            "assigned",
-            "otw_to_load_location",
-            "at_load_location",
+            "at_spbu",
             "otw_to_unload_location",
             "at_unload_location",
-            "otw_to_base",
           ],
         },
       },
@@ -120,12 +120,9 @@ exports.createDeliveryOrder = async (req, res, next) => {
         vehicle_id,
         status: {
           [Op.in]: [
-            "assigned",
-            "otw_to_load_location",
-            "at_load_location",
+            "at_spbu",
             "otw_to_unload_location",
             "at_unload_location",
-            "otw_to_base",
           ],
         },
       },
@@ -137,29 +134,33 @@ exports.createDeliveryOrder = async (req, res, next) => {
     }
 
     if (
-      !purchase_order_id ||
       !driver_id ||
       !vehicle_id ||
       !do_number ||
       !customer_name ||
+      !item_name ||
       !minimal_load_quantity ||
+      !unit_price ||
       !trip_allowance ||
       !gaji
     ) {
       return res.status(400).json({
         message: "Data wajib belum lengkap.",
         missing_fields: {
-          purchase_order_id: !purchase_order_id,
           driver_id: !driver_id,
           vehicle_id: !vehicle_id,
           do_number: !do_number,
           customer_name: !customer_name,
+          item_name: !item_name,
           minimal_load_quantity: !minimal_load_quantity,
+          unit_price: !unit_price,
           trip_allowance: !trip_allowance,
           gaji: !gaji,
         },
       });
     }
+
+    // Unit is always kubik for DOs - no validation needed
 
     // Handle file upload (surat jalan)
     let surat_jalan_url = null;
@@ -167,17 +168,20 @@ exports.createDeliveryOrder = async (req, res, next) => {
       surat_jalan_url = req.file.path.replace(/\\/g, "/");
     }
 
+    // Calculate total amount if not provided
+    const calculatedTotalAmount = total_amount || (parseFloat(minimal_load_quantity) * parseFloat(unit_price));
+
     // Buat DeliveryOrder baru
     const newDO = await DeliveryOrder.create({
-      purchase_order_id,
       driver_id,
       vehicle_id,
       do_number,
       customer_name,
       item_name,
+      unit: finalUnit, // Always kubik
       minimal_load_quantity: minimal_load_quantity || 0,
       unit_price: unit_price || 0,
-      total_amount: total_amount || 0,
+      total_amount: calculatedTotalAmount,
       load_location,
       unload_location,
       load_latitude,
@@ -235,11 +239,6 @@ exports.getMyDeliveryOrders = async (req, res, next) => {
         ],
       },
       include: [
-        {
-          model: PurchaseOrder,
-          as: "purchaseOrder",
-          attributes: ["id", "po_number"],
-        },
         {
           model: Vehicle,
           as: "vehicle",
@@ -309,11 +308,6 @@ exports.getAllDeliveryOrders = async (req, res, next) => {
     const options = {
       include: [
         {
-          model: PurchaseOrder,
-          as: "purchaseOrder",
-          attributes: ["po_number"],
-        },
-        {
           model: Vehicle,
           as: "vehicle",
           attributes: ["license_plate", "type"],
@@ -357,12 +351,9 @@ exports.getAllDeliveryOrders = async (req, res, next) => {
 exports.getActiveDeliveryOrders = async (req, res, next) => {
   try {
     const ACTIVE_STATUSES = [
-      "assigned",
-      "otw_to_load_location",
-      "at_load_location",
+      "at_spbu",
       "otw_to_unload_location",
       "at_unload_location",
-      "otw_to_base",
     ];
 
     const user = req.user;
@@ -370,11 +361,6 @@ exports.getActiveDeliveryOrders = async (req, res, next) => {
     const options = {
       where: { status: { [Op.in]: ACTIVE_STATUSES } },
       include: [
-        {
-          model: PurchaseOrder,
-          as: "purchaseOrder",
-          attributes: ["po_number"],
-        },
         {
           model: Vehicle,
           as: "vehicle",
@@ -444,7 +430,6 @@ exports.getDeliveryOrderById = async (req, res, next) => {
     
     const order = await DeliveryOrder.findByPk(req.params.id, {
       include: [
-        { model: PurchaseOrder, as: "purchaseOrder" },
         { model: Vehicle, as: "vehicle" },
         {
           model: User,
@@ -576,9 +561,9 @@ exports.startToDestination = (req, res, next) => {
   )
     .then((order) =>
       res.json({
-        message: "Status updated to OTW to Load Location",
+        message: "Status updated to OTW to SPBU Location",
         order,
-        status_text: "Menuju Lokasi Muat",
+        status_text: "Menuju SPBU",
       })
     )
     .catch(next);
@@ -607,14 +592,14 @@ exports.startReturnToBase = (req, res, next) => {
   updateStatus(
     req.params.id,
     req.user.id,
-    "otw_to_base", // ✅ Sudah benar
-    "departed_from_unload_location_at" // ✅ Update field timestamp baru
+    "completed",
+    "completed_at"
   )
     .then((order) =>
       res.json({
-        message: "Status updated to OTW to Base",
+        message: "Delivery completed",
         order,
-        status_text: "Perjalanan Pulang",
+        status_text: "Selesai",
       })
     )
     .catch(next);
@@ -630,11 +615,7 @@ exports.completeDeliveryOrder = async (req, res, next) => {
 
     const order = await DeliveryOrder.findOne({
       where: { id: id, driver_id: driverId },
-      include: [{
-          model: PurchaseOrder,
-          as: "purchaseOrder",
-          attributes: ["id", "deposit_group_id"]
-      }],
+      include: [],  // Removed PO dependency
       transaction: transaction,
     });
 
@@ -643,7 +624,7 @@ exports.completeDeliveryOrder = async (req, res, next) => {
       return res.status(404).json({ message: "Delivery Order not found or not assigned to you." });
     }
 
-    if (order.status !== "otw_to_base") {
+    if (order.status !== "at_unload_location") {
       await transaction.rollback();
       return res.status(400).json({
           message: `Cannot complete delivery. Current status: ${order.status}.`,
@@ -730,19 +711,19 @@ exports.completeDeliveryOrder = async (req, res, next) => {
   }
 };
 
-// PATCH /api/delivery-orders/:id/arrive-at-load
-exports.arriveAtLoadLocation = (req, res, next) => {
+// PATCH /api/delivery-orders/:id/depart-spbu
+exports.departFromSPBU = (req, res, next) => {
   updateStatus(
     req.params.id,
     req.user.id,
-    "at_load_location",
-    "arrived_at_load_location_at"
+    "otw_to_unload_location",
+    "departed_from_spbu_at"
   )
     .then((order) =>
       res.json({
-        message: "Status updated to At Load Location",
+        message: "Status updated to On The Way to Unload Location",
         order,
-        status_text: "Di Lokasi Muat",
+        status_text: "Perjalanan ke Lokasi Bongkar",
       })
     )
     .catch(next);
@@ -761,12 +742,9 @@ const updateStatus = async (orderId, driverId, newStatus, timestampField) => {
 
     // Status validation mapping
     const validTransitions = {
-      assigned: ["otw_to_load_location"],
-      otw_to_load_location: ["at_load_location"],
-      at_load_location: ["otw_to_unload_location"], // Setelah confirm load
+      at_spbu: ["otw_to_unload_location"],
       otw_to_unload_location: ["at_unload_location"],
-      at_unload_location: ["otw_to_base"],
-      otw_to_base: ["completed"],
+      at_unload_location: ["completed"],
       completed: [],
       cancelled: [],
     };
