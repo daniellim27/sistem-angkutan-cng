@@ -6,6 +6,25 @@ const InovatracksScraper = require('../services/inovatracksScraper');
 const scraper = new InovatracksScraper();
 
 /**
+ * Helper function to calculate distance between two GPS points using Haversine formula
+ * @param {number} lat1 - Latitude of first point
+ * @param {number} lng1 - Longitude of first point
+ * @param {number} lat2 - Latitude of second point
+ * @param {number} lng2 - Longitude of second point
+ * @returns {number} Distance in kilometers
+ */
+const calculateDistance = (lat1, lng1, lat2, lng2) => {
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLng/2) * Math.sin(dLng/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c; // Distance in kilometers
+};
+
+/**
  * Get current location for a specific vehicle
  */
 exports.getVehicleCurrentLocation = async (req, res, next) => {
@@ -611,6 +630,194 @@ exports.updateVehicleDevice = async (req, res, next) => {
 }; 
 
 /**
+ * Get route history for a specific vehicle within a date range
+ */
+exports.getVehicleRouteHistory = async (req, res, next) => {
+  try {
+    const { vehicleId } = req.params;
+    const { 
+      startDate, 
+      endDate, 
+      limit = 1000,
+      deviceId 
+    } = req.query;
+
+    console.log(`📍 Fetching route history for vehicle ${vehicleId || 'device: ' + deviceId}`);
+
+    // Build where clause
+    let whereClause = {};
+    
+    if (vehicleId && vehicleId !== 'null') {
+      whereClause.vehicle_id = vehicleId;
+    } else if (deviceId) {
+      whereClause.device_id = deviceId;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Either vehicleId or deviceId is required'
+      });
+    }
+
+    // Add date filtering if provided
+    if (startDate && endDate) {
+      whereClause.timestamp = {
+        [Op.between]: [new Date(startDate), new Date(endDate)]
+      };
+    } else if (startDate) {
+      whereClause.timestamp = {
+        [Op.gte]: new Date(startDate)
+      };
+    } else if (endDate) {
+      whereClause.timestamp = {
+        [Op.lte]: new Date(endDate)
+      };
+    }
+
+    const routeHistory = await DriverLocation.findAll({
+      where: whereClause,
+      order: [['timestamp', 'ASC']], // Chronological order for route plotting
+      limit: parseInt(limit),
+      attributes: [
+        'id', 
+        'latitude', 
+        'longitude', 
+        'timestamp', 
+        'speed', 
+        'device_id',
+        'status'
+      ],
+      include: [
+        {
+          model: Vehicle,
+          as: 'vehicle',
+          attributes: ['id', 'license_plate', 'type'],
+          required: false
+        }
+      ]
+    });
+
+    // Calculate route statistics
+    const routeStats = {
+      totalPoints: routeHistory.length,
+      startTime: routeHistory.length > 0 ? routeHistory[0].timestamp : null,
+      endTime: routeHistory.length > 0 ? routeHistory[routeHistory.length - 1].timestamp : null,
+      vehicleInfo: routeHistory.length > 0 ? {
+        device_id: routeHistory[0].device_id,
+        license_plate: routeHistory[0].vehicle?.license_plate || 'Unknown',
+        vehicle_type: routeHistory[0].vehicle?.type || 'Unknown'
+      } : null
+    };
+
+    // Calculate total distance if we have multiple points
+    let totalDistance = 0;
+    if (routeHistory.length > 1) {
+      for (let i = 1; i < routeHistory.length; i++) {
+        const prev = routeHistory[i - 1];
+        const curr = routeHistory[i];
+        totalDistance += calculateDistance(
+          parseFloat(prev.latitude),
+          parseFloat(prev.longitude),
+          parseFloat(curr.latitude),
+          parseFloat(curr.longitude)
+        );
+      }
+    }
+    routeStats.totalDistance = Math.round(totalDistance * 100) / 100; // Round to 2 decimal places
+
+    console.log(`✅ Found ${routeHistory.length} route points for vehicle`);
+
+    res.json({
+      success: true,
+      data: {
+        route: routeHistory,
+        stats: routeStats
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting vehicle route history:', error);
+    next(error);
+  }
+};
+
+/**
+ * Get list of vehicles that have GPS tracking data
+ */
+exports.getVehiclesWithGPSData = async (req, res, next) => {
+  try {
+    const { timeWindow = 168 } = req.query; // Default 7 days (168 hours)
+    const timeAgo = new Date(Date.now() - timeWindow * 60 * 60 * 1000);
+
+    console.log(`🔍 Fetching vehicles with GPS data for time window: ${timeWindow} hours`);
+    console.log(`📅 Time ago: ${timeAgo.toISOString()}`);
+
+    // Get vehicles with GPS data in the specified time window
+    const vehiclesWithGPS = await DriverLocation.findAll({
+      where: {
+        timestamp: {
+          [Op.gte]: timeAgo
+        }
+      },
+      attributes: [
+        'vehicle_id',
+        'device_id',
+        [require('sequelize').fn('MAX', require('sequelize').col('DriverLocation.timestamp')), 'last_update'],
+        [require('sequelize').fn('COUNT', require('sequelize').col('DriverLocation.id')), 'total_points']
+      ],
+      include: [
+        {
+          model: Vehicle,
+          as: 'vehicle',
+          attributes: ['id', 'license_plate', 'type', 'status'],
+          required: false
+        }
+      ],
+      group: ['DriverLocation.vehicle_id', 'DriverLocation.device_id', 'vehicle.id'],
+      order: [[require('sequelize').fn('MAX', require('sequelize').col('DriverLocation.timestamp')), 'DESC']]
+    });
+
+    console.log(`📊 Raw query result: ${vehiclesWithGPS.length} records`);
+
+    // Format the response
+    const formattedVehicles = vehiclesWithGPS.map(item => ({
+      vehicle_id: item.vehicle_id,
+      device_id: item.device_id,
+      display_name: item.vehicle 
+        ? `${item.vehicle.license_plate} (${item.vehicle.type})`
+        : `GPS Device: ${item.device_id}`,
+      license_plate: item.vehicle?.license_plate || null,
+      vehicle_type: item.vehicle?.type || 'Unknown',
+      vehicle_status: item.vehicle?.status || 'unknown',
+      last_update: item.dataValues.last_update,
+      total_points: parseInt(item.dataValues.total_points),
+      has_vehicle_record: !!item.vehicle_id
+    }));
+
+    console.log(`📊 Found ${formattedVehicles.length} vehicles with GPS data`);
+
+    res.json({
+      success: true,
+      data: formattedVehicles,
+      meta: {
+        timeWindow: `${timeWindow} hours`,
+        totalVehicles: formattedVehicles.length
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting vehicles with GPS data:', error);
+    console.error('Error details:', error.message);
+    console.error('Error stack:', error.stack);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch vehicles with GPS data',
+      error: error.message
+    });
+  }
+};
+
+/**
  * Get all GPS locations including unmatched devices
  */
 exports.getAllGPSLocations = async (req, res, next) => {
@@ -767,17 +974,7 @@ exports.getVehicleTrails = async (req, res, next) => {
       return deviceId.split(/[,\s]/)[0];
     };
 
-    // Helper function to calculate distance between two GPS points
-    const calculateDistance = (lat1, lng1, lat2, lng2) => {
-      const R = 6371; // Earth's radius in kilometers
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLng = (lng2 - lng1) * Math.PI / 180;
-      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                Math.sin(dLng/2) * Math.sin(dLng/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      return R * c; // Distance in kilometers
-    };
+    // calculateDistance function is now defined at the top of the file as a shared helper
 
     // Helper function to validate GPS point
     const isValidGPSPoint = (point, previousPoint = null) => {

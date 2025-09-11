@@ -32,6 +32,18 @@ router.get('/vehicle/:vehicleId/current', trackingController.getVehicleCurrentLo
 router.get('/vehicle/:vehicleId/history', trackingController.getVehicleHistory);
 
 /**
+ * GET /api/tracking/vehicle/:vehicleId/route-history
+ * Get route history for a specific vehicle within a date range
+ */
+router.get('/vehicle/:vehicleId/route-history', trackingController.getVehicleRouteHistory);
+
+/**
+ * GET /api/tracking/vehicles-with-gps
+ * Get list of vehicles that have GPS tracking data
+ */
+router.get('/vehicles-with-gps', trackingController.getVehiclesWithGPSData);
+
+/**
  * GET /api/tracking/driver/:driverId/current
  * Get current location for a specific driver
  */

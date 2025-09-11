@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import LiveTrackingMap from '../components/LiveTrackingMap';
 import TrackingDeliveryList from '../components/TrackingDeliveryList';
+import RouteHistory from '../components/RouteHistory';
 
 // Interface for active vehicle info
 interface ActiveVehicle {
@@ -68,7 +69,7 @@ const getVehicleTrailColor = (index: number): string => {
 };
 
 const LiveTracking: React.FC = () => {
-  const [selectedTab, setSelectedTab] = useState<'all' | 'delivery'>('all');
+  const [selectedTab, setSelectedTab] = useState<'all' | 'delivery' | 'history'>('all');
   const [activeVehicles, setActiveVehicles] = useState<ActiveVehicle[]>([]);
   const [vehicleTrails, setVehicleTrails] = useState<VehicleTrail[]>([]);
 
@@ -119,6 +120,16 @@ const LiveTracking: React.FC = () => {
               >
                 Track Delivery
               </button>
+              <button
+                onClick={() => setSelectedTab('history')}
+                className={`py-4 px-6 border-b-2 font-medium text-sm ${
+                  selectedTab === 'history'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Route History
+              </button>
             </nav>
           </div>
 
@@ -127,6 +138,11 @@ const LiveTracking: React.FC = () => {
             {selectedTab === 'all' && (
               <div className="text-sm text-gray-600">
                 Showing all active vehicles with GPS tracking enabled. The map updates automatically every 30 seconds.
+              </div>
+            )}
+            {selectedTab === 'history' && (
+              <div className="text-sm text-gray-600">
+                View historical GPS routes for vehicles. Select a vehicle and date range to visualize movement patterns and route history.
               </div>
             )}
           </div>
@@ -147,6 +163,10 @@ const LiveTracking: React.FC = () => {
 
         {selectedTab === 'delivery' && (
           <TrackingDeliveryList className="space-y-6" />
+        )}
+
+        {selectedTab === 'history' && (
+          <RouteHistory />
         )}
       </div>
     </div>
