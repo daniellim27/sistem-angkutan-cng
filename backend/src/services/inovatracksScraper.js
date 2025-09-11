@@ -202,38 +202,42 @@ class InovatracksScraper {
   /**
    * Process a batch of vehicles on a single page
    */
-  async processVehicleBatch(page, vehicleIndices, totalVehicles) {
+  async processVehicleBatch(page, vehicleIndices, totalVehicles, tabId = '') {
     const batchResults = [];
     
     try {
-      console.log(`🔄 Processing vehicle batch: indices ${vehicleIndices.join(', ')}`);
+      const logPrefix = tabId ? `Tab ${tabId}` : 'Batch';
+      console.log(`🔄 ${logPrefix}: Processing ${vehicleIndices.length} vehicles`);
       
-      for (const vehicleIndex of vehicleIndices) {
+      for (let i = 0; i < vehicleIndices.length; i++) {
+        const vehicleIndex = vehicleIndices[i];
+        const progress = `${i + 1}/${vehicleIndices.length}`;
+        
         try {
-          console.log(`🔄 Processing vehicle ${vehicleIndex + 1}/${totalVehicles}`);
+          console.log(`🔄 ${logPrefix}: Processing vehicle ${vehicleIndex + 1} (${progress})`);
           
           // Get current vehicle list to avoid stale elements
           const currentVehicleRows = await page.$$('table.k-selectable tbody tr');
           if (vehicleIndex >= currentVehicleRows.length) {
-            console.log(`⚠️ Vehicle ${vehicleIndex + 1} no longer available, skipping...`);
+            console.log(`⚠️ ${logPrefix}: Vehicle ${vehicleIndex + 1} no longer available, skipping...`);
             continue;
           }
           
           const vehicleElement = currentVehicleRows[vehicleIndex];
           let vehiclePlate = '';
           
-          // Get vehicle identifier
+          // Get vehicle identifier with improved selectors
           try {
-            vehiclePlate = await vehicleElement.$eval('td:first-child, .vehicle-name, .plate', el => el.textContent?.trim()) || `Vehicle_${vehicleIndex + 1}`;
+            vehiclePlate = await vehicleElement.$eval('td:first-child, .vehicle-name, .plate, td', el => el.textContent?.trim()) || `Vehicle_${vehicleIndex + 1}`;
           } catch (e) {
             vehiclePlate = `Vehicle_${vehicleIndex + 1}`;
           }
           
-          console.log(`📋 Processing vehicle: ${vehiclePlate}`);
+          console.log(`📋 ${logPrefix}: Processing ${vehiclePlate}`);
           
-          // Click on vehicle and wait for details
+          // Click on vehicle and wait for details with optimized timing
           await vehicleElement.click();
-          await page.waitForTimeout(this.tabProcessingDelay);
+          await page.waitForTimeout(Math.max(500, this.tabProcessingDelay / 2)); // Faster processing
           
           // Extract coordinates
           let coordinates = null;
@@ -284,15 +288,15 @@ class InovatracksScraper {
                   location: ''
                 });
                 
-                console.log(`✅ Successfully processed ${vehiclePlate}: ${coordinates}`);
+                console.log(`✅ ${logPrefix}: Successfully processed ${vehiclePlate}: ${coordinates}`);
               }
             }
           } else {
-            console.log(`⚠️ No coordinates found for ${vehiclePlate}`);
+            console.log(`⚠️ ${logPrefix}: No coordinates found for ${vehiclePlate}`);
           }
           
         } catch (error) {
-          console.error(`❌ Error processing vehicle ${vehicleIndex + 1}:`, error.message);
+          console.error(`❌ ${logPrefix}: Error processing vehicle ${vehicleIndex + 1}:`, error.message);
           continue;
         }
       }
@@ -305,11 +309,94 @@ class InovatracksScraper {
   }
 
   /**
-   * Scrape GPS data using multiple concurrent tabs
+   * Distribute vehicles optimally across the specified number of tabs
+   */
+  distributeVehiclesAcrossTabs(totalVehicles, numTabs) {
+    const batches = Array.from({ length: numTabs }, () => []);
+    
+    // Distribute vehicles round-robin style for better balance
+    for (let i = 0; i < totalVehicles; i++) {
+      const tabIndex = i % numTabs;
+      batches[tabIndex].push(i);
+    }
+    
+    return batches;
+  }
+
+  /**
+   * Process a batch of vehicles with retry mechanism
+   */
+  async processVehicleBatchWithRetry(page, vehicleIndices, totalVehicles, tabId) {
+    const maxRetries = 2;
+    let attempt = 1;
+    
+    while (attempt <= maxRetries) {
+      try {
+        console.log(`🔄 Tab ${tabId} attempt ${attempt}/${maxRetries}`);
+        return await this.processVehicleBatch(page, vehicleIndices, totalVehicles, tabId);
+      } catch (error) {
+        console.error(`❌ Tab ${tabId} attempt ${attempt} failed:`, error.message);
+        
+        if (attempt === maxRetries) {
+          throw error;
+        }
+        
+        // Wait before retry
+        await page.waitForTimeout(2000 * attempt);
+        attempt++;
+      }
+    }
+  }
+
+  /**
+   * Simplified vehicle processing for error recovery
+   */
+  async processVehicleBatchSimple(page, vehicleIndices) {
+    const results = [];
+    
+    for (const vehicleIndex of vehicleIndices.slice(0, 3)) { // Only try first 3 for recovery
+      try {
+        // Very basic processing with minimal selectors
+        const vehicleRows = await page.$$('table.k-selectable tbody tr');
+        if (vehicleIndex < vehicleRows.length) {
+          const vehicleElement = vehicleRows[vehicleIndex];
+          await vehicleElement.click();
+          await page.waitForTimeout(1000);
+          
+          // Simple coordinate extraction
+          const pageText = await page.textContent('body');
+          const coordMatch = pageText.match(/-?\d+\.\d+,\s*-?\d+\.\d+/);
+          
+          if (coordMatch) {
+            const [lat, lng] = coordMatch[0].split(',').map(c => parseFloat(c.trim()));
+            if (!isNaN(lat) && !isNaN(lng)) {
+              results.push({
+                deviceId: `Vehicle_${vehicleIndex + 1}`,
+                deviceName: `Vehicle_${vehicleIndex + 1}`,
+                latitude: lat,
+                longitude: lng,
+                speed: null,
+                timestamp: new Date().toISOString(),
+                status: 'active',
+                location: ''
+              });
+            }
+          }
+        }
+      } catch (e) {
+        // Silently continue with next vehicle
+      }
+    }
+    
+    return results;
+  }
+
+  /**
+   * Scrape GPS data using exactly 3 concurrent tabs with optimized load balancing
    */
   async scrapeGPSDataConcurrent() {
     try {
-      console.log('📍 Starting concurrent GPS data scraping...');
+      console.log('📍 Starting optimized 3-tab concurrent GPS data scraping...');
       
       // Ensure we have a main page for vehicle discovery
       if (!this.page || !this.isLoggedIn) {
@@ -324,64 +411,83 @@ class InovatracksScraper {
         return [];
       }
       
-      const totalVehicles = Math.min(vehicleRows.length, 10); // Limit for testing
-      console.log(`🚗 Found ${totalVehicles} vehicles to process concurrently`);
+      // Remove testing limit - process all vehicles for maximum efficiency
+      const totalVehicles = vehicleRows.length;
+      console.log(`🚗 Found ${totalVehicles} vehicles to process with 3 concurrent tabs`);
       
-      // Split vehicles into batches for concurrent processing
-      const batchSize = Math.ceil(totalVehicles / this.maxConcurrentTabs);
-      const vehicleBatches = [];
+      // Optimize vehicle distribution across exactly 3 tabs
+      const vehicleBatches = this.distributeVehiclesAcrossTabs(totalVehicles, 3);
       
-      for (let i = 0; i < totalVehicles; i += batchSize) {
-        const batchIndices = [];
-        for (let j = i; j < Math.min(i + batchSize, totalVehicles); j++) {
-          batchIndices.push(j);
-        }
-        vehicleBatches.push(batchIndices);
-      }
+      console.log(`📊 Optimally distributed ${totalVehicles} vehicles across 3 tabs:`);
+      vehicleBatches.forEach((batch, index) => {
+        console.log(`   Tab ${index + 1}: ${batch.length} vehicles [${batch.slice(0, 3).join(',')}${batch.length > 3 ? '...' : ''}]`);
+      });
       
-      console.log(`📊 Split ${totalVehicles} vehicles into ${vehicleBatches.length} batches:`, 
-                  vehicleBatches.map(batch => `[${batch.join(',')}]`).join(', '));
+      const startTime = Date.now();
       
-      // Create concurrent processing promises
+      // Create exactly 3 concurrent processing promises
       const processingPromises = vehicleBatches.map(async (batchIndices, batchIndex) => {
         let pageContext = null;
+        const tabId = batchIndex + 1;
+        
         try {
-          console.log(`🚀 Starting batch ${batchIndex + 1} with vehicles: ${batchIndices.map(i => i + 1).join(', ')}`);
+          console.log(`🚀 Tab ${tabId} starting: processing ${batchIndices.length} vehicles`);
           
-          // Use main page for first batch, create new pages for others
+          // Use main page for first tab, create new authenticated pages for others
           if (batchIndex === 0) {
-            return await this.processVehicleBatch(this.page, batchIndices, totalVehicles);
+            return await this.processVehicleBatchWithRetry(this.page, batchIndices, totalVehicles, tabId);
           } else {
             pageContext = await this.createAuthenticatedPage();
-            return await this.processVehicleBatch(pageContext.page, batchIndices, totalVehicles);
+            return await this.processVehicleBatchWithRetry(pageContext.page, batchIndices, totalVehicles, tabId);
           }
           
         } catch (error) {
-          console.error(`❌ Error in batch ${batchIndex + 1}:`, error);
-          return [];
+          console.error(`❌ Tab ${tabId} failed:`, error.message);
+          // Try to salvage what we can with a simpler approach
+          try {
+            console.log(`🔄 Tab ${tabId} attempting recovery with fallback method...`);
+            return await this.processVehicleBatchSimple(pageContext?.page || this.page, batchIndices.slice(0, 5)); // Limit to 5 for recovery
+          } catch (recoveryError) {
+            console.error(`❌ Tab ${tabId} recovery also failed:`, recoveryError.message);
+            return [];
+          }
         } finally {
           // Clean up additional contexts (keep main page)
           if (pageContext && batchIndex > 0) {
             try {
               await pageContext.context.close();
+              console.log(`🧹 Tab ${tabId} context cleaned up`);
             } catch (cleanupError) {
-              console.error('Error cleaning up batch context:', cleanupError);
+              console.error(`⚠️ Tab ${tabId} cleanup error:`, cleanupError.message);
             }
           }
         }
       });
       
-      // Wait for all batches to complete
-      console.log('⏳ Waiting for all concurrent processing to complete...');
-      const batchResults = await Promise.all(processingPromises);
+      // Wait for all 3 tabs to complete with progress tracking
+      console.log('⏳ Processing vehicles across 3 tabs simultaneously...');
       
-      // Flatten results from all batches
-      const allGpsData = batchResults.flat();
+      const batchResults = await Promise.allSettled(processingPromises);
+      const successfulResults = batchResults
+        .filter(result => result.status === 'fulfilled')
+        .map(result => result.value)
+        .flat();
       
-      console.log(`📊 Concurrent scraping completed: ${allGpsData.length} GPS records from ${totalVehicles} vehicles`);
-      console.log(`🚀 Performance improvement: processed ${this.maxConcurrentTabs} batches in parallel`);
+      const failedTabs = batchResults
+        .filter(result => result.status === 'rejected')
+        .length;
       
-      return allGpsData;
+      const endTime = Date.now();
+      const processingTime = ((endTime - startTime) / 1000).toFixed(2);
+      
+      console.log(`✅ 3-tab concurrent scraping completed in ${processingTime}s`);
+      console.log(`📊 Results: ${successfulResults.length} GPS records from ${totalVehicles} vehicles`);
+      console.log(`🚀 Performance: ${3 - failedTabs}/3 tabs successful`);
+      if (failedTabs > 0) {
+        console.log(`⚠️ ${failedTabs} tabs encountered errors but scraping continued`);
+      }
+      
+      return successfulResults;
       
     } catch (error) {
       console.error('❌ Failed to scrape GPS data concurrently:', error);
