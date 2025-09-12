@@ -223,8 +223,7 @@ const DeliveryOrdersPage = () => {
             <option value="otw_to_load_location">On Way to SPBU</option>
             <option value="at_load_location">At SPBU Location</option>
             <option value="otw_to_unload_location">On Way to Unload</option>
-            <option value="at_unload_location">At Unload Location</option>
-            <option value="otw_to_base">Returning to Base</option>
+            <option value="at_unload_location">At Customer</option>
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>

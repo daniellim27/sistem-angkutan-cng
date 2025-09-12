@@ -92,7 +92,9 @@ export default function VehicleScreen() {
 
       const activeOrders = ordersResponse.data.filter((order: any) =>
         [
-          "at_spbu",
+          "assigned",
+          "otw_to_load_location",
+          "at_load_location",
           "otw_to_unload_location",
           "at_unload_location",
         ].includes(order.status)

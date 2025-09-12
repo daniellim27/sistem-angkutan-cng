@@ -990,9 +990,6 @@ exports.createDeliveryOrderFromPO = async (req, res, next) => {
         do_name: do_name,
       });
   
-      if (tempDO.validateQuantityAgainstPO) {
-        await tempDO.validateQuantityAgainstPO(false);
-      }
   
       const newDO = await DeliveryOrder.create(tempDO.dataValues, {
         transaction,

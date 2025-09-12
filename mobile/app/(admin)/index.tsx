@@ -90,9 +90,9 @@ export default function AdminIndex() {
     const statusMap = {
       assigned: "ASSIGNED",
       otw_to_load_location: "OTW TO LOAD",
-      at_load_location: "AT LOAD LOCATION",
-      otw_to_unload_location: "OTW TO UNLOAD",
-      at_unload_location: "AT UNLOAD LOCATION",
+      at_load_location: "AT LOAD LOCATION"  ,
+      otw_to_unload_location: "OTW TO CUSTOMER",
+      at_unload_location: "AT CUSTOMER",
       otw_to_base: "OTW TO POOL",
       completed: "COMPLETED",
       cancelled: "CANCELLED",

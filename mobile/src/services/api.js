@@ -223,6 +223,8 @@ export const confirmLoad = async (doId, loadData) => {
 
 export const updateDeliveryStatus = (doId, action) => {
   const endpointMapping = {
+    start: `${doId}/start`,
+    arrive_at_spbu: `${doId}/arrive`,
     depart_spbu: `${doId}/depart-spbu`,
     arrive_at_unload: `${doId}/arrive-at-unload`,
     start_return: `${doId}/start-return`,

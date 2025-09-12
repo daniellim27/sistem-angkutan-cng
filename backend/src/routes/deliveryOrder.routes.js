@@ -126,9 +126,15 @@ router.get("/me", checkRole(["driver"]), doController.getMyDeliveryOrders);
 
 // Rename dan update endpoints sesuai flow baru
 router.patch(
-  "/:id/start-to-load",
+  "/:id/start",
   checkRole(["driver"]),
   doController.startToDestination
+);
+
+router.patch(
+  "/:id/arrive",
+  checkRole(["driver"]),
+  doController.arriveAtLoadLocation
 );
 
 router.patch(

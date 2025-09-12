@@ -34,9 +34,8 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'assigned', label: 'Assigned' },
   { value: 'otw_to_load_location', label: 'On the way to SPBU Location' },
   { value: 'at_load_location', label: 'At SPBU Location' },
-  { value: 'otw_to_unload_location', label: 'On the way to Unload Location' },
-  { value: 'at_unload_location', label: 'At Unload Location' },
-  { value: 'otw_to_base', label: 'On the way to Base' },
+  { value: 'otw_to_unload_location', label: 'On the way to Customer' },
+  { value: 'at_unload_location', label: 'At Customer' },
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' }
 ];

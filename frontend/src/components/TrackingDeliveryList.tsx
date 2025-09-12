@@ -180,7 +180,7 @@ const TrackingDeliveryList: React.FC<TrackingDeliveryListProps> = ({ className =
               <option value="otw_to_load_location">On the way to SPBU</option>
               <option value="at_load_location">At SPBU Location</option>
               <option value="otw_to_unload_location">On the way to Unload</option>
-              <option value="at_unload_location">At Unload Location</option>
+              <option value="at_unload_location">At Customer</option>
               <option value="otw_to_base">Returning to Base</option>
             </select>
           </div>

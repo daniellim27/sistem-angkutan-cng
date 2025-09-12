@@ -36,7 +36,9 @@ interface DeliveryOrder {
   minimal_load_quantity: number;
   actual_load_quantity?: number;
   status:
-    | "at_spbu"
+    | "assigned"
+    | "otw_to_load_location"
+    | "at_load_location"
     | "otw_to_unload_location"
     | "at_unload_location"
     | "completed"
@@ -109,8 +111,10 @@ const DriverDashboard = () => {
 
       // Show success message
       const messages = {
+        start: "Berhasil memulai perjalanan ke SPBU",
+        arrive_at_spbu: "Berhasil tiba di SPBU",
         depart_spbu: "Berhasil berangkat dari SPBU",
-        arrive_at_unload: "Berhasil tiba di lokasi bongkar",
+        arrive_at_unload: "Berhasil tiba di Pelanggan.",
         start_return: "Tugas berhasil diselesaikan",
         complete: "Tugas berhasil diselesaikan",
       };
@@ -152,7 +156,23 @@ const DriverDashboard = () => {
     const isUpdating = updatingStatus === order.id;
 
     switch (order.status) {
-      case "at_spbu":
+      case "assigned":
+        return {
+          action: "start",
+          label: "Mulai Perjalanan ke SPBU",
+          icon: "play-circle",
+          color: "#3498db",
+          disabled: isUpdating,
+        };
+      case "otw_to_load_location":
+        return {
+          action: "arrive_at_spbu",
+          label: "Tiba di SPBU",
+          icon: "map-marker-alt",
+          color: "#f39c12",
+          disabled: isUpdating,
+        };
+      case "at_load_location":
         return {
           action: "navigate_to_confirm",
           label: "Konfirmasi Muatan & Berangkat",
@@ -164,7 +184,7 @@ const DriverDashboard = () => {
       case "otw_to_unload_location":
         return {
           action: "arrive_at_unload",
-          label: "Tiba di Lokasi Bongkar",
+          label: "Tiba di lokasi pelanggan.",
           icon: "map-marker-alt",
           color: "#9b59b6",
           disabled: isUpdating,
@@ -225,8 +245,6 @@ const DriverDashboard = () => {
         return { backgroundColor: "#e67e22" };
       case "at_unload_location":
         return { backgroundColor: "#9b59b6" };
-      case "otw_to_base":
-        return { backgroundColor: "#1abc9c" };
       case "completed":
         return { backgroundColor: "#27ae60" };
       case "cancelled":
@@ -249,8 +267,6 @@ const DriverDashboard = () => {
         return "MENUJU BONGKAR";
       case "at_unload_location":
         return "DI LOK. BONGKAR";
-      case "otw_to_base":
-        return "PULANG";
       case "completed":
         return "SELESAI";
       case "cancelled":

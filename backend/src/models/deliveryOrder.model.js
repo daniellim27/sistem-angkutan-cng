@@ -360,39 +360,5 @@ module.exports = (sequelize) => {
     };
   };
 
-  // NEW: Method untuk validasi remaining quantity sebelum save (mirip Trigger 1)
-  DeliveryOrder.prototype.validateQuantityAgainstPO = async function (
-    isUpdate = false
-  ) {
-    const po = await this.getPurchaseOrder();
-    if (!po) throw new Error("PO not found for this DO");
-
-    const dos = await po.getPoDeliveryOrders({
-      where: { id: { [Sequelize.Op.ne]: isUpdate ? this.id : null } },
-    }); // Exclude self if update
-
-    let fulfilled = 0;
-    dos.forEach((d) => {
-      fulfilled +=
-        d.status === "completed"
-          ? parseFloat(d.actual_load_quantity) || 0
-          : parseFloat(d.minimal_load_quantity) || 0;
-    });
-
-    const remaining = po.total_quantity - fulfilled;
-
-    if (this.minimal_load_quantity > remaining) {
-      throw new Error(
-        `Minimal quantity exceeds remaining PO quantity: ${remaining} available`
-      );
-    }
-    if (this.actual_load_quantity && this.actual_load_quantity > remaining) {
-      throw new Error(
-        `Actual quantity exceeds remaining PO quantity: ${remaining} available`
-      );
-    }
-
-    return true; // Valid
-  };
   return DeliveryOrder;
 };

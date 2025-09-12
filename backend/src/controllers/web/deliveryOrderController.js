@@ -101,9 +101,12 @@ exports.createDeliveryOrder = async (req, res, next) => {
         driver_id,
         status: {
           [Op.in]: [
-            "at_spbu",
+            "assigned",
+            "otw_to_load_location",
+            "at_load_location",
             "otw_to_unload_location",
             "at_unload_location",
+            "otw_to_base",
           ],
         },
       },
@@ -124,9 +127,12 @@ exports.createDeliveryOrder = async (req, res, next) => {
         vehicle_id,
         status: {
           [Op.in]: [
-            "at_spbu",
+            "assigned",
+            "otw_to_load_location",
+            "at_load_location",
             "otw_to_unload_location",
             "at_unload_location",
+            "otw_to_base",
           ],
         },
       },
@@ -737,12 +743,25 @@ exports.updateDeliveryOrder = async (req, res, next) => {
       ...deliveryOrder.dataValues,
       ...proposedData,
     });
-    if (tempDO.validateQuantityAgainstPO) {
-      await tempDO.validateQuantityAgainstPO(true); // true for update
-    }
+
+    // Check if status is changing to update driver status accordingly
+    const isStatusChanging = status && status !== deliveryOrder.status;
+    const oldStatus = deliveryOrder.status;
+    const newStatus = status;
+    
+    console.log(`🔄 Admin Update - DO ${id}:`);
+    console.log(`  - Status changing: ${isStatusChanging}`);
+    console.log(`  - Old status: ${oldStatus}`);
+    console.log(`  - New status: ${newStatus}`);
+    console.log(`  - Driver ID: ${deliveryOrder.driver_id}`);
 
     // Update delivery order
     const updatedDO = await deliveryOrder.update(proposedData, { transaction });
+
+    // Update driver and vehicle status when DO status changes
+    if (isStatusChanging && updatedDO.driver_id) {
+      await updateDriverAndVehicleStatus(updatedDO, oldStatus, newStatus, transaction);
+    }
 
     await transaction.commit();
 
@@ -804,6 +823,7 @@ exports.cancelDeliveryOrder = async (req, res, next) => {
     }
 
     // Update delivery order status
+    const oldStatus = deliveryOrder.status;
     await deliveryOrder.update(
       {
         status: "cancelled",
@@ -812,13 +832,8 @@ exports.cancelDeliveryOrder = async (req, res, next) => {
       { transaction }
     );
 
-    // Free up vehicle
-    if (deliveryOrder.vehicle_id) {
-      await Vehicle.update(
-        { status: "available" },
-        { where: { id: deliveryOrder.vehicle_id }, transaction }
-      );
-    }
+    // Update driver and vehicle status
+    await updateDriverAndVehicleStatus(deliveryOrder, oldStatus, "cancelled", transaction);
 
     await transaction.commit();
 
@@ -1119,6 +1134,80 @@ exports.getDeliveryStatistics = async (req, res, next) => {
     console.error("Error getting delivery statistics:", err);
     res.status(500).json({ success: false, message: err.message });
     next(err);
+  }
+};
+
+/**
+ * 🎯 HELPER FUNCTION: Update Driver and Vehicle Status
+ * Updates driver and vehicle status based on delivery order status changes
+ */
+const updateDriverAndVehicleStatus = async (deliveryOrder, oldStatus, newStatus, transaction) => {
+  try {
+    console.log(`Updating driver/vehicle status: DO ${deliveryOrder.id} changed from ${oldStatus} to ${newStatus}`);
+
+    // Define status mappings for driver and vehicle
+    const getDriverStatus = (doStatus) => {
+      switch (doStatus) {
+        case 'assigned':
+        case 'otw_to_load_location':
+        case 'at_load_location':
+        case 'otw_to_unload_location':
+        case 'at_unload_location':
+          return 'busy';
+        case 'completed':
+        case 'cancelled':
+          return 'available';
+        default:
+          return 'available';
+      }
+    };
+
+    const getVehicleStatus = (doStatus) => {
+      switch (doStatus) {
+        case 'assigned':
+        case 'otw_to_load_location':
+        case 'at_load_location':
+        case 'otw_to_unload_location':
+        case 'at_unload_location':
+          return 'in_use';
+        case 'completed':
+        case 'cancelled':
+          return 'available';
+        default:
+          return 'available';
+      }
+    };
+
+    const newDriverStatus = getDriverStatus(newStatus);
+    const newVehicleStatus = getVehicleStatus(newStatus);
+
+    // Update driver status
+    if (deliveryOrder.driver_id) {
+      await DriverProfile.update(
+        { status: newDriverStatus },
+        { 
+          where: { user_id: deliveryOrder.driver_id },
+          transaction 
+        }
+      );
+      console.log(`Updated driver ${deliveryOrder.driver_id} status to: ${newDriverStatus}`);
+    }
+
+    // Update vehicle status
+    if (deliveryOrder.vehicle_id) {
+      await Vehicle.update(
+        { status: newVehicleStatus },
+        { 
+          where: { id: deliveryOrder.vehicle_id },
+          transaction 
+        }
+      );
+      console.log(`Updated vehicle ${deliveryOrder.vehicle_id} status to: ${newVehicleStatus}`);
+    }
+
+  } catch (error) {
+    console.error('Error updating driver/vehicle status:', error);
+    throw error;
   }
 };
 

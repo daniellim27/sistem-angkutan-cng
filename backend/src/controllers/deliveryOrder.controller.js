@@ -101,7 +101,9 @@ exports.createDeliveryOrder = async (req, res, next) => {
         driver_id,
         status: {
           [Op.in]: [
-            "at_spbu",
+            "assigned",
+            "otw_to_load_location",
+            "at_load_location",
             "otw_to_unload_location",
             "at_unload_location",
           ],
@@ -120,7 +122,9 @@ exports.createDeliveryOrder = async (req, res, next) => {
         vehicle_id,
         status: {
           [Op.in]: [
-            "at_spbu",
+            "assigned",
+            "otw_to_load_location",
+            "at_load_location",
             "otw_to_unload_location",
             "at_unload_location",
           ],
@@ -351,9 +355,12 @@ exports.getAllDeliveryOrders = async (req, res, next) => {
 exports.getActiveDeliveryOrders = async (req, res, next) => {
   try {
     const ACTIVE_STATUSES = [
-      "at_spbu",
+      "assigned",
+      "otw_to_load_location",
+      "at_load_location",
       "otw_to_unload_location",
       "at_unload_location",
+      "otw_to_base",
     ];
 
     const user = req.user;
@@ -473,7 +480,8 @@ exports.getDeliveryOrderById = async (req, res, next) => {
     
     console.log("Raw order found:", !!order);
     if (order) {
-      console.log("Order ID:", order.id);
+      console.log("📱 Mobile API - Order ID:", order.id);
+      console.log("📱 Mobile API - Current Status:", order.status);
       console.log("Raw expenses count:", order.expenses?.length || 'undefined');
       console.log("Raw budget requests count:", order.budgetRequests?.length || 'undefined');
     }
@@ -556,7 +564,7 @@ exports.startToDestination = (req, res, next) => {
   updateStatus(
     req.params.id,
     req.user.id,
-    "otw_to_load_location", // ✅ Update ke enum baru
+    "otw_to_load_location", // ✅ Start journey to load location
     "departed_to_load_location_at" // ✅ Update field timestamp baru
   )
     .then((order) =>
@@ -569,19 +577,37 @@ exports.startToDestination = (req, res, next) => {
     .catch(next);
 };
 
-// PATCH /api/delivery-orders/:id/arrive
+// PATCH /api/delivery-orders/:id/arrive - Arrive at SPBU (load location)
+exports.arriveAtLoadLocation = (req, res, next) => {
+  updateStatus(
+    req.params.id,
+    req.user.id,
+    "at_load_location",
+    "arrived_at_load_location_at"
+  )
+    .then((order) =>
+      res.json({
+        message: "Status updated to At SPBU",
+        order,
+        status_text: "Di SPBU",
+      })
+    )
+    .catch(next);
+};
+
+// PATCH /api/delivery-orders/:id/arrive-at-unload - Arrive at unload location
 exports.arriveAtDestination = (req, res, next) => {
   updateStatus(
     req.params.id,
     req.user.id,
-    "at_unload_location", // ✅ Update ke enum baru
-    "arrived_at_unload_location_at" // ✅ Update field timestamp baru
+    "at_unload_location",
+    "arrived_at_unload_location_at"
   )
     .then((order) =>
       res.json({
-        message: "Status updated to At Unload Location",
+        message: "Status updated to At Customer",
         order,
-        status_text: "Di Lokasi Bongkar",
+        status_text: "Di Pelanggan",
       })
     )
     .catch(next);
@@ -721,7 +747,7 @@ exports.departFromSPBU = (req, res, next) => {
   )
     .then((order) =>
       res.json({
-        message: "Status updated to On The Way to Unload Location",
+        message: "Status updated to On The Way to Customer",
         order,
         status_text: "Perjalanan ke Lokasi Bongkar",
       })
@@ -742,7 +768,9 @@ const updateStatus = async (orderId, driverId, newStatus, timestampField) => {
 
     // Status validation mapping
     const validTransitions = {
-      at_spbu: ["otw_to_unload_location"],
+      assigned: ["otw_to_load_location"],
+      otw_to_load_location: ["at_load_location"],
+      at_load_location: ["otw_to_unload_location"],
       otw_to_unload_location: ["at_unload_location"],
       at_unload_location: ["completed"],
       completed: [],

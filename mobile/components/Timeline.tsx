@@ -10,7 +10,7 @@ const TIMELINE_CONFIG = [
     key: "departed_from_load_location_at",
     label: "Berangkat ke Lokasi Bongkar",
   },
-  { key: "arrived_at_unload_location_at", label: "Tiba di Lokasi Bongkar" },
+  { key: "arrived_at_unload_location_at", label: "Tiba di Lokasi Pelanggan." },
   {
     key: "departed_from_unload_location_at",
     label: "Berangkat Kembali ke Pool",

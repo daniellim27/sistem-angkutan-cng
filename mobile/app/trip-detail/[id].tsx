@@ -844,7 +844,7 @@ const TripDetailScreen = () => {
     if (!trip) return null;
 
     switch (trip.status) {
-      case "at_spbu":
+      case "at_load_location":
         return (
           <TouchableOpacity
             style={[styles.statusActionButton, { backgroundColor: "#e67e22" }]}
@@ -1605,9 +1605,11 @@ const TripDetailScreen = () => {
 // HELPER FUNCTIONS
 const getStatusColor = (status: string) => {
   const colorMap: { [key: string]: string } = {
-    at_spbu: "#9b59b6",
-    otw_to_unload_location: "#3498db",
-    at_unload_location: "#e67e22",
+    assigned: "#6c757d",
+    otw_to_load_location: "#3498db",
+    at_load_location: "#9b59b6",
+    otw_to_unload_location: "#e67e22",
+    at_unload_location: "#f39c12",
     completed: "#28a745",
     cancelled: "#dc3545",
   };
@@ -1616,7 +1618,9 @@ const getStatusColor = (status: string) => {
 
 const getStatusText = (status: string) => {
   const statusMap = {
-    at_spbu: "Di SPBU",
+    assigned: "Ditugaskan",
+    otw_to_load_location: "Menuju SPBU",
+    at_load_location: "Di SPBU",
     otw_to_unload_location: "Menuju Lokasi Bongkar",
     at_unload_location: "Di Lokasi Bongkar",
     completed: "Selesai",
@@ -1627,9 +1631,11 @@ const getStatusText = (status: string) => {
 
 const getStatusStyle = (status: string) => {
   const styleMap = {
-    at_spbu: { backgroundColor: "#9b59b6" },
-    otw_to_unload_location: { backgroundColor: "#3498db" },
-    at_unload_location: { backgroundColor: "#e67e22" },
+    assigned: { backgroundColor: "#6c757d" },
+    otw_to_load_location: { backgroundColor: "#3498db" },
+    at_load_location: { backgroundColor: "#9b59b6" },
+    otw_to_unload_location: { backgroundColor: "#e67e22" },
+    at_unload_location: { backgroundColor: "#f39c12" },
     completed: { backgroundColor: "#28a745" },
     cancelled: { backgroundColor: "#dc3545" },
   };
