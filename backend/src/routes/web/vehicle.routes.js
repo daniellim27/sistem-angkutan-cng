@@ -53,10 +53,5 @@ vehicleRouter.patch(
   checkRole(["admin", "owner"]),
   vehicleController.assignDriver
 );
-vehicleRouter.get(
-  "/:id/history",
-  checkRole(["admin", "owner"]),
-  vehicleController.getServiceHistory
-);
 
 module.exports = vehicleRouter;

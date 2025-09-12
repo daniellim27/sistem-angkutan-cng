@@ -36,9 +36,6 @@ import ServiceEditPage from "./pages/ServiceEdit";
 import RitaseDashboard from "./pages/Ritase/RitaseDashboard";
 // Removed POPaymentDetail - payment aggregation is now DO-based
 import DOPaymentManagement from "./pages/Ritase/DOPaymentManagement";
-import TireInventoryPage from "./pages/TireInventory";
-import TireInventoryCreatePage from "./pages/TireInventoryCreate";
-import TireInventoryEditPage from "./pages/TireInventoryEdit";
 import RemovedTiresPage from "./pages/RemovedTires";
 import StockBatchesPage from "./pages/StockBatches";
 import CashManagementPage from "./pages/CashManagement";
@@ -46,7 +43,6 @@ import CashCoordinatorPage from "./pages/CashCoordinator";
 import TempoManagementPage from "./pages/CashTempoManagement";
 import VehicleExpenseCashPage from "./pages/VehicleExpenseCash";
 import StockHistoryPage from "./pages/StockHistory";
-import VehicleServiceHistory from "./pages/VehicleServiceHistory";
 import PaymentsRoutes from "./modules/payments/routes";
 import InvoiceDetail from "./pages/Ritase/InvoiceDetail";
 import DepositGroupManagement from "./pages/DepositGroupManagement";
@@ -104,15 +100,6 @@ function App() {
           {/* Tire Management Routes */}
           <Route path="vehicles/tires" element={<TireManagementPage />} />
 
-          <Route path="tire-inventory" element={<TireInventoryPage />} />
-          <Route
-            path="tire-inventory/create"
-            element={<TireInventoryCreatePage />}
-          />
-          <Route
-            path="tire-inventory/edit/:id"
-            element={<TireInventoryEditPage />}
-          />
           <Route path="vehicles/tires/removed" element={<RemovedTiresPage />} />
           {/* Drivers Routes */}
           <Route path="drivers" element={<DriversPage />} />
@@ -159,10 +146,6 @@ function App() {
           <Route path="infrastructure/:id/history" element={<InfrastructureHistoryPage />} />
 
           {/* Service Management Routes */}
-          <Route
-            path="vehicles/:id/services"
-            element={<VehicleServiceHistory />}
-          />
           <Route path="services" element={<ServiceManagementPage />} />
           <Route path="services/create" element={<ServiceCreatePage />} />
           <Route path="services/:id" element={<ServiceDetailPage />} />

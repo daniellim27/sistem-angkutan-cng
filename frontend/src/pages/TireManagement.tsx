@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import apiClient from '../api/axiosConfig';
 import './TireManagement.css';
 
@@ -97,7 +97,507 @@ interface InstallData {
   mileage_installed: number;
 }
 
+// Additional interfaces for TireInventoryTab
+interface TireInventoryInstance {
+  id: number;
+  tire_serial_number: string;
+  status: string;
+  condition: string;
+  purchase_date: string;
+  purchase_price: string;
+  current_tread_depth: number;
+  notes?: string;
+  tireInventory: {
+    tire_brand: string;
+    tire_size: string;
+    tire_type: string;
+  };
+}
+
+interface TireInventoryFilters {
+  searchTerm: string;
+  conditionFilter: string;
+  brandFilter: string;
+  sizeFilter: string;
+  typeFilter: string;
+}
+
+interface EditModalData {
+  condition: string;
+  notes: string;
+}
+
+// TireInventoryTab Component
+const TireInventoryTab: React.FC = () => {
+  const [tires, setTires] = useState<TireInventoryInstance[]>([]);
+  const [filteredTires, setFilteredTires] = useState<TireInventoryInstance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedTire, setSelectedTire] = useState<TireInventoryInstance | null>(null);
+  const [editData, setEditData] = useState<EditModalData>({
+    condition: '',
+    notes: ''
+  });
+
+  const [filters, setFilters] = useState<TireInventoryFilters>({
+    searchTerm: '',
+    conditionFilter: '',
+    brandFilter: '',
+    sizeFilter: '',
+    typeFilter: ''
+  });
+
+  const [filterOptions, setFilterOptions] = useState({
+    conditions: [] as string[],
+    brands: [] as string[],
+    sizes: [] as string[],
+    types: [] as string[]
+  });
+
+  // Condition mapping
+  const conditionMapping: { [key: string]: string } = {
+    'new': 'Baru',
+    'good': 'Baik',
+    'fair': 'Cukup',
+    'poor': 'Buruk',
+    'damaged': 'Rusak',
+    'disposed': 'Dibuang',
+    'replace': 'Perlu Ganti',
+    'meledak': 'Meledak',
+    'bocor': 'Bocor',
+    'kampasa': 'Kampasa'
+  };
+
+  useEffect(() => {
+    fetchAvailableTires();
+  }, []);
+
+  useEffect(() => {
+    applyFilters();
+  }, [tires, filters]);
+
+  const fetchAvailableTires = async () => {
+    try {
+      setLoading(true);
+      const response = await apiClient.get('/tires/inventory-instances');
+      
+      const responseData = response.data;
+      const tiresArray = Array.isArray(responseData.data) 
+        ? responseData.data 
+        : Array.isArray(responseData) 
+        ? responseData 
+        : [];
+
+      setTires(tiresArray);
+      
+      // Extract unique filter options
+      const conditions = Array.from(new Set(tiresArray.map((tire: TireInventoryInstance) => tire.condition).filter(Boolean)));
+      const brands = Array.from(new Set(tiresArray.map((tire: TireInventoryInstance) => tire.tireInventory?.tire_brand).filter(Boolean)));
+      const sizes = Array.from(new Set(tiresArray.map((tire: TireInventoryInstance) => tire.tireInventory?.tire_size).filter(Boolean)));
+      const types = Array.from(new Set(tiresArray.map((tire: TireInventoryInstance) => tire.tireInventory?.tire_type).filter(Boolean)));
+
+      setFilterOptions({
+        conditions: conditions.sort(),
+        brands: brands.sort(),
+        sizes: sizes.sort(),
+        types: types.sort()
+      });
+
+    } catch (err) {
+      setError('Failed to fetch tire inventory');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const applyFilters = () => {
+    let filtered = tires;
+
+    if (filters.searchTerm) {
+      const searchLower = filters.searchTerm.toLowerCase();
+      filtered = filtered.filter(tire =>
+        tire.tire_serial_number.toLowerCase().includes(searchLower) ||
+        tire.tireInventory?.tire_brand?.toLowerCase().includes(searchLower) ||
+        tire.tireInventory?.tire_size?.toLowerCase().includes(searchLower) ||
+        tire.notes?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    if (filters.conditionFilter) {
+      filtered = filtered.filter(tire => tire.condition === filters.conditionFilter);
+    }
+
+    if (filters.brandFilter) {
+      filtered = filtered.filter(tire => tire.tireInventory?.tire_brand === filters.brandFilter);
+    }
+
+    if (filters.sizeFilter) {
+      filtered = filtered.filter(tire => tire.tireInventory?.tire_size === filters.sizeFilter);
+    }
+
+    if (filters.typeFilter) {
+      filtered = filtered.filter(tire => tire.tireInventory?.tire_type === filters.typeFilter);
+    }
+
+    setFilteredTires(filtered);
+  };
+
+  const handleFilterChange = (key: keyof TireInventoryFilters, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      searchTerm: '',
+      conditionFilter: '',
+      brandFilter: '',
+      sizeFilter: '',
+      typeFilter: ''
+    });
+  };
+
+  const handleEdit = (tire: TireInventoryInstance) => {
+    setSelectedTire(tire);
+    setEditData({
+      condition: tire.condition,
+      notes: tire.notes || ''
+    });
+    setEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedTire) return;
+
+    try {
+      await apiClient.put(`/tires/inventory-instances/${selectedTire.id}`, editData);
+      await fetchAvailableTires();
+      setEditModalOpen(false);
+      setSelectedTire(null);
+    } catch (err) {
+      console.error('Failed to update tire:', err);
+      alert('Failed to update tire');
+    }
+  };
+
+  const getConditionDisplay = (condition: string): string => {
+    return conditionMapping[condition] || condition;
+  };
+
+  const getConditionBadge = (condition: string) => {
+    const colorMap: { [key: string]: string } = {
+      'new': 'bg-green-100 text-green-800',
+      'good': 'bg-blue-100 text-blue-800',
+      'fair': 'bg-yellow-100 text-yellow-800',
+      'poor': 'bg-orange-100 text-orange-800',
+      'damaged': 'bg-red-100 text-red-800',
+      'disposed': 'bg-gray-100 text-gray-800'
+    };
+
+    return (
+      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${colorMap[condition] || 'bg-gray-100 text-gray-800'}`}>
+        {getConditionDisplay(condition)}
+      </span>
+    );
+  };
+
+  const getConditionCount = (condition: string) => {
+    return filteredTires.filter(tire => tire.condition === condition).length;
+  };
+
+  const totalValue = filteredTires.reduce((sum, tire) => {
+    const price = parseFloat(tire.purchase_price);
+    return sum + (isNaN(price) ? 0 : price);
+  }, 0);
+
+  if (loading) return <div className="text-center p-8">Loading tire inventory...</div>;
+  if (error) return <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">{error}</div>;
+
+  return (
+    <div className="space-y-6">
+      {/* Search and Filter Section */}
+      <div className="bg-white p-6 rounded-lg shadow">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {/* Search Term */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Search
+            </label>
+            <input
+              type="text"
+              value={filters.searchTerm}
+              onChange={(e) => handleFilterChange('searchTerm', e.target.value)}
+              placeholder="Serial, brand, size..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            />
+          </div>
+
+          {/* Condition Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Condition
+            </label>
+            <select
+              value={filters.conditionFilter}
+              onChange={(e) => handleFilterChange('conditionFilter', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              <option value="">All Conditions</option>
+              {filterOptions.conditions.map(condition => (
+                <option key={condition} value={condition}>
+                  {getConditionDisplay(condition)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Brand Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Brand
+            </label>
+            <select
+              value={filters.brandFilter}
+              onChange={(e) => handleFilterChange('brandFilter', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              <option value="">All Brands</option>
+              {filterOptions.brands.map(brand => (
+                <option key={brand} value={brand}>
+                  {brand}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Size Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Size
+            </label>
+            <select
+              value={filters.sizeFilter}
+              onChange={(e) => handleFilterChange('sizeFilter', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              <option value="">All Sizes</option>
+              {filterOptions.sizes.map(size => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Type Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Type
+            </label>
+            <select
+              value={filters.typeFilter}
+              onChange={(e) => handleFilterChange('typeFilter', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              <option value="">All Types</option>
+              {filterOptions.types.map(type => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Clear Filters */}
+          <div className="flex items-end">
+            <button
+              onClick={clearFilters}
+              className="w-full px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 text-sm"
+            >
+              Clear Filters
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Summary */}
+        <div className="mt-4 text-sm text-gray-600">
+          Showing {filteredTires.length} of {tires.length} tires
+          {filters.searchTerm && ` matching "${filters.searchTerm}"`}
+        </div>
+      </div>
+
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        {['new', 'good', 'fair', 'poor', 'damaged', 'disposed'].map(condition => (
+          <div key={condition} className="bg-white p-4 rounded-lg shadow border">
+            <div className="text-2xl font-bold text-gray-900">
+              {getConditionCount(condition)}
+            </div>
+            <div className="text-sm text-gray-600 capitalize">
+              {getConditionDisplay(condition)}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Total Value */}
+      <div className="bg-white p-4 rounded-lg shadow border">
+        <div className="text-lg font-semibold text-gray-900">
+          Total Inventory Value: Rp {totalValue.toLocaleString('id-ID')}
+        </div>
+      </div>
+
+      {/* Tire Inventory Table */}
+      <div className="bg-white shadow rounded-lg overflow-hidden">
+        <table className="min-w-full leading-normal">
+          <thead>
+            <tr>
+              <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Serial Number
+              </th>
+              <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Brand & Size
+              </th>
+              <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Condition
+              </th>
+              <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Tread Depth
+              </th>
+              <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Purchase Info
+              </th>
+              <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Status
+              </th>
+              <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredTires.length > 0 ? filteredTires.map((tire) => (
+              <tr key={tire.id} className="hover:bg-gray-50">
+                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                  <div className="font-medium text-gray-900">{tire.tire_serial_number}</div>
+                </td>
+                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                  <div>
+                    <div className="font-medium text-gray-900">
+                      {tire.tireInventory?.tire_brand || 'N/A'}
+                    </div>
+                    <div className="text-gray-600">
+                      {tire.tireInventory?.tire_size || 'N/A'} - {tire.tireInventory?.tire_type || 'N/A'}
+                    </div>
+                  </div>
+                </td>
+                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                  {getConditionBadge(tire.condition)}
+                </td>
+                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                  <div className="text-gray-900">{tire.current_tread_depth}mm</div>
+                </td>
+                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                  <div>
+                    <div className="text-gray-900 font-medium">
+                      Rp {parseFloat(tire.purchase_price).toLocaleString('id-ID')}
+                    </div>
+                    <div className="text-gray-600 text-xs">
+                      {new Date(tire.purchase_date).toLocaleDateString('id-ID')}
+                    </div>
+                  </div>
+                </td>
+                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                    tire.status === 'available' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {tire.status}
+                  </span>
+                </td>
+                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm text-right">
+                  <button
+                    onClick={() => handleEdit(tire)}
+                    className="text-indigo-600 hover:text-indigo-900 font-medium"
+                  >
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={7} className="text-center py-10 text-gray-500">
+                  No tires found matching your criteria
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Edit Modal */}
+      {editModalOpen && selectedTire && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              Edit Tire: {selectedTire.tire_serial_number}
+            </h3>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Condition
+              </label>
+              <select
+                value={editData.condition}
+                onChange={(e) => setEditData({...editData, condition: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {Object.keys(conditionMapping).map(condition => (
+                  <option key={condition} value={condition}>
+                    {getConditionDisplay(condition)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Notes
+              </label>
+              <textarea
+                value={editData.notes}
+                onChange={(e) => setEditData({...editData, notes: e.target.value})}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Additional notes..."
+              />
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setEditModalOpen(false)}
+                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const TireManagementPage = () => {
+  // Tab state
+  const [selectedTab, setSelectedTab] = useState<'management' | 'inventory'>('management');
+  
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [tireStatuses, setTireStatuses] = useState<TireStatus[]>([]);
@@ -600,29 +1100,96 @@ const TireManagementPage = () => {
 
   return (
     <>
-      <div className="tire-management-page">
-        <h1>Manajemen Ban</h1>
-
-        {error && (
-          <div className="error-message">{error}</div>
-        )}
-
-        <div className="vehicle-selector">
-          <label>Pilih Kendaraan:</label>
-          <select value={selectedVehicleId} onChange={handleVehicleChange}>
-            <option value="">-- Pilih Kendaraan --</option>
-            {vehicles.map((vehicle) => (
-              <option key={vehicle.id} value={vehicle.id}>
-                {vehicle.license_plate} ({vehicle.type}) - {vehicle.tire_count + vehicle.spare_tire_count} ban
-              </option>
-            ))}
-          </select>
+      <div className="container mx-auto px-4 py-6">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-gray-800">Tire Management</h1>
+          <div className="flex space-x-2">
+            {selectedTab === 'management' ? (
+              <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow-md transition duration-200">
+                Manage Tires
+              </button>
+            ) : (
+              <Link to="/tire-inventory/create">
+                <button className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow-md transition duration-200">
+                  + Add Tire Stock
+                </button>
+              </Link>
+            )}
+          </div>
         </div>
 
-        {loading ? (
-          <div className="loading">Memuat...</div>
-        ) : (
-          !loading && selectedVehicle && renderVehicleLayout()
+        {/* Navigation Tabs */}
+        <div className="bg-white rounded-lg shadow-sm mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex">
+              <button
+                onClick={() => setSelectedTab('management')}
+                className={`py-4 px-6 border-b-2 font-medium text-sm ${
+                  selectedTab === 'management'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Tire Management
+              </button>
+              <button
+                onClick={() => setSelectedTab('inventory')}
+                className={`py-4 px-6 border-b-2 font-medium text-sm ${
+                  selectedTab === 'inventory'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Tire Inventory
+              </button>
+            </nav>
+          </div>
+
+          {/* Tab Content - Descriptions */}
+          <div className="p-4">
+            {selectedTab === 'management' && (
+              <div className="text-sm text-gray-600">
+                Manage tires for specific vehicles, install and remove tires, monitor tire conditions and pressure.
+              </div>
+            )}
+            {selectedTab === 'inventory' && (
+              <div className="text-sm text-gray-600">
+                View and manage tire inventory, track tire stock, condition, and purchase information.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Tab Content */}
+        {selectedTab === 'management' && (
+          <div className="tire-management-page">
+            {error && (
+              <div className="error-message">{error}</div>
+            )}
+
+            <div className="vehicle-selector">
+              <label>Pilih Kendaraan:</label>
+              <select value={selectedVehicleId} onChange={handleVehicleChange}>
+                <option value="">-- Pilih Kendaraan --</option>
+                {vehicles.map((vehicle) => (
+                  <option key={vehicle.id} value={vehicle.id}>
+                    {vehicle.license_plate} ({vehicle.type}) - {vehicle.tire_count + vehicle.spare_tire_count} ban
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {loading ? (
+              <div className="loading">Memuat...</div>
+            ) : (
+              !loading && selectedVehicle && renderVehicleLayout()
+            )}
+          </div>
+        )}
+
+        {selectedTab === 'inventory' && (
+          <TireInventoryTab />
         )}
       </div>
 

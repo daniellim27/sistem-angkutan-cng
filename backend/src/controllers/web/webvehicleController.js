@@ -464,27 +464,3 @@ exports.getVehicleStatistics = async (req, res, next) => {
   }
 };
 
-// ✅ FIXED: Get service history for a vehicle - parameter consistency
-exports.getServiceHistory = async (req, res, next) => {
-  try {
-    const { id } = req.params; // ✅ FIXED: Use 'id' instead of 'vehicle_id'
-
-    const vehicle = await Vehicle.findByPk(id);
-    if (!vehicle) {
-      return res.status(404).json({
-        success: false,
-        message: "Vehicle not found",
-      });
-    }
-
-    // ✅ TODO: Implement actual service history fetching
-    res.json({
-      success: true,
-      data: [],
-      message: "Service history feature coming soon",
-    });
-  } catch (err) {
-    console.error("Error in getServiceHistory:", err);
-    next(err);
-  }
-};

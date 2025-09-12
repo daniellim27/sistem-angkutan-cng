@@ -434,29 +434,6 @@ exports.getVehicleStatistics = async (req, res, next) => {
   }
 };
 
-// Get service history for a vehicle
-exports.getServiceHistory = async (req, res, next) => {
-  try {
-    // FIX 2: Use 'id' to match the route parameter definition '/:id/history'
-    const { id } = req.params; 
-    
-    const vehicle = await Vehicle.findByPk(id); // Use id here
-    if (!vehicle) {
-      return res.status(404).json({
-        success: false,
-        message: 'Vehicle not found'
-      });
-    }
-
-    // This is a placeholder, assuming you will implement service history later.
-    res.json({
-      success: true,
-      data: []
-    });
-  } catch (err) {
-    next(err);
-  }
-};
 
 // Helper function to extract plate number from device ID
 exports.extractPlateFromDeviceId = (deviceId) => {

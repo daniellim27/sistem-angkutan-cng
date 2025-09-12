@@ -23,7 +23,6 @@ vehicleRouter.put('/:id', checkRole(['admin', 'owner', 'driver']), vehicleContro
 vehicleRouter.delete('/:id', checkRole(['admin', 'owner', 'driver']), vehicleController.deleteVehicle);
 
 // Nested resource routes (specific actions on individual items)
-vehicleRouter.get('/:id/history', checkRole(['admin', 'owner', 'driver']), vehicleController.getServiceHistory);
 vehicleRouter.put('/:vehicleId/assign-driver', checkRole(['admin', 'owner', 'driver']), vehicleController.assignDriver);
 
 module.exports = vehicleRouter;
