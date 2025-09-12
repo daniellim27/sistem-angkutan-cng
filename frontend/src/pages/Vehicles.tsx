@@ -412,6 +412,13 @@ const VehiclesPage = () => {
 
   useEffect(() => {
     fetchVehicles();
+    
+    // Set up periodic refresh every 30 seconds to sync with mobile app updates
+    const interval = setInterval(() => {
+      fetchVehicles();
+    }, 30000); // 30 seconds
+    
+    return () => clearInterval(interval);
   }, [fetchVehicles]);
 
   // Client-side filtering and search

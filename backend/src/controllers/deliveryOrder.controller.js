@@ -16,6 +16,8 @@ const {
   Sequelize,
 } = require("../models");
 const { Op } = require("sequelize");
+const path = require('path');
+const fs = require('fs');
 
 // === TAMBAHKAN UTILITY FUNCTION ===
 const filterSensitiveDataForDriver = (data, userRole) => {
@@ -753,6 +755,95 @@ exports.departFromSPBU = (req, res, next) => {
       })
     )
     .catch(next);
+};
+
+// POST /api/delivery-orders/:id/upload-nota
+exports.uploadNotaPhoto = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const driverId = req.user.id;
+
+    // Find the delivery order
+    const order = await DeliveryOrder.findOne({
+      where: { id, driver_id: driverId },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery Order tidak ditemukan.",
+      });
+    }
+
+    // Check if driver is at the right status to upload nota
+    if (order.status !== "otw_to_unload_location") {
+      return res.status(400).json({
+        success: false,
+        message: "Foto nota hanya dapat diunggah ketika dalam perjalanan ke lokasi pelanggan.",
+      });
+    }
+
+    console.log("Nota upload request:", {
+      id,
+      driverId,
+    });
+    console.log("Uploaded file:", req.file);
+    console.log("All uploaded files:", req.files);
+    console.log("Request body:", req.body);
+    console.log("Content-Type:", req.headers['content-type']);
+
+    // Accept both single and multiple file upload (same as surat jalan)
+    let notaFile = req.file;
+    const notaFiles = req.files || []; // Ensure it's always an array
+
+    console.log("Files received:", {
+      file: req.file,
+      files: req.files,
+      filesLength: notaFiles.length
+    });
+
+    if (!notaFile && notaFiles.length > 0) {
+      notaFile = notaFiles[0];
+    }
+
+    if (!notaFile && notaFiles.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Foto nota harus diunggah.",
+      });
+    }
+
+    // Process file upload - handle both single file and multiple files (same as surat jalan)
+    let nota_photo_url = [];
+    
+    if (notaFiles.length > 0) {
+      // Multiple files uploaded
+      nota_photo_url = notaFiles.map((f) =>
+        f.path.replace(/\\/g, "/")
+      );
+    } else if (notaFile) {
+      // Single file uploaded  
+      nota_photo_url = [notaFile.path.replace(/\\/g, "/")];
+    }
+
+    // Update delivery order with nota photo URLs
+    const currentPhotos = order.nota_photo_url || [];
+    await order.update({
+      nota_photo_url: [...currentPhotos, ...nota_photo_url],
+    });
+
+    res.json({
+      success: true,
+      message: "Foto nota berhasil diunggah.",
+      data: {
+        nota_photo_url: [...currentPhotos, ...nota_photo_url],
+      },
+    });
+
+  } catch (err) {
+    console.error("Error uploading nota photo:", err);
+    next(err);
+  }
 };
 
 // === UPDATE HELPER FUNCTION updateStatus ===

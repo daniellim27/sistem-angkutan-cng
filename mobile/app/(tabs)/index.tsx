@@ -12,9 +12,10 @@ import {
   Alert,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import apiClient, { updateDeliveryStatus } from "../../src/services/api";
+import apiClient, { updateDeliveryStatus, uploadNotaPhoto } from "../../src/services/api";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { FontAwesome5 } from "@expo/vector-icons";
+import NotaUploadModal from "../../components/NotaUploadModal";
 
 // === UPDATED INTERFACES ===
 interface Vehicle {
@@ -71,6 +72,9 @@ const DriverDashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
+  const [showNotaModal, setShowNotaModal] = useState(false);
+  const [selectedOrderForNota, setSelectedOrderForNota] = useState<number | null>(null);
+  const [uploadingNota, setUploadingNota] = useState(false);
 
   const fetchMyTasks = async () => {
     try {
@@ -104,6 +108,13 @@ const DriverDashboard = () => {
   };
 
   const handleUpdateStatus = async (orderId: number, action: string) => {
+    // Special handling for arrive_at_unload - show nota upload modal first
+    if (action === "arrive_at_unload") {
+      setSelectedOrderForNota(orderId);
+      setShowNotaModal(true);
+      return;
+    }
+
     setUpdatingStatus(orderId);
     try {
       await updateDeliveryStatus(orderId, action);
@@ -137,6 +148,44 @@ const DriverDashboard = () => {
     } finally {
       setUpdatingStatus(null);
     }
+  };
+
+  const handleNotaUpload = async (notaPhotos: any[]) => {
+    if (!selectedOrderForNota) return;
+
+    setUploadingNota(true);
+    try {
+      // First upload the nota photos
+      await uploadNotaPhoto(selectedOrderForNota, notaPhotos);
+      
+      // Then update the status to arrive_at_unload
+      await updateDeliveryStatus(selectedOrderForNota, "arrive_at_unload");
+      
+      // Refresh data
+      await fetchMyTasks();
+      
+      // Close modal
+      setShowNotaModal(false);
+      setSelectedOrderForNota(null);
+
+      Alert.alert(
+        "Berhasil",
+        `${notaPhotos.length} foto nota berhasil diunggah dan status diperbarui ke 'Tiba di Pelanggan'`
+      );
+    } catch (err: any) {
+      console.error("Error uploading nota:", err);
+      Alert.alert(
+        "Error",
+        err.response?.data?.message || "Gagal mengunggah foto nota. Silakan coba lagi."
+      );
+    } finally {
+      setUploadingNota(false);
+    }
+  };
+
+  const handleCloseNotaModal = () => {
+    setShowNotaModal(false);
+    setSelectedOrderForNota(null);
   };
 
   useFocusEffect(
@@ -379,6 +428,13 @@ const DriverDashboard = () => {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
+      />
+      {/* Nota Upload Modal */}
+      <NotaUploadModal
+        visible={showNotaModal}
+        onClose={handleCloseNotaModal}
+        onConfirm={handleNotaUpload}
+        isLoading={uploadingNota}
       />
     </View>
   );

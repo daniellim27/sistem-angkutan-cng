@@ -29,10 +29,16 @@ const DriversPage = () => {
   const [vehicleAssignments, setVehicleAssignments] = useState<Map<number, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchDrivers = async () => {
+  const fetchDrivers = async (isManualRefresh = false) => {
     try {
-      setLoading(true);
+      if (isManualRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       
       // Fetch drivers
       const driversResponse = await apiClient.get('/drivers');
@@ -52,16 +58,30 @@ const DriversPage = () => {
       
       setDrivers(driversData);
       setVehicleAssignments(assignmentMap);
+      setLastUpdated(new Date());
+      setError(null);
     } catch (err) {
       setError('Failed to fetch drivers.');
       console.error(err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const handleManualRefresh = () => {
+    fetchDrivers(true);
   };
 
   useEffect(() => {
     fetchDrivers();
+    
+    // Set up periodic refresh every 30 seconds to sync with mobile app updates
+    const interval = setInterval(() => {
+      fetchDrivers();
+    }, 30000); // 30 seconds
+    
+    return () => clearInterval(interval);
   }, []);
 
   const handleDelete = async (id: number) => {
@@ -123,12 +143,29 @@ const DriversPage = () => {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Driver Management</h1>
-        <Link to="/drivers/create">
-          <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-            + Add Driver
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800">Driver Management</h1>
+          {lastUpdated && (
+            <p className="text-sm text-gray-600 mt-1">
+              Last updated: {lastUpdated.toLocaleTimeString()} 
+              <span className="ml-2 text-xs text-gray-500">(Auto-refreshes every 30 seconds)</span>
+            </p>
+          )}
+        </div>
+        <div className="flex space-x-2">
+          <button
+            onClick={handleManualRefresh}
+            disabled={refreshing}
+            className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
+          >
+            {refreshing ? 'Refreshing...' : '🔄 Refresh'}
           </button>
-        </Link>
+          <Link to="/drivers/create">
+            <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+              + Add Driver
+            </button>
+          </Link>
+        </div>
       </div>
       <div className="bg-white shadow-md rounded-lg overflow-hidden">
         <table className="min-w-full leading-normal">

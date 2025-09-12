@@ -117,6 +117,11 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Photo surat jalan yang diambil driver di lokasi muat",
       },
+      nota_photo_url: {
+        type: DataTypes.ARRAY(DataTypes.TEXT),
+        allowNull: true,
+        comment: "Array of nota (receipt) photo URLs uploaded when driver arrives at customer location",
+      },
 
       // === PAYMENT FIELDS ===
       payment_status: {

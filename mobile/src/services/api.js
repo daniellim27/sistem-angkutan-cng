@@ -239,6 +239,64 @@ export const updateDeliveryStatus = (doId, action) => {
   return apiClient.patch(`/delivery-orders/${endpoint}`);
 };
 
+export const uploadNotaPhoto = async (doId, notaPhotos) => {
+  try {
+    const formData = new FormData();
+
+    if (Array.isArray(notaPhotos)) {
+      for (let i = 0; i < notaPhotos.length; i++) {
+        const photo = notaPhotos[i];
+        if (photo && photo.uri) {
+          const ext = photo.uri.split(".").pop() || "jpg";
+          await appendFileToFormData(
+            formData,
+            "nota_photo",
+            {
+              ...photo,
+              fileName: photo.fileName || `nota_${doId}_${i}.${ext}`,
+              mimeType: photo.mimeType || "image/jpeg",
+            }
+          );
+        } else {
+          console.warn("Skipping nota photo without uri:", photo);
+        }
+      }
+    } else if (notaPhotos && notaPhotos.uri) {
+      const photo = notaPhotos;
+      const ext = photo.uri.split(".").pop() || "jpg";
+      await appendFileToFormData(
+        formData,
+        "nota_photo",
+        {
+          ...photo,
+          fileName: photo.fileName || `nota_${doId}.${ext}`,
+          mimeType: photo.mimeType || "image/jpeg",
+        }
+      );
+    }
+
+    // Log form data for debugging
+    console.log("FormData contents for nota upload:");
+    for (const [key, value] of formData.entries()) {
+      console.log(key, value);
+    }
+
+    return apiClient.post(`/delivery-orders/${doId}/upload-nota`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      timeout: 30000,
+    });
+  } catch (error) {
+    console.error("Error in uploadNotaPhoto API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
 export const getLoadStatus = (doId) => {
   return apiClient.get(`/delivery-orders/${doId}/load-status`);
 };

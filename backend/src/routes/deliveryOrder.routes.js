@@ -151,6 +151,14 @@ router.post(
   loadConfirmationController.confirmLoad
 );
 
+// Upload nota photo endpoint (before arrive at unload)
+router.post(
+  "/:id/upload-nota",
+  checkRole(["driver"]),
+  suratJalanUpload.array("nota_photo", 5), // Allow up to 5 nota photos
+  doController.uploadNotaPhoto
+);
+
 router.patch(
   "/:id/arrive-at-unload",
   checkRole(["driver"]),

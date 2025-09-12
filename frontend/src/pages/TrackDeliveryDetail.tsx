@@ -54,6 +54,7 @@ interface DeliveryOrder {
     };
   };
   surat_jalan_photo_url?: string | string[];
+  nota_photo_url?: string | string[];
   ongkosan?: number;
 }
 
@@ -351,12 +352,14 @@ const TrackDeliveryDetail: React.FC = () => {
               </div>
             )}
 
-            {/* Surat Jalan Documents */}
+            {/* Documents Section */}
             <div className="bg-white rounded-lg shadow-sm p-6 lg:col-span-2">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">📄 Surat Jalan Documents</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">📄 Documents</h2>
               
-              {Array.isArray(deliveryOrder.surat_jalan_photo_url) && deliveryOrder.surat_jalan_photo_url.length > 0 ? (
-                <>
+              {/* Surat Jalan Documents */}
+              {Array.isArray(deliveryOrder.surat_jalan_photo_url) && deliveryOrder.surat_jalan_photo_url.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-base font-medium text-gray-800 mb-3">Surat Jalan</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                     {deliveryOrder.surat_jalan_photo_url.map((photoUrl, index) => (
                       <div key={index} className="relative group">
@@ -371,6 +374,17 @@ const TrackDeliveryDetail: React.FC = () => {
                             </span>
                           </div>
                           
+                          <div className="mb-3">
+                            <img
+                              src={`${BACKEND_URL}/${photoUrl}`}
+                              alt={`Surat Jalan ${index + 1}`}
+                              className="w-full h-28 object-cover rounded-md border border-gray-200"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                          </div>
+                          
                           <div className="text-center">
                             <a
                               href={`${BACKEND_URL}/${photoUrl}`}
@@ -380,11 +394,9 @@ const TrackDeliveryDetail: React.FC = () => {
                             >
                               <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                               </svg>
-                              View
+                              View Full Size
                             </a>
                           </div>
                         </div>
@@ -402,15 +414,69 @@ const TrackDeliveryDetail: React.FC = () => {
                       </span>
                     </div>
                   </div>
-                </>
-              ) : (
+                </div>
+              )}
+
+              {/* Nota Documents */}
+              {Array.isArray(deliveryOrder.nota_photo_url) && deliveryOrder.nota_photo_url.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-base font-medium text-gray-800 mb-3">Nota (Receipt)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                    {deliveryOrder.nota_photo_url.map((photoUrl, index) => (
+                      <div key={index} className="relative group">
+                        <div className="bg-gray-50 border-2 border-dashed border-orange-200 rounded-lg p-4 hover:border-orange-300 transition-colors">
+                          <div className="flex items-center justify-center space-x-2 mb-3">
+                            <svg className="w-6 h-6 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span className="text-sm font-medium text-gray-700">
+                              Nota {(deliveryOrder.nota_photo_url?.length || 0) > 1 ? `#${index + 1}` : ''}
+                            </span>
+                          </div>
+                          
+                          <div className="mb-3">
+                            <img
+                              src={`${BACKEND_URL}/${photoUrl}`}
+                              alt={`Nota ${index + 1}`}
+                              className="w-full h-28 object-cover rounded-md border border-gray-200"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                          </div>
+                          
+                          <div className="text-center">
+                            <a
+                              href={`${BACKEND_URL}/${photoUrl}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center px-3 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors text-sm font-medium"
+                            >
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                              </svg>
+                              View Full Size
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Show message when no documents are available */}
+              {((!deliveryOrder.surat_jalan_photo_url || (Array.isArray(deliveryOrder.surat_jalan_photo_url) && deliveryOrder.surat_jalan_photo_url.length === 0)) &&
+                (!deliveryOrder.nota_photo_url || (Array.isArray(deliveryOrder.nota_photo_url) && deliveryOrder.nota_photo_url.length === 0))) && (
                 <div className="text-center py-6">
                   <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                           d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  <p className="text-gray-500">No surat jalan documents uploaded yet</p>
-                  <p className="text-gray-400 text-sm mt-1">Documents will appear here once the driver confirms the load</p>
+                  <p className="text-gray-500">No documents uploaded yet</p>
+                  <p className="text-gray-400 text-sm mt-1">Surat jalan and nota documents will appear here once uploaded by the driver</p>
                 </div>
               )}
             </div>

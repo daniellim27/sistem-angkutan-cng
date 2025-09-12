@@ -192,10 +192,10 @@ const TireInventoryTab: React.FC = () => {
       setTires(tiresArray);
       
       // Extract unique filter options
-      const conditions = Array.from(new Set(tiresArray.map((tire: TireInventoryInstance) => tire.condition).filter(Boolean)));
-      const brands = Array.from(new Set(tiresArray.map((tire: TireInventoryInstance) => tire.tireInventory?.tire_brand).filter(Boolean)));
-      const sizes = Array.from(new Set(tiresArray.map((tire: TireInventoryInstance) => tire.tireInventory?.tire_size).filter(Boolean)));
-      const types = Array.from(new Set(tiresArray.map((tire: TireInventoryInstance) => tire.tireInventory?.tire_type).filter(Boolean)));
+      const conditions = Array.from(new Set(tiresArray.map((tire: TireInventoryInstance) => tire.condition).filter(Boolean))) as string[];
+      const brands = Array.from(new Set(tiresArray.map((tire: TireInventoryInstance) => tire.tireInventory?.tire_brand).filter(Boolean))) as string[];
+      const sizes = Array.from(new Set(tiresArray.map((tire: TireInventoryInstance) => tire.tireInventory?.tire_size).filter(Boolean))) as string[];
+      const types = Array.from(new Set(tiresArray.map((tire: TireInventoryInstance) => tire.tireInventory?.tire_type).filter(Boolean))) as string[];
 
       setFilterOptions({
         conditions: conditions.sort(),
