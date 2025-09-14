@@ -8,6 +8,7 @@ import apiClient from '../api/axiosConfig';
 interface DriverProfile {
   full_name: string;
   phone: string;
+  sim_expiry_date?: string;
   status: 'available' | 'busy' | 'on_leave';
 }
 
@@ -173,6 +174,7 @@ const DriversPage = () => {
             <tr>
               <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase">Full Name</th>
               <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase">Phone Number</th>
+              <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase">SIM Expiry</th>
               <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
               <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-right text-xs font-semibold text-gray-600 uppercase">Actions</th>
             </tr>
@@ -180,6 +182,10 @@ const DriversPage = () => {
           <tbody>
             {drivers.map((driver) => {
               const statusDisplay = getStatusDisplay(driver);
+              const simExpiryDate = driver.driverProfile.sim_expiry_date;
+              const isSimExpired = simExpiryDate && new Date(simExpiryDate) < new Date();
+              const isSimExpiringSoon = simExpiryDate && !isSimExpired && new Date(simExpiryDate) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+              
               return (
                 <tr key={driver.id}>
                   <td className="px-5 py-4 border-b border-gray-200 bg-white text-sm">
@@ -187,6 +193,27 @@ const DriversPage = () => {
                   </td>
                   <td className="px-5 py-4 border-b border-gray-200 bg-white text-sm">
                     <p className="text-gray-900">{driver.driverProfile.phone}</p>
+                  </td>
+                  <td className="px-5 py-4 border-b border-gray-200 bg-white text-sm">
+                    {simExpiryDate ? (
+                      <div className="flex flex-col">
+                        <span className={`text-xs ${
+                          isSimExpired ? 'text-red-600 font-semibold' : 
+                          isSimExpiringSoon ? 'text-yellow-600 font-semibold' : 
+                          'text-gray-900'
+                        }`}>
+                          {new Date(simExpiryDate).toLocaleDateString('id-ID')}
+                        </span>
+                        {isSimExpired && (
+                          <span className="text-xs text-red-500">Expired</span>
+                        )}
+                        {isSimExpiringSoon && !isSimExpired && (
+                          <span className="text-xs text-yellow-500">Expires Soon</span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 text-xs">Not Set</span>
+                    )}
                   </td>
                   <td className="px-5 py-4 border-b border-gray-200 bg-white text-sm">
                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusDisplay.className}`}>

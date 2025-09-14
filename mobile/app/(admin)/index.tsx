@@ -136,9 +136,6 @@ export default function AdminIndex() {
         )}
       </View>
 
-      {item.purchaseOrder && (
-        <Text style={styles.poNumber}>PO: {item.purchaseOrder.po_number}</Text>
-      )}
 
       <View style={styles.assignmentRow}>
         <Text style={styles.driver}>
@@ -306,12 +303,6 @@ const styles = StyleSheet.create({
     color: "#059669",
     fontSize: 14,
     fontWeight: "500",
-  },
-  poNumber: {
-    fontSize: 12,
-    color: "#9ca3af",
-    fontStyle: "italic",
-    marginBottom: 8,
   },
 
   assignmentRow: {

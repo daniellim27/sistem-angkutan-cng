@@ -181,6 +181,15 @@ module.exports = (sequelize) => {
           },
         },
       },
+      kir_expiry_date: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+        validate: {
+          isDate: {
+            msg: "KIR expiry date must be a valid date",
+          },
+        },
+      },
       // GPS Tracking fields
       device_id: {
         type: DataTypes.STRING(100),
@@ -227,6 +236,9 @@ module.exports = (sequelize) => {
         },
         {
           fields: ["stnk_expired_date"],
+        },
+        {
+          fields: ["kir_expiry_date"],
         },
         {
           fields: ["driver_id"],
@@ -279,6 +291,11 @@ module.exports = (sequelize) => {
   Vehicle.prototype.isSTNKExpired = function () {
     if (!this.stnk_expired_date) return false;
     return new Date(this.stnk_expired_date) <= new Date();
+  };
+
+  Vehicle.prototype.isKIRExpired = function () {
+    if (!this.kir_expiry_date) return false;
+    return new Date(this.kir_expiry_date) <= new Date();
   };
 
   // NEW: Get total tire count including spares

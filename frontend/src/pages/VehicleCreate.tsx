@@ -26,6 +26,7 @@ const VehicleCreatePage = () => {
         stnk_number: data.stnk_number?.trim() || null,
         stnk_expired_date: data.stnk_expired_date || null,
         tax_due_date: data.tax_due_date || null,
+        kir_expiry_date: data.kir_expiry_date || null,
         last_service_date: data.last_service_date || null,
         next_service_due: data.next_service_due || null,
       };

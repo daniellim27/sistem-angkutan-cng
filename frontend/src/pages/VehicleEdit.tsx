@@ -52,6 +52,7 @@ const VehicleEditPage = () => {
       payload.driver_id = data.driver_id;
       payload.stnk_expired_date = data.stnk_expired_date || null;
       payload.tax_due_date = data.tax_due_date || null;
+      payload.kir_expiry_date = data.kir_expiry_date || null;
       payload.last_service_date = data.last_service_date || null;
       payload.next_service_due = data.next_service_due || null;
 

@@ -92,6 +92,19 @@ module.exports = (sequelize) => {
         }
       }
     },
+    sim_expiry_date: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      validate: {
+        isDate: {
+          msg: 'SIM expiry date must be a valid date'
+        },
+        isAfter: {
+          args: new Date().toISOString().split('T')[0],
+          msg: 'SIM expiry date must be in the future'
+        }
+      }
+    },
     license_type: {
       type: DataTypes.STRING(10),
       allowNull: true,

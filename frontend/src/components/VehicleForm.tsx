@@ -20,6 +20,7 @@ interface VehicleFormData {
   stnk_number: string;
   stnk_expired_date: string;
   tax_due_date: string;
+  kir_expiry_date: string;
   last_service_date: string;
   next_service_due: string;
   status: 'available' | 'in_use' | 'maintenance';
@@ -50,6 +51,7 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
     stnk_number: '', 
     stnk_expired_date: '', 
     tax_due_date: '', 
+    kir_expiry_date: '',
     last_service_date: '', 
     next_service_due: '', 
     status: 'available' as 'available' | 'in_use' | 'maintenance',
@@ -95,6 +97,7 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
         stnk_number: initialData.stnk_number || '',
         stnk_expired_date: formatToDateInput(initialData.stnk_expired_date),
         tax_due_date: formatToDateInput(initialData.tax_due_date),
+        kir_expiry_date: formatToDateInput(initialData.kir_expiry_date),
         last_service_date: formatToDateInput(initialData.last_service_date),
         next_service_due: formatToDateInput(initialData.next_service_due),
         status: initialData.status || 'available',
@@ -120,6 +123,7 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
       stnk_number: formData.stnk_number || '',
       stnk_expired_date: formData.stnk_expired_date || '',
       tax_due_date: formData.tax_due_date || '',
+      kir_expiry_date: formData.kir_expiry_date || '',
       last_service_date: formData.last_service_date || '',
       next_service_due: formData.next_service_due || '',
       status: formData.status || 'available',
@@ -291,6 +295,18 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" 
           />
         </div>
+      </div>
+
+      <div>
+        <label htmlFor="kir_expiry_date" className="block text-sm font-medium text-gray-700">Tanggal Expired KIR (Opsional)</label>
+        <input 
+          type="date" 
+          name="kir_expiry_date" 
+          id="kir_expiry_date" 
+          value={formData.kir_expiry_date} 
+          onChange={handleChange} 
+          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" 
+        />
       </div>
 
       <hr/>

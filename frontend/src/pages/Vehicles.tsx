@@ -25,6 +25,7 @@ interface Vehicle {
   driver_status: string | null;
   stnk_expired_date: string;
   tax_due_date: string;
+  kir_expiry_date: string;
   status: 'available' | 'in_use' | 'maintenance';
   tire_stats: TireStats;
   last_service_date: string;
@@ -833,6 +834,10 @@ const VehiclesPage = () => {
                         <div className="flex justify-between">
                           <span className="text-gray-600">Tax Due:</span>
                           <span className={`font-medium ${getDateColor(vehicle.tax_due_date)}`}>{formatDate(vehicle.tax_due_date)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">KIR Expired:</span>
+                          <span className={`font-medium ${getDateColor(vehicle.kir_expiry_date)}`}>{formatDate(vehicle.kir_expiry_date)}</span>
                         </div>
                       </div>
                     </div>

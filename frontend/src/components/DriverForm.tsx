@@ -11,6 +11,7 @@ interface DriverFormData {
   address: string;
   id_card_number: string;
   sim_number: string;
+  sim_expiry_date?: string;
   license_type: string;
   status: "available" | "busy" | "on_leave";
 }
@@ -36,6 +37,7 @@ const DriverForm: React.FC<DriverFormProps> = ({
     address: "",
     id_card_number: "",
     sim_number: "",
+    sim_expiry_date: "",
     license_type: "B1",
     status: "available",
     ...initialData,
@@ -172,6 +174,22 @@ const DriverForm: React.FC<DriverFormProps> = ({
             className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
           />
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700">
+            Tanggal Kadaluarsa SIM (Opsional)
+          </label>
+          <input
+            type="date"
+            name="sim_expiry_date"
+            value={formData.sim_expiry_date || ""}
+            onChange={handleChange}
+            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
+          />
+        </div>
+        <div></div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

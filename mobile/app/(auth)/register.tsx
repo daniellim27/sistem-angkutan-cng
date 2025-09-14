@@ -26,6 +26,7 @@ export default function RegisterScreen() {
     address: '',
     idCardNumber: '',
     simNumber: '',
+    simExpiryDate: '',
     licenseType: '',
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -87,6 +88,7 @@ export default function RegisterScreen() {
       address: formData.address.trim(),
       id_card_number: formData.idCardNumber.trim() || undefined,
       sim_number: formData.simNumber.trim() || undefined,
+      sim_expiry_date: formData.simExpiryDate.trim() || undefined,
       license_type: formData.licenseType.trim() || undefined,
     };
 
@@ -249,6 +251,16 @@ export default function RegisterScreen() {
                   value={formData.simNumber}
                   onChangeText={(value: string) => updateFormData('simNumber', value)}
                   placeholder="Enter SIM number"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>SIM Expiry Date (Optional)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={formData.simExpiryDate}
+                  onChangeText={(value: string) => updateFormData('simExpiryDate', value)}
+                  placeholder="YYYY-MM-DD (e.g., 2025-12-31)"
                 />
               </View>
 
