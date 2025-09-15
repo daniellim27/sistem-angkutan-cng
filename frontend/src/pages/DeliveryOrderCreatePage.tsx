@@ -198,7 +198,7 @@ const DeliveryOrderCreatePage = () => {
       // Check if background scraping is in progress
       const responseData = response.data.success ? response.data.data : response.data;
       if (responseData.scraping_in_progress) {
-        console.log('📍 Location coordinates will be scraped in the background');
+        console.log('📍 Location coordinates will be blcraped in the background');
         // You could show a toast notification here if desired
       }
       

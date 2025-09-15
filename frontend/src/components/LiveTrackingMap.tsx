@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import apiClient from '../api/axiosConfig';
 import GasStationToolbar from './GasStationToolbar';
 import { GasStationApi, GasStation } from '../api/gasStationApi';
+import StaticRouteDisplay from './StaticRouteDisplay';
 
 // Fix for default markers
 const DefaultIcon = L.Icon.Default as any;
@@ -304,6 +305,14 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     label: string;
     address: string;
   }>>([]);
+
+  // Routing state
+  const [showRoute, setShowRoute] = useState(true);
+  const [routeWaypoints, setRouteWaypoints] = useState<L.LatLng[]>([]);
+  const [routeInfo, setRouteInfo] = useState<{
+    distance: number;
+    time: number;
+  } | null>(null);
   
   // Fixed trail duration - 24 hours only
   const trailHours = 24;
@@ -458,6 +467,36 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
       console.error('Error fetching delivery order locations:', err);
     }
   }, [deliveryOrderId]);
+
+  // Memoized waypoints key for static route (only delivery locations)
+  const routeWaypointsKey = useMemo(() => {
+    if (locationMarkers.length === 0) return null;
+    
+    const markersKey = locationMarkers
+      .map(m => `${m.type}-${m.position[0].toFixed(4)}-${m.position[1].toFixed(4)}`)
+      .sort()
+      .join('|');
+    
+    return markersKey;
+  }, [locationMarkers]); // Only depend on delivery locations for static route
+
+  // Calculate route waypoints for delivery locations only (static route)
+  const calculateRouteWaypoints = useCallback(() => {
+    const waypoints: L.LatLng[] = [];
+    
+    // Add delivery order locations as waypoints in logical order
+    // First SPBU locations, then unload locations, then additional unload locations
+    const sortedMarkers = [...locationMarkers].sort((a, b) => {
+      const order = { spbu: 1, unload: 2, additional_unload: 3 };
+      return order[a.type] - order[b.type];
+    });
+    
+    sortedMarkers.forEach(marker => {
+      waypoints.push(L.latLng(marker.position[0], marker.position[1]));
+    });
+    
+    return waypoints;
+  }, [locationMarkers]); // Only depend on delivery locations, not vehicle position
 
   // Fetch tracking data
   const fetchTrackingData = useCallback(async () => {
@@ -628,6 +667,30 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     fetchDeliveryOrderLocations();
   }, [fetchDeliveryOrderLocations]);
 
+  // Update waypoints when routing is enabled and data changes
+  useEffect(() => {
+    if (showRoute) {
+      const waypoints = calculateRouteWaypoints();
+      console.log('🗺️ Calculating waypoints:', {
+        showRoute,
+        waypointsCount: waypoints.length,
+        hasVehicle: !!selectedVehicle,
+        locationMarkersCount: locationMarkers.length
+      });
+      
+      if (waypoints.length >= 2) {
+        setRouteWaypoints(waypoints);
+        console.log('✅ Waypoints set for routing:', waypoints.map(wp => ({ lat: wp.lat, lng: wp.lng })));
+      } else {
+        setRouteWaypoints([]);
+        console.log('⚠️ Not enough waypoints for routing');
+      }
+    } else {
+      setRouteWaypoints([]);
+      console.log('🚫 Routing disabled');
+    }
+  }, [showRoute, calculateRouteWaypoints]);
+
   // Calculate map center
   const getMapCenter = (): [number, number] => {
     if (selectedVehicle) {
@@ -710,6 +773,27 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
 
           {loadingGasStations && (
             <span className="text-gray-500">Loading gas stations...</span>
+          )}
+
+          <label className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              checked={showRoute}
+              onChange={(e) => setShowRoute(e.target.checked)}
+              className="rounded"
+            />
+            <span>Show Delivery Route</span>
+          </label>
+
+          {showRoute && routeInfo && (
+            <div className="flex items-center space-x-4 text-xs bg-blue-50 px-3 py-1 rounded">
+              <span className="font-medium text-blue-800">
+                📏 {(routeInfo.distance / 1000).toFixed(1)} km
+              </span>
+              <span className="font-medium text-blue-800">
+                ⏱️ {Math.round(routeInfo.time / 60)} min
+              </span>
+            </div>
           )}
         </div>
 
@@ -919,6 +1003,23 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
               </Popup>
             </Marker>
           ))}
+
+          {/* Delivery Route - Static route calculated once */}
+          {showRoute && routeWaypoints.length >= 2 && (
+            <StaticRouteDisplay
+              key={routeWaypointsKey} // Recalculate only when delivery locations change
+              waypoints={routeWaypoints}
+              routeColor="#3b82f6"
+              onRouteLoaded={(route) => {
+                console.log('Static route loaded:', route);
+                setRouteInfo({
+                  distance: route.distance,
+                  time: route.duration
+                });
+              }}
+              showRouteInfo={true}
+            />
+          )}
 
           {/* Gas Station Toolbar */}
           <GasStationToolbar
