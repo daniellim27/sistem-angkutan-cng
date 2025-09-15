@@ -634,8 +634,9 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
 
   // Separate effect for trail data (less frequent updates)
   useEffect(() => {
-    if (!showTrails) {
-      // Clear trails when disabled
+    // Disable trails for delivery order tracking or when manually disabled
+    if (!showTrails || deliveryOrderId) {
+      // Clear trails when disabled or when tracking specific delivery
       setTrails([]);
       if (onTrailsUpdate) {
         onTrailsUpdate([]);
@@ -755,17 +756,19 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
           </div>
         </div>
 
-        {/* Trail Controls */}
+        {/* Trail Controls - Only show for general vehicle tracking, not for specific delivery tracking */}
         <div className="flex flex-wrap items-center gap-4 text-sm">
-          <label className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              checked={showTrails}
-              onChange={(e) => setShowTrails(e.target.checked)}
-              className="rounded"
-            />
-            <span>Show Vehicle Trails</span>
-          </label>
+          {!deliveryOrderId && (
+            <label className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={showTrails}
+                onChange={(e) => setShowTrails(e.target.checked)}
+                className="rounded"
+              />
+              <span>Show Vehicle Trails</span>
+            </label>
+          )}
 
           {showTrails && loadingTrails && (
             <span className="text-gray-500">Loading trails...</span>
@@ -803,7 +806,7 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
             <div className="flex flex-wrap gap-4">
               <span>Active: {trackingStats.activeVehicles}/{trackingStats.totalVehicles}</span>
               <span>Last updated: {formatTimeAgo(lastUpdate.toISOString())}</span>
-              {showTrails && trails.length > 0 && (
+              {!deliveryOrderId && showTrails && trails.length > 0 && (
                 <>
                   <span>Total trail points: {trails.reduce((sum, t) => sum + t.pointCount, 0)}</span>
                   <span>Avg points/trail: {(trails.reduce((sum, t) => sum + t.pointCount, 0) / trails.length).toFixed(1)}</span>

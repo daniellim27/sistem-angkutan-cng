@@ -36,11 +36,19 @@ const RouteHistory: React.FC = () => {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Function to group vehicles by license plate and aggregate GPS points
+  // Only include vehicles with proper license plates for route history
   const groupVehiclesByPlate = (vehicles: VehicleWithGPS[]): VehicleWithGPS[] => {
+    // First, filter out vehicles without license plates
+    const vehiclesWithPlates = vehicles.filter(vehicle => 
+      vehicle.license_plate && 
+      vehicle.license_plate.trim() !== '' &&
+      !vehicle.license_plate.startsWith('Vehicle_') // Exclude generic device IDs
+    );
+
     const grouped = new Map<string, VehicleWithGPS>();
 
-    vehicles.forEach(vehicle => {
-      const key = vehicle.license_plate || vehicle.device_id; // Use license plate as key, fallback to device_id
+    vehiclesWithPlates.forEach(vehicle => {
+      const key = vehicle.license_plate!; // Use license plate as key (we know it exists now)
       
       if (grouped.has(key)) {
         // Aggregate existing vehicle data
@@ -54,24 +62,19 @@ const RouteHistory: React.FC = () => {
           existing.vehicle_id = vehicle.vehicle_id || existing.vehicle_id; // Prefer non-null vehicle_id
         }
         
-        // Combine device IDs if different
-        if (existing.device_id !== vehicle.device_id) {
-          existing.display_name = vehicle.license_plate 
-            ? `${vehicle.license_plate} (${vehicle.vehicle_type})` 
-            : `GPS Device: ${existing.device_id}/${vehicle.device_id}`;
-        }
+        // Update display name to show license plate and type
+        existing.display_name = `${vehicle.license_plate} (${vehicle.vehicle_type || 'Unknown'})`;
       } else {
-        // Add new vehicle
-        grouped.set(key, { ...vehicle });
+        // Add new vehicle with proper display name
+        const newVehicle = { ...vehicle };
+        newVehicle.display_name = `${vehicle.license_plate} (${vehicle.vehicle_type || 'Unknown'})`;
+        grouped.set(key, newVehicle);
       }
     });
 
     return Array.from(grouped.values()).sort((a, b) => {
-      // Sort by license plate, then by display name
-      if (a.license_plate && b.license_plate) {
-        return a.license_plate.localeCompare(b.license_plate);
-      }
-      return a.display_name.localeCompare(b.display_name);
+      // Sort by license plate alphabetically
+      return a.license_plate!.localeCompare(b.license_plate!);
     });
   };
 
@@ -239,7 +242,7 @@ const RouteHistory: React.FC = () => {
                   key={vehicle.license_plate || vehicle.device_id} 
                   value={vehicle.license_plate || vehicle.device_id}
                 >
-                  {vehicle.display_name} ({vehicle.total_points} GPS points)
+                  {vehicle.display_name}
                 </option>
               ))}
             </select>
