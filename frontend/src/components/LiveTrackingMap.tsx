@@ -14,6 +14,56 @@ DefaultIcon.mergeOptions({
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
 });
 
+// Custom icons for delivery order locations
+const createLocationIcon = (type: 'spbu' | 'unload' | 'additional_unload') => {
+  const iconConfigs = {
+    spbu: {
+      html: '⛽',
+      className: 'custom-location-icon spbu-icon',
+      bgColor: '#dc2626', // Red for SPBU
+      textColor: 'white'
+    },
+    unload: {
+      html: '📍',
+      className: 'custom-location-icon unload-icon',
+      bgColor: '#16a34a', // Green for unload
+      textColor: 'white'
+    },
+    additional_unload: {
+      html: '📦',
+      className: 'custom-location-icon additional-unload-icon',
+      bgColor: '#ca8a04', // Yellow for additional unload
+      textColor: 'white'
+    }
+  };
+
+  const config = iconConfigs[type];
+  
+  return L.divIcon({
+    html: `
+      <div style="
+        background-color: ${config.bgColor};
+        color: ${config.textColor};
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        border: 2px solid white;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      ">
+        ${config.html}
+      </div>
+    `,
+    className: config.className,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+    popupAnchor: [0, -16],
+  });
+};
+
 // Add custom CSS for vehicle markers
 const vehicleMarkerStyles = `
   .vehicle-marker-with-label {
@@ -246,6 +296,15 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
   const [gasStations, setGasStations] = useState<GasStation[]>([]);
   const [loadingGasStations, setLoadingGasStations] = useState(false);
   
+  // Delivery Order location markers state
+  const [deliveryOrderData, setDeliveryOrderData] = useState<any>(null);
+  const [locationMarkers, setLocationMarkers] = useState<Array<{
+    type: 'spbu' | 'unload' | 'additional_unload';
+    position: [number, number];
+    label: string;
+    address: string;
+  }>>([]);
+  
   // Fixed trail duration - 24 hours only
   const trailHours = 24;
 
@@ -327,6 +386,78 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
       setLoadingGasStations(false);
     }
   }, []);
+
+  // Fetch delivery order data and create location markers
+  const fetchDeliveryOrderLocations = useCallback(async () => {
+    if (!deliveryOrderId) return;
+    
+    try {
+      const response = await apiClient.get(`/delivery-orders/${deliveryOrderId}`);
+      if (response.data.success || response.data.id) {
+        const deliveryOrder = response.data.success ? response.data.data : response.data;
+        setDeliveryOrderData(deliveryOrder);
+        
+        // Debug logging to check coordinate data
+        console.log('🔍 Delivery Order Data:', {
+          id: deliveryOrder.id,
+          do_number: deliveryOrder.do_number,
+          load_location: deliveryOrder.load_location,
+          load_latitude: deliveryOrder.load_latitude,
+          load_longitude: deliveryOrder.load_longitude,
+          unload_location: deliveryOrder.unload_location,
+          unload_latitude: deliveryOrder.unload_latitude,
+          unload_longitude: deliveryOrder.unload_longitude,
+          additional_unload_locations: deliveryOrder.additional_unload_locations
+        });
+        
+        const markers: Array<{
+          type: 'spbu' | 'unload' | 'additional_unload';
+          position: [number, number];
+          label: string;
+          address: string;
+        }> = [];
+        
+        // Add SPBU (load location) marker
+        if (deliveryOrder.load_latitude && deliveryOrder.load_longitude) {
+          markers.push({
+            type: 'spbu',
+            position: [parseFloat(deliveryOrder.load_latitude), parseFloat(deliveryOrder.load_longitude)],
+            label: 'SPBU Location',
+            address: deliveryOrder.load_location || 'SPBU Location'
+          });
+        }
+        
+        // Add unload location marker
+        if (deliveryOrder.unload_latitude && deliveryOrder.unload_longitude) {
+          markers.push({
+            type: 'unload',
+            position: [parseFloat(deliveryOrder.unload_latitude), parseFloat(deliveryOrder.unload_longitude)],
+            label: 'Unload Location',
+            address: deliveryOrder.unload_location || 'Customer Location'
+          });
+        }
+        
+        // Add additional unload locations
+        if (Array.isArray(deliveryOrder.additional_unload_locations)) {
+          deliveryOrder.additional_unload_locations.forEach((location: any, index: number) => {
+            if (location.latitude && location.longitude) {
+              markers.push({
+                type: 'additional_unload',
+                position: [parseFloat(location.latitude), parseFloat(location.longitude)],
+                label: `Unload Location ${index + 2}`,
+                address: location.location || `Additional Unload ${index + 1}`
+              });
+            }
+          });
+        }
+        
+        setLocationMarkers(markers);
+        console.log('🎯 Loaded delivery order location markers:', markers);
+      }
+    } catch (err: any) {
+      console.error('Error fetching delivery order locations:', err);
+    }
+  }, [deliveryOrderId]);
 
   // Fetch tracking data
   const fetchTrackingData = useCallback(async () => {
@@ -492,6 +623,11 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     fetchGasStations();
   }, [fetchGasStations]);
 
+  // Effect for delivery order locations
+  useEffect(() => {
+    fetchDeliveryOrderLocations();
+  }, [fetchDeliveryOrderLocations]);
+
   // Calculate map center
   const getMapCenter = (): [number, number] => {
     if (selectedVehicle) {
@@ -595,7 +731,34 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
               {gasStations.length > 0 && (
                 <span>⛽ Gas stations: {gasStations.length}</span>
               )}
+              {locationMarkers.length > 0 && (
+                <span>📍 Delivery locations: {locationMarkers.length}</span>
+              )}
             </div>
+            
+            {/* Location Markers Legend */}
+            {locationMarkers.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-gray-200">
+                <div className="text-xs font-medium text-gray-700 mb-1">Delivery Locations:</div>
+                <div className="flex flex-wrap gap-3 text-xs">
+                  {locationMarkers.some(m => m.type === 'spbu') && (
+                    <span className="flex items-center gap-1">
+                      <span style={{color: '#dc2626'}}>⛽</span> SPBU Location
+                    </span>
+                  )}
+                  {locationMarkers.some(m => m.type === 'unload') && (
+                    <span className="flex items-center gap-1">
+                      <span style={{color: '#16a34a'}}>📍</span> Unload Location
+                    </span>
+                  )}
+                  {locationMarkers.some(m => m.type === 'additional_unload') && (
+                    <span className="flex items-center gap-1">
+                      <span style={{color: '#ca8a04'}}>📦</span> Additional Unload
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -706,6 +869,51 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
                         {vehicle.status}
                       </span>
                     </div>
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+
+          {/* Delivery Order Location Markers */}
+          {locationMarkers.map((marker, index) => (
+            <Marker
+              key={`location-${marker.type}-${index}`}
+              position={marker.position}
+              icon={createLocationIcon(marker.type)}
+            >
+              <Popup>
+                <div className="p-2 min-w-[200px]">
+                  <h4 className="font-semibold mb-2" style={{
+                    color: marker.type === 'spbu' ? '#dc2626' : 
+                           marker.type === 'unload' ? '#16a34a' : '#ca8a04'
+                  }}>
+                    {marker.label}
+                  </h4>
+                  
+                  <div className="text-sm space-y-2">
+                    <div>
+                      <strong>Address:</strong>
+                      <div className="text-gray-600">{marker.address}</div>
+                    </div>
+                    
+                    <div>
+                      <strong>Coordinates:</strong>
+                      <div className="text-gray-600 font-mono text-xs">
+                        Lat: {marker.position[0].toFixed(6)}<br/>
+                        Lng: {marker.position[1].toFixed(6)}
+                      </div>
+                    </div>
+                    
+                    {deliveryOrderData && (
+                      <div className="pt-2 border-t border-gray-200">
+                        <div className="text-xs text-gray-500">
+                          Delivery Order: <span className="font-medium text-blue-600">
+                            {deliveryOrderData.do_number}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </Popup>

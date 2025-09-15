@@ -68,6 +68,12 @@ exports.createDeliveryOrder = async (req, res, next) => {
       payment_status = "proses_tagihan",
       status = "assigned",
       do_name,
+      // Gas filling fields
+      gas_volume_m3,
+      spbg_location,
+      calculation_method,
+      jisdor_rate,
+      gas_filling_cost,
     } = req.body;
 
     // Force unit to always be 'kubik' for delivery orders
@@ -210,6 +216,73 @@ exports.createDeliveryOrder = async (req, res, next) => {
       finalDoNumber = `DO-${yearMonth}-${String(doCount + 1).padStart(4, "0")}`;
     }
 
+    // 🎯 GOOGLE MAPS SCRAPING - Scrape coordinates for SPBU and unload locations
+    let finalLoadLatitude = load_latitude;
+    let finalLoadLongitude = load_longitude;
+    let finalUnloadLatitude = unload_latitude;
+    let finalUnloadLongitude = unload_longitude;
+    let processedAdditionalUnloadLocations = additional_unload_locations || [];
+
+    console.log('🔍 Starting location scraping process...');
+    console.log('📍 Input locations:', {
+      load_location,
+      unload_location,
+      additional_unload_locations,
+      existing_coordinates: {
+        load_lat: load_latitude,
+        load_lng: load_longitude,
+        unload_lat: unload_latitude,
+        unload_lng: unload_longitude
+      }
+    });
+
+    // Initialize backgroundScrapingData outside try-catch for proper scope
+    let backgroundScrapingData = null;
+
+    try {
+      const locationsToScrape = [];
+      
+      // Add load location (SPBU) for scraping if coordinates not provided
+      if (load_location && !load_latitude && !load_longitude) {
+        locationsToScrape.push({ type: 'load', location: load_location });
+        console.log(`➕ Added load location for scraping: ${load_location}`);
+      }
+      
+      // Add unload location for scraping if coordinates not provided
+      if (unload_location && !unload_latitude && !unload_longitude) {
+        locationsToScrape.push({ type: 'unload', location: unload_location });
+        console.log(`➕ Added unload location for scraping: ${unload_location}`);
+      }
+      
+      // Add additional unload locations for scraping
+      if (Array.isArray(additional_unload_locations)) {
+        additional_unload_locations.forEach((loc, index) => {
+          if (typeof loc === 'string' && loc.trim()) {
+            locationsToScrape.push({ type: 'additional_unload', location: loc.trim(), index });
+            console.log(`➕ Added additional unload location for scraping: ${loc.trim()}`);
+          }
+        });
+      }
+
+      console.log(`📊 Total locations to scrape: ${locationsToScrape.length}`);
+
+      // Store locations for background scraping (don't wait for scraping to complete)
+      if (locationsToScrape.length > 0) {
+        console.log('🗺️ Will scrape coordinates in background for locations:', locationsToScrape.map(l => l.location));
+        backgroundScrapingData = {
+          locationsToScrape,
+          deliveryOrderData: {
+            load_location,
+            unload_location,
+            additional_unload_locations
+          }
+        };
+      }
+    } catch (scrapingError) {
+      console.error('❌ Location scraping failed:', scrapingError.message);
+      // Continue with DO creation even if scraping fails
+    }
+
     // Create delivery order directly without PO dependency
     const deliveryOrder = await DeliveryOrder.create({
       driver_id,
@@ -226,14 +299,20 @@ exports.createDeliveryOrder = async (req, res, next) => {
       gaji,
       ongkosan: calculatedOngkosan,
       load_location,
-      load_latitude,
-      load_longitude,
+      load_latitude: finalLoadLatitude,
+      load_longitude: finalLoadLongitude,
       unload_location,
-      unload_latitude,
-      unload_longitude,
-      additional_unload_locations, // Include additional unload locations
+      unload_latitude: finalUnloadLatitude,
+      unload_longitude: finalUnloadLongitude,
+      additional_unload_locations: processedAdditionalUnloadLocations, // Include processed additional unload locations with coordinates
       payment_status,
       status,
+      // Gas filling fields
+      gas_volume_m3: gas_volume_m3 ? parseFloat(gas_volume_m3) : null,
+      spbg_location,
+      calculation_method,
+      jisdor_rate: jisdor_rate ? parseFloat(jisdor_rate) : null,
+      gas_filling_cost: gas_filling_cost ? parseFloat(gas_filling_cost) : null,
     }, {
       transaction,
     });
@@ -290,20 +369,39 @@ exports.createDeliveryOrder = async (req, res, next) => {
 
     await transaction.commit();
 
+    // Start background location scraping after successful DO creation
+    if (backgroundScrapingData) {
+      console.log(`🚀 Starting background location scraping for DO ${deliveryOrder.do_number}`);
+      
+      // Run scraping in background (don't await)
+      scrapeLocationsInBackground(deliveryOrder.id, backgroundScrapingData)
+        .catch(err => {
+          console.error(`❌ Background scraping failed for DO ${deliveryOrder.do_number}:`, err.message);
+        });
+    }
+
     res.status(201).json({
       success: true,
-      message: "Delivery order created successfully",
+      message: "Delivery order created successfully" + (backgroundScrapingData ? " (location scraping in progress)" : ""),
       data: {
         ...deliveryOrder.toJSON(),
         unit_display: deliveryOrder.getUnitDisplay() || "N/A",
         financial_summary: deliveryOrder.getFinancialSummary() || {},
         big_do_context: deliveryOrder.getBigDOContext() || null,
+        scraping_in_progress: backgroundScrapingData ? true : false,
       },
     });
   } catch (err) {
-    await transaction.rollback();
+    // Only rollback if transaction hasn't been committed yet
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
     console.error("Error creating delivery order:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ 
+      success: false, 
+      message: "An unexpected error occurred on the server.",
+      details: err.message 
+    });
     next(err);
   }
 };
@@ -1210,4 +1308,60 @@ const updateDriverAndVehicleStatus = async (deliveryOrder, oldStatus, newStatus,
     throw error;
   }
 };
+
+/**
+ * 🎯 BACKGROUND LOCATION SCRAPING
+ * Scrapes location coordinates in the background and updates the delivery order
+ */
+async function scrapeLocationsInBackground(deliveryOrderId, scrapingData) {
+  try {
+    console.log(`🔍 Background scraping started for DO ID ${deliveryOrderId}`);
+    
+    const { scrapeMultipleLocations } = require("../../utils/locationScraper");
+    const { locationsToScrape } = scrapingData;
+    
+    // Perform the scraping
+    const scrapingResults = await scrapeMultipleLocations(locationsToScrape);
+    
+    // Prepare update data
+    const updateData = {};
+    let hasUpdates = false;
+    
+    // Apply scraped coordinates
+    if (scrapingResults.load.lat && scrapingResults.load.lng) {
+      updateData.load_latitude = scrapingResults.load.lat;
+      updateData.load_longitude = scrapingResults.load.lng;
+      hasUpdates = true;
+      console.log(`✅ Background: Found load coordinates: ${scrapingResults.load.lat}, ${scrapingResults.load.lng}`);
+    }
+    
+    if (scrapingResults.unload.lat && scrapingResults.unload.lng) {
+      updateData.unload_latitude = scrapingResults.unload.lat;
+      updateData.unload_longitude = scrapingResults.unload.lng;
+      hasUpdates = true;
+      console.log(`✅ Background: Found unload coordinates: ${scrapingResults.unload.lat}, ${scrapingResults.unload.lng}`);
+    }
+    
+    if (scrapingResults.additional.length > 0) {
+      updateData.additional_unload_locations = scrapingResults.additional;
+      hasUpdates = true;
+      console.log(`✅ Background: Found ${scrapingResults.additional.length} additional location coordinates`);
+    }
+    
+    // Update the delivery order if we have new coordinates
+    if (hasUpdates) {
+      await DeliveryOrder.update(updateData, {
+        where: { id: deliveryOrderId }
+      });
+      
+      console.log(`🎯 Background scraping completed for DO ID ${deliveryOrderId} - coordinates updated`);
+    } else {
+      console.log(`⚠️ Background scraping completed for DO ID ${deliveryOrderId} - no coordinates found`);
+    }
+    
+  } catch (error) {
+    console.error(`❌ Background scraping error for DO ID ${deliveryOrderId}:`, error.message);
+    // Don't throw error for background processing - just log it
+  }
+}
 

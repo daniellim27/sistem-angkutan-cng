@@ -192,7 +192,16 @@ const DeliveryOrderCreatePage = () => {
         gas_filling_cost: formData.gas_filling_cost ? parseFloat(formData.gas_filling_cost) : null
       };
 
-      await apiClient.post('/delivery-orders', payload);
+      console.log('🗺️ Creating delivery order with location scraping...');
+      const response = await apiClient.post('/delivery-orders', payload);
+      
+      // Check if background scraping is in progress
+      const responseData = response.data.success ? response.data.data : response.data;
+      if (responseData.scraping_in_progress) {
+        console.log('📍 Location coordinates will be scraped in the background');
+        // You could show a toast notification here if desired
+      }
+      
       navigate('/delivery-orders');
     } catch (err) {
       setError('Failed to create delivery order.');
@@ -640,8 +649,14 @@ const DeliveryOrderCreatePage = () => {
           <button
             type="submit"
             disabled={submitting}
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
+            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50 flex items-center"
           >
+            {submitting && (
+              <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            )}
             {submitting ? 'Creating...' : 'Create Delivery Order'}
           </button>
         </div>
