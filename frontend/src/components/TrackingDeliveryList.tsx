@@ -93,7 +93,7 @@ const TrackingDeliveryList: React.FC<TrackingDeliveryListProps> = ({ className =
       // Ensure unit field exists with fallback
       const processedOrders = orders.map((order: DeliveryOrder) => ({
         ...order,
-        unit: order.unit || order.purchaseOrder?.unit || "ton",
+        unit: "kubik", // All delivery orders use cubic meters only
       }));
 
       setDeliveryOrders(processedOrders);
@@ -179,7 +179,7 @@ const TrackingDeliveryList: React.FC<TrackingDeliveryListProps> = ({ className =
               <option value="active">Trackable Deliveries</option>
               <option value="otw_to_load_location">On the way to SPBU</option>
               <option value="at_load_location">At SPBU Location</option>
-              <option value="otw_to_unload_location">On the way to Unload</option>
+              <option value="otw_to_unload_location">On the way to Customer</option>
               <option value="at_unload_location">At Customer</option>
               <option value="otw_to_base">Returning to Base</option>
             </select>

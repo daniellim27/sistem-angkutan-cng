@@ -162,7 +162,7 @@ const VehicleForm: React.FC<VehicleFormProps> = ({
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div>
-          <label htmlFor="capacity" className="block text-sm font-medium text-gray-700">Kapasitas (kg)</label>
+          <label htmlFor="capacity" className="block text-sm font-medium text-gray-700">Kapasitas (m³)</label>
           <input 
             type="number" 
             name="capacity" 

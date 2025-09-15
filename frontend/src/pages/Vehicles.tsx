@@ -781,7 +781,7 @@ const VehiclesPage = () => {
                         {vehicle.status.replace('_', ' ')}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600">{vehicle.type} - {vehicle.capacity ? parseInt(vehicle.capacity).toLocaleString('id-ID') : '-'} kg</p>
+                    <p className="text-sm text-gray-600">{vehicle.type} - {vehicle.capacity ? parseInt(vehicle.capacity).toLocaleString('id-ID') : '-'} m³</p>
 
                     <hr className="my-4"/>
 

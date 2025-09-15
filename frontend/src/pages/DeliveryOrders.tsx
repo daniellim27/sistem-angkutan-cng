@@ -64,14 +64,9 @@ const DeliveryOrdersPage = () => {
 
   const poId = searchParams.get("po_id");
 
-  // 🎯 Unit display helper
+  // 🎯 Unit display helper - always show cubic meters
   const getUnitDisplay = (unit: string) => {
-    const unitMap = {
-      kilogram: "kg",
-      ton: "ton",
-      kubik: "m³",
-    };
-    return unitMap[unit as keyof typeof unitMap] || unit;
+    return "m³"; // All units are displayed as cubic meters
   };
 
   // 🎯 Get unit with fallback - DOs are always kubik
@@ -398,7 +393,7 @@ const DeliveryOrdersPage = () => {
                               {unitDisplay}
                             </span>
                             <span className="text-xs text-gray-400">
-                              ({orderUnit === "kubik" ? "Vol" : "Wt"})
+                              (Vol)
                             </span>
                           </div>
 

@@ -61,7 +61,7 @@ const BigDOCreatePage: React.FC = () => {
     customer_address: "",
     item_name: "",
     quantity: 0,
-    unit: "ton",
+    unit: "kubik",
     unit_price: 0,
     pickup_location: "",
     pickup_latitude: undefined,
@@ -125,16 +125,8 @@ const BigDOCreatePage: React.FC = () => {
     unit: string,
     unitPrice: number
   ): number => {
-    switch (unit) {
-      case "kilogram":
-        return quantity * unitPrice;
-      case "ton":
-        return quantity * unitPrice;
-      case "kubik":
-        return quantity * unitPrice;
-      default:
-        return quantity * unitPrice;
-    }
+    // All calculations are volume-based in cubic meters
+    return quantity * unitPrice;
   };
 
   const formatCurrency = (amount: number) => {

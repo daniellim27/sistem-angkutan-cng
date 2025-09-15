@@ -119,7 +119,7 @@ const BigDODetailPage: React.FC = () => {
     customer_address: "",
     item_name: "",
     quantity: 0,
-    unit: "ton",
+    unit: "kubik",
     unit_price: 0,
     pickup_location: "",
     delivery_location: "",
@@ -193,16 +193,8 @@ const BigDODetailPage: React.FC = () => {
     unit: string,
     unitPrice: number
   ) => {
-    switch (unit) {
-      case "kilogram":
-        return quantity * unitPrice;
-      case "ton":
-        return quantity * 1000 * unitPrice;
-      case "kubik":
-        return quantity * unitPrice;
-      default:
-        return quantity * unitPrice;
-    }
+    // All calculations are volume-based in cubic meters
+    return quantity * unitPrice;
   };
 
   const handleUpdateStatus = async () => {
@@ -252,7 +244,7 @@ const BigDODetailPage: React.FC = () => {
         customer_address: "",
         item_name: "",
         quantity: 0,
-        unit: "ton",
+        unit: "kubik",
         unit_price: 0,
         pickup_location: "",
         delivery_location: "",
@@ -1090,8 +1082,6 @@ const BigDODetailPage: React.FC = () => {
                     }
                     className="w-full border border-gray-300 rounded-md px-3 py-2"
                   >
-                    <option value="kilogram">Kg</option>
-                    <option value="ton">Ton</option>
                     <option value="kubik">m³</option>
                   </select>
                 </div>

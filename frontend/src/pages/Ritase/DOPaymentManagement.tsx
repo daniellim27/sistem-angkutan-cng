@@ -192,50 +192,22 @@ const DOPaymentManagement: React.FC = () => {
     unit: string,
     unitPrice: number
   ): number => {
-    switch (unit) {
-      case "kilogram":
-        return quantity * unitPrice;
-      case "ton":
-        return quantity * unitPrice;
-      case "kubik":
-        return quantity * unitPrice;
-      default:
-        throw new Error(`Unknown unit: ${unit}`);
-    }
+    // All calculations are volume-based in cubic meters
+    return quantity * unitPrice;
   };
 
-  // ✅ Fixed: Dynamic unit formatting
+  // ✅ Fixed: Dynamic unit formatting - always cubic meters
   const formatQuantityWithUnit = (
     value: string | number | null | undefined,
     unit: string
   ): string => {
     const num = safeNumber(value);
-    switch (unit) {
-      case "kilogram":
-        return `${num.toLocaleString("id-ID")} Kg`;
-      case "ton":
-        return `${num.toLocaleString("id-ID")} Ton`;
-      case "kubik":
-        return `${num.toLocaleString("id-ID")} m³`;
-      default:
-        return `${num.toLocaleString("id-ID")} ${unit}`;
-    }
+    return `${num.toLocaleString("id-ID")} m³`; // All quantities are in cubic meters
   };
 
-  // ✅ Fixed: Dynamic unit price formatting
+  // ✅ Fixed: Dynamic unit price formatting - always per cubic meter
   const formatUnitPrice = (price: number, unit: string): string => {
-    switch (unit) {
-      case "ton":
-        return `${formatCurrency(price / 1000)}/kg (${formatCurrency(
-          price
-        )}/ton)`;
-      case "kilogram":
-        return `${formatCurrency(price)}/kg`;
-      case "kubik":
-        return `${formatCurrency(price)}/m³`;
-      default:
-        return `${formatCurrency(price)}/${unit}`;
-    }
+    return `${formatCurrency(price)}/m³`; // All pricing is per cubic meter
   };
 
   const calculatePPH = (amount: number, percentage: number): number => {
@@ -282,7 +254,7 @@ const DOPaymentManagement: React.FC = () => {
         const unitPrice = safeNumber(
           do_item.purchaseOrder?.unit_price || do_item.unit_price
         );
-        const unit = do_item.unit || "ton";
+        const unit = "kubik"; // All delivery orders use cubic meters
 
         const calculatedAmount = calculateUnitAwareAmount(
           quantity,
@@ -523,7 +495,7 @@ const DOPaymentManagement: React.FC = () => {
   const unitPrice = safeNumber(
     do_item.purchaseOrder?.unit_price || do_item.unit_price
   );
-  const unit = do_item.unit || "ton"; // Fallback to ton
+  const unit = "kubik"; // All delivery orders use cubic meters
 
   const totalInvoiced = doData.invoices.reduce(
     (sum, inv) => sum + inv.invoice_amount,

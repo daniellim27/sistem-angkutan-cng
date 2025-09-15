@@ -167,49 +167,18 @@ const ComprehensiveRitaseTable: React.FC = () => {
     direction: "desc" as "asc" | "desc",
   });
 
-  // Unit helper functions (unchanged)
+  // Unit helper functions - always show cubic meters
   const getUnitDisplay = (unit: string) => {
-    const unitMap = {
-      kilogram: "kg",
-      ton: "ton",
-      kubik: "m³",
-    };
-    return unitMap[unit as keyof typeof unitMap] || unit;
+    return "m³"; // All units are displayed as cubic meters
   };
 
   const getPricingContext = (unit: string, unitPrice: number) => {
-    const unitDisplay = getUnitDisplay(unit);
-
-    switch (unit) {
-      case "kilogram":
-        return {
-          display: `Rp ${unitPrice.toLocaleString("id-ID")}/kg`,
-          per_ton_equivalent: `(Rp ${(unitPrice * 1000).toLocaleString(
-            "id-ID"
-          )}/ton)`,
-          pricing_type: "Weight-based",
-        };
-      case "ton":
-        return {
-          display: `Rp ${unitPrice.toLocaleString("id-ID")}/ton`,
-          per_kg_equivalent: `(Rp ${(unitPrice / 1000).toLocaleString(
-            "id-ID"
-          )}/kg)`,
-          pricing_type: "Weight-based",
-        };
-      case "kubik":
-        return {
-          display: `Rp ${unitPrice.toLocaleString("id-ID")}/m³`,
-          per_ton_equivalent: null,
-          pricing_type: "Volume-based",
-        };
-      default:
-        return {
-          display: `Rp ${unitPrice.toLocaleString("id-ID")}/${unitDisplay}`,
-          per_ton_equivalent: null,
-          pricing_type: "Unknown",
-        };
-    }
+    // All pricing is now volume-based in cubic meters
+    return {
+      display: `Rp ${unitPrice.toLocaleString("id-ID")}/m³`,
+      per_ton_equivalent: null,
+      pricing_type: "Volume-based",
+    };
   };
 
   const getQuantityDisplay = (record: ComprehensiveRitaseData) => {
@@ -218,12 +187,7 @@ const ComprehensiveRitaseTable: React.FC = () => {
 
     return {
       main: `${quantity.toFixed(2)} ${unitDisplay}`,
-      conversion:
-        record.unit === "kilogram"
-          ? `(${(quantity / 1000).toFixed(3)} ton)`
-          : record.unit === "ton"
-          ? `(${(quantity * 1000).toLocaleString("id-ID")} kg)`
-          : null,
+      conversion: null, // No conversions needed - all quantities are in cubic meters
     };
   };
 

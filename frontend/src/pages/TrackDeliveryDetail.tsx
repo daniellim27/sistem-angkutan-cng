@@ -96,14 +96,9 @@ const TrackDeliveryDetail: React.FC = () => {
     fetchDeliveryOrder();
   }, [id]);
 
-  // Unit display helper
+  // Unit display helper - always show cubic meters
   const getUnitDisplay = (unit: string) => {
-    const unitMap = {
-      kilogram: "kg",
-      ton: "ton",
-      kubik: "m³",
-    };
-    return unitMap[unit as keyof typeof unitMap] || unit;
+    return "m³"; // All units are displayed as cubic meters
   };
 
   const getStatusColor = (status: string) => {
@@ -188,7 +183,7 @@ const TrackDeliveryDetail: React.FC = () => {
     );
   }
 
-  const unitDisplay = getUnitDisplay(deliveryOrder.unit || 'ton');
+  const unitDisplay = getUnitDisplay(deliveryOrder.unit || 'kubik');
 
   return (
     <div className="min-h-screen bg-gray-50">

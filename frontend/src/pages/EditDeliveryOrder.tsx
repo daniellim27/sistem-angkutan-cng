@@ -197,7 +197,7 @@ const EditDeliveryOrder: React.FC = () => {
         item_name: data.item_name || "",
         minimal_load_quantity: data.minimal_load_quantity || 0,
         actual_load_quantity: data.actual_load_quantity || 0,
-        unit: data.unit || "ton",
+        unit: "kubik", // All delivery orders use cubic meters only
         unit_price: data.unit_price || 0,
         load_location: data.load_location || "",
         unload_location: data.unload_location || "",

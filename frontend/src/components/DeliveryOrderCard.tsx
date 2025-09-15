@@ -42,19 +42,14 @@ interface DeliveryOrderCardProps {
 }
 
 const DeliveryOrderCard: React.FC<DeliveryOrderCardProps> = ({ deliveryOrder }) => {
-  // 🎯 Unit display helper
+  // 🎯 Unit display helper - always show cubic meters
   const getUnitDisplay = (unit: string) => {
-    const unitMap = {
-      kilogram: "kg",
-      ton: "ton",
-      kubik: "m³",
-    };
-    return unitMap[unit as keyof typeof unitMap] || unit;
+    return "m³"; // All units are displayed as cubic meters
   };
 
   // 🎯 Get unit with fallback
   const getOrderUnit = (order: DeliveryOrder) => {
-    return order.unit || order.purchaseOrder?.unit || "ton";
+    return "kubik"; // All delivery orders use cubic meters
   };
 
   const getStatusColor = (status: string) => {

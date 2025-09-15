@@ -134,9 +134,7 @@ const CreateDepositGroup = () => {
             className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
             required
           >
-            <option value="ton">Ton</option>
             <option value="kubik">Kubik (m³)</option>
-            <option value="kilogram">Kilogram</option>
           </select>
         </div>
 
