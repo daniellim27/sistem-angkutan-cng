@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Polyline, Popup } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -15,6 +15,9 @@ interface StaticRouteDisplayProps {
   showRouteInfo?: boolean;
 }
 
+// Simple in-memory cache for route calculations
+const routeCache = new Map<string, RouteInfo>();
+
 const StaticRouteDisplay: React.FC<StaticRouteDisplayProps> = ({
   waypoints,
   routeColor = '#3b82f6',
@@ -25,11 +28,42 @@ const StaticRouteDisplay: React.FC<StaticRouteDisplayProps> = ({
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasLoadedRef = useRef(false);
+
+  // Create a stable waypoints key for caching
+  const waypointsKey = useMemo(() => {
+    if (waypoints.length < 2) return null;
+    return waypoints
+      .map(wp => `${wp.lat.toFixed(6)},${wp.lng.toFixed(6)}`)
+      .join('|');
+  }, [waypoints]);
+
+  // Stable callback for route loading
+  const handleRouteLoaded = useCallback((route: RouteInfo) => {
+    if (onRouteLoaded) {
+      onRouteLoaded(route);
+    }
+  }, [onRouteLoaded]);
 
   useEffect(() => {
     if (waypoints.length < 2) {
       setRouteCoordinates([]);
       setRouteInfo(null);
+      hasLoadedRef.current = false;
+      return;
+    }
+
+    // Check cache first
+    if (waypointsKey && routeCache.has(waypointsKey)) {
+      const cachedRoute = routeCache.get(waypointsKey)!;
+      setRouteCoordinates(cachedRoute.coordinates);
+      setRouteInfo(cachedRoute);
+      // console.log('📋 Using cached route for waypoints:', waypointsKey); // Reduced logging
+      
+      if (!hasLoadedRef.current) {
+        handleRouteLoaded(cachedRoute);
+        hasLoadedRef.current = true;
+      }
       return;
     }
 
@@ -42,7 +76,7 @@ const StaticRouteDisplay: React.FC<StaticRouteDisplayProps> = ({
         const coordinates = waypoints.map(wp => `${wp.lng},${wp.lat}`).join(';');
         const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson`;
 
-        console.log('🗺️ Fetching route from OSRM:', osrmUrl);
+        // console.log('🗺️ Fetching route from OSRM:', osrmUrl); // Reduced logging
 
         const response = await fetch(osrmUrl);
         if (!response.ok) {
@@ -63,17 +97,24 @@ const StaticRouteDisplay: React.FC<StaticRouteDisplayProps> = ({
             duration: route.duration
           };
 
+          // Cache the route
+          if (waypointsKey) {
+            routeCache.set(waypointsKey, routeInfo);
+            // console.log('💾 Cached route for waypoints:', waypointsKey); // Reduced logging
+          }
+
           setRouteCoordinates(coordinates);
           setRouteInfo(routeInfo);
 
-          console.log('✅ Route fetched successfully:', {
-            distance: `${(route.distance / 1000).toFixed(2)} km`,
-            duration: `${Math.round(route.duration / 60)} minutes`,
-            points: coordinates.length
-          });
+          // console.log('✅ Route fetched successfully:', {
+          //   distance: `${(route.distance / 1000).toFixed(2)} km`,
+          //   duration: `${Math.round(route.duration / 60)} minutes`,
+          //   points: coordinates.length
+          // }); // Reduced logging
 
-          if (onRouteLoaded) {
-            onRouteLoaded(routeInfo);
+          if (!hasLoadedRef.current) {
+            handleRouteLoaded(routeInfo);
+            hasLoadedRef.current = true;
           }
         } else {
           throw new Error(data.message || 'No route found');
@@ -87,10 +128,10 @@ const StaticRouteDisplay: React.FC<StaticRouteDisplayProps> = ({
     };
 
     fetchRoute();
-  }, [waypoints, onRouteLoaded]);
+  }, [waypointsKey, handleRouteLoaded]); // Only depend on waypointsKey and stable callback
 
   if (loading) {
-    console.log('🔄 Loading route...');
+      // console.log('🔄 Loading route...'); // Reduced logging
   }
 
   if (error) {

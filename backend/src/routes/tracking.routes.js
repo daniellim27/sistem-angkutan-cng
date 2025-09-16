@@ -90,4 +90,42 @@ router.post('/test-concurrent', checkRole(['admin', 'owner']), trackingControlle
  */
 router.put('/vehicle/:vehicleId/device', checkRole(['admin', 'owner']), trackingController.updateVehicleDevice);
 
+/**
+ * POST /api/tracking/delivery/:deliveryOrderId/calculate-distance-compliance
+ * Calculate distance compliance for a delivery order
+ * Admin/Owner only
+ */
+router.post('/delivery/:deliveryOrderId/calculate-distance-compliance', checkRole(['admin', 'owner']), trackingController.calculateDistanceCompliance);
+
+/**
+ * GET /api/tracking/delivery/:deliveryOrderId/distance-compliance
+ * Get distance compliance status for a delivery order
+ */
+router.get('/delivery/:deliveryOrderId/distance-compliance', trackingController.getDistanceComplianceStatus);
+
+/**
+ * GET /api/tracking/delivery/:deliveryOrderId/distance-tracking
+ * Get real-time distance tracking for a delivery order
+ */
+router.get('/delivery/:deliveryOrderId/distance-tracking', trackingController.getDistanceTracking);
+
+/**
+ * GET /api/tracking/distance-compliance/summary
+ * Get active delivery orders distance compliance summary
+ */
+router.get('/distance-compliance/summary', trackingController.getDistanceComplianceSummary);
+
+/**
+ * GET /api/tracking/distance-compliance/alerts
+ * Get distance compliance alerts for drivers exceeding tolerance
+ */
+router.get('/distance-compliance/alerts', trackingController.getDistanceComplianceAlerts);
+
+/**
+ * POST /api/tracking/distance-compliance/batch-process
+ * Batch process distance compliance for multiple delivery orders
+ * Admin/Owner only
+ */
+router.post('/distance-compliance/batch-process', checkRole(['admin', 'owner']), trackingController.batchProcessDistanceCompliance);
+
 module.exports = router; 

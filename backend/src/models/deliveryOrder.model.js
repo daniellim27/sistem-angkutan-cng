@@ -111,6 +111,30 @@ module.exports = (sequelize) => {
         comment: 'JSON array of additional unload locations: [{"location": "Address", "latitude": "lat", "longitude": "lng"}]'
       },
 
+      // === DISTANCE TRACKING FIELDS ===
+      planned_route_distance_km: {
+        type: DataTypes.DECIMAL(10, 3),
+        allowNull: true,
+        comment: 'Planned route distance in kilometers for distance comparison'
+      },
+      actual_traveled_distance_km: {
+        type: DataTypes.DECIMAL(10, 3),
+        allowNull: true,
+        comment: 'Actual traveled distance in kilometers based on GPS tracking'
+      },
+      distance_tolerance_percentage: {
+        type: DataTypes.DECIMAL(5, 2),
+        allowNull: true,
+        defaultValue: 31.0,
+        comment: 'Distance tolerance percentage (default 31%)'
+      },
+      distance_compliance_status: {
+        type: DataTypes.ENUM('within_tolerance', 'exceeds_tolerance', 'not_calculated'),
+        allowNull: true,
+        defaultValue: 'not_calculated',
+        comment: 'Status of distance compliance with planned route'
+      },
+
       // === DOCUMENT FIELD ===
       surat_jalan_photo_url: {
         type: DataTypes.ARRAY(DataTypes.TEXT),

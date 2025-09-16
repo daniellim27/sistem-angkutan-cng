@@ -1,6 +1,8 @@
 const { DriverLocation, Vehicle, User, DeliveryOrder, DriverProfile } = require('../models');
 const { Op } = require('sequelize');
 const InovatracksScraper = require('../services/inovatracksScraper');
+const DistanceCalculationService = require('../services/distanceCalculationService');
+const DistanceTrackingService = require('../services/distanceTrackingService');
 
 // Initialize scraper instance
 const scraper = new InovatracksScraper();
@@ -1089,6 +1091,237 @@ exports.getVehicleTrails = async (req, res, next) => {
 
   } catch (error) {
     console.error('Error getting vehicle trails:', error);
+    next(error);
+  }
+};
+
+/**
+ * Calculate distance compliance for a delivery order
+ * POST /api/tracking/delivery/:deliveryOrderId/calculate-distance-compliance
+ */
+exports.calculateDistanceCompliance = async (req, res, next) => {
+  try {
+    const { deliveryOrderId } = req.params;
+    const { tolerancePercentage = 31.0, plannedDistance } = req.body;
+
+    const result = await DistanceCalculationService.calculateDistanceCompliance(
+      deliveryOrderId, 
+      tolerancePercentage,
+      plannedDistance
+    );
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: 'Distance compliance calculated successfully',
+        data: result.data
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Failed to calculate distance compliance',
+        error: result.error
+      });
+    }
+
+  } catch (error) {
+    console.error('Error calculating distance compliance:', error);
+    next(error);
+  }
+};
+
+/**
+ * Get distance compliance status for a delivery order
+ * GET /api/tracking/delivery/:deliveryOrderId/distance-compliance
+ */
+exports.getDistanceComplianceStatus = async (req, res, next) => {
+  try {
+    const { deliveryOrderId } = req.params;
+
+    const result = await DistanceCalculationService.getDistanceComplianceStatus(deliveryOrderId);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: result.data
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Failed to get distance compliance status',
+        error: result.error
+      });
+    }
+
+  } catch (error) {
+    console.error('Error getting distance compliance status:', error);
+    next(error);
+  }
+};
+
+/**
+ * Get real-time distance tracking for a delivery order
+ * GET /api/tracking/delivery/:deliveryOrderId/distance-tracking
+ */
+exports.getDistanceTracking = async (req, res, next) => {
+  try {
+    const { deliveryOrderId } = req.params;
+
+    // Get delivery order with location data
+    const deliveryOrder = await DeliveryOrder.findByPk(deliveryOrderId, {
+      attributes: [
+        'id',
+        'load_latitude',
+        'load_longitude',
+        'unload_latitude',
+        'unload_longitude',
+        'additional_unload_locations',
+        'planned_route_distance_km',
+        'actual_traveled_distance_km',
+        'distance_tolerance_percentage',
+        'distance_compliance_status'
+      ]
+    });
+
+    if (!deliveryOrder) {
+      return res.status(404).json({
+        success: false,
+        message: 'Delivery order not found'
+      });
+    }
+
+    // Get recent GPS tracking points (last 24 hours)
+    const gpsPoints = await DriverLocation.findAll({
+      where: {
+        delivery_order_id: deliveryOrderId,
+        latitude: { [Op.ne]: null },
+        longitude: { [Op.ne]: null },
+        timestamp: {
+          [Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) // Last 24 hours
+        }
+      },
+      order: [['timestamp', 'ASC']],
+      attributes: ['latitude', 'longitude', 'timestamp', 'speed']
+    });
+
+    // Calculate current actual distance
+    const currentActualDistance = DistanceCalculationService.calculateTotalTraveledDistance(gpsPoints);
+
+    // Calculate planned distance if not already stored
+    let plannedDistance = deliveryOrder.planned_route_distance_km;
+    if (!plannedDistance) {
+      plannedDistance = DistanceCalculationService.calculatePlannedRouteDistance(deliveryOrder);
+    }
+
+    // Get current compliance status
+    const tolerancePercentage = deliveryOrder.distance_tolerance_percentage || 31.0;
+    const comparison = DistanceCalculationService.compareDistances(
+      currentActualDistance, 
+      plannedDistance, 
+      tolerancePercentage
+    );
+
+    res.json({
+      success: true,
+      data: {
+        deliveryOrderId,
+        plannedDistance,
+        currentActualDistance,
+        tolerancePercentage,
+        complianceStatus: comparison,
+        gpsPointsCount: gpsPoints.length,
+        lastUpdate: gpsPoints.length > 0 ? gpsPoints[gpsPoints.length - 1].timestamp : null
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting distance tracking:', error);
+    next(error);
+  }
+};
+
+/**
+ * Get active delivery orders distance compliance summary
+ * GET /api/tracking/distance-compliance/summary
+ */
+exports.getDistanceComplianceSummary = async (req, res, next) => {
+  try {
+    const result = await DistanceTrackingService.getActiveDeliveryOrdersCompliance();
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: result.data
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Failed to get distance compliance summary',
+        error: result.error
+      });
+    }
+
+  } catch (error) {
+    console.error('Error getting distance compliance summary:', error);
+    next(error);
+  }
+};
+
+/**
+ * Get distance compliance alerts for drivers exceeding tolerance
+ * GET /api/tracking/distance-compliance/alerts
+ */
+exports.getDistanceComplianceAlerts = async (req, res, next) => {
+  try {
+    const result = await DistanceTrackingService.logDistanceComplianceAlerts();
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: result.data
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Failed to get distance compliance alerts',
+        error: result.error
+      });
+    }
+
+  } catch (error) {
+    console.error('Error getting distance compliance alerts:', error);
+    next(error);
+  }
+};
+
+/**
+ * Batch process distance compliance for multiple delivery orders
+ * POST /api/tracking/distance-compliance/batch-process
+ */
+exports.batchProcessDistanceCompliance = async (req, res, next) => {
+  try {
+    const { deliveryOrderIds, tolerancePercentage = 31.0 } = req.body;
+
+    if (!deliveryOrderIds || !Array.isArray(deliveryOrderIds)) {
+      return res.status(400).json({
+        success: false,
+        message: 'deliveryOrderIds array is required'
+      });
+    }
+
+    const result = await DistanceTrackingService.batchProcessDistanceCompliance(
+      deliveryOrderIds,
+      tolerancePercentage
+    );
+
+    res.json({
+      success: true,
+      message: 'Batch distance compliance processing completed',
+      data: result.data
+    });
+
+  } catch (error) {
+    console.error('Error batch processing distance compliance:', error);
     next(error);
   }
 }; 

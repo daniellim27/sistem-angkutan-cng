@@ -44,7 +44,8 @@ class MigrationRunner {
       '20250111_create_instant_budget_requests.js',
       '20250111_update_delivery_status_enum_simple.sql',
       '20250914_add_sim_expiry_date.js',
-      '20250914_add_kir_expiry_date.js'
+      '20250914_add_kir_expiry_date.js',
+      '20250115_add_planned_route_distance.js'
     ];
   }
 

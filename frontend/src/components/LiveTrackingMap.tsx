@@ -6,6 +6,8 @@ import apiClient from '../api/axiosConfig';
 import GasStationToolbar from './GasStationToolbar';
 import { GasStationApi, GasStation } from '../api/gasStationApi';
 import StaticRouteDisplay from './StaticRouteDisplay';
+import DistanceComplianceCard from './DistanceComplianceCard';
+import { useDistanceTracking } from '../hooks/useDistanceTracking';
 
 // Fix for default markers
 const DefaultIcon = L.Icon.Default as any;
@@ -308,7 +310,6 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
 
   // Routing state
   const [showRoute, setShowRoute] = useState(true);
-  const [routeWaypoints, setRouteWaypoints] = useState<L.LatLng[]>([]);
   const [routeInfo, setRouteInfo] = useState<{
     distance: number;
     time: number;
@@ -316,6 +317,22 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
   
   // Fixed trail duration - 24 hours only
   const trailHours = 24;
+
+  // Distance tracking hook
+  const {
+    data: distanceData,
+    loading: distanceLoading,
+    error: distanceError,
+    refresh: refreshDistance,
+    calculateCompliance
+  } = useDistanceTracking({
+    deliveryOrderId: deliveryOrderId || 0,
+    autoRefresh: autoRefresh,
+    refreshInterval: refreshInterval,
+    tolerancePercentage: 31.0,
+    plannedDistance: routeInfo && typeof routeInfo.distance === 'number' ? routeInfo.distance / 1000 : undefined // Convert from meters to km
+  });
+
 
   // Refs for request cancellation
   const trackingAbortController = useRef<AbortController | null>(null);
@@ -498,6 +515,20 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     return waypoints;
   }, [locationMarkers]); // Only depend on delivery locations, not vehicle position
 
+  // Memoized route waypoints to prevent unnecessary recalculations
+  const routeWaypoints = useMemo(() => {
+    if (!showRoute) return [];
+    return calculateRouteWaypoints();
+  }, [showRoute, calculateRouteWaypoints]);
+
+  // Stable callback for route loading to prevent unnecessary re-renders
+  const handleRouteLoaded = useCallback((route: any) => {
+    setRouteInfo({
+      distance: route.distance,
+      time: route.duration
+    });
+  }, []);
+
   // Fetch tracking data
   const fetchTrackingData = useCallback(async () => {
     try {
@@ -668,29 +699,25 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     fetchDeliveryOrderLocations();
   }, [fetchDeliveryOrderLocations]);
 
-  // Update waypoints when routing is enabled and data changes
+  // Log waypoints calculation for debugging
   useEffect(() => {
     if (showRoute) {
-      const waypoints = calculateRouteWaypoints();
-      console.log('🗺️ Calculating waypoints:', {
-        showRoute,
-        waypointsCount: waypoints.length,
-        hasVehicle: !!selectedVehicle,
-        locationMarkersCount: locationMarkers.length
-      });
+      // console.log('🗺️ Calculating waypoints:', {
+      //   showRoute,
+      //   waypointsCount: routeWaypoints.length,
+      //   hasVehicle: !!selectedVehicle,
+      //   locationMarkersCount: locationMarkers.length
+      // }); // Reduced logging
       
-      if (waypoints.length >= 2) {
-        setRouteWaypoints(waypoints);
-        console.log('✅ Waypoints set for routing:', waypoints.map(wp => ({ lat: wp.lat, lng: wp.lng })));
+      if (routeWaypoints.length >= 2) {
+        // console.log('✅ Waypoints set for routing:', routeWaypoints.map(wp => ({ lat: wp.lat, lng: wp.lng }))); // Reduced logging
       } else {
-        setRouteWaypoints([]);
-        console.log('⚠️ Not enough waypoints for routing');
+        // console.log('⚠️ Not enough waypoints for routing'); // Reduced logging
       }
     } else {
-      setRouteWaypoints([]);
-      console.log('🚫 Routing disabled');
+      // console.log('🚫 Routing disabled'); // Reduced logging
     }
-  }, [showRoute, calculateRouteWaypoints]);
+  }, [showRoute, routeWaypoints, selectedVehicle, locationMarkers.length]);
 
   // Calculate map center
   const getMapCenter = (): [number, number] => {
@@ -1013,13 +1040,7 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
               key={routeWaypointsKey} // Recalculate only when delivery locations change
               waypoints={routeWaypoints}
               routeColor="#3b82f6"
-              onRouteLoaded={(route) => {
-                console.log('Static route loaded:', route);
-                setRouteInfo({
-                  distance: route.distance,
-                  time: route.duration
-                });
-              }}
+              onRouteLoaded={handleRouteLoaded}
               showRouteInfo={true}
             />
           )}
@@ -1039,6 +1060,15 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
           />
         </MapContainer>
       </div>
+
+      {/* Distance Compliance Card - Only show for delivery order tracking */}
+      {deliveryOrderId && distanceData && (
+        <DistanceComplianceCard 
+          data={distanceData} 
+          className="w-full"
+        />
+      )}
+
     </div>
   );
 };
