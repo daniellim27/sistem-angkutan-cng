@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR Test - System Angkutan Ewaldo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-area {
+            border: 2px dashed #ddd;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+            background-color: #fafafa;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .upload-area:hover {
+            border-color: #007bff;
+            background-color: #f0f8ff;
+        }
+        .upload-area.dragover {
+            border-color: #007bff;
+            background-color: #e3f2fd;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .btn {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 5px;
+            display: none;
+        }
+        .result.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .result.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .result.loading {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .data-display {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        .field-group {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: white;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .field-label {
+            font-weight: bold;
+            color: #495057;
+            margin-bottom: 5px;
+        }
+        .field-value {
+            color: #212529;
+            font-family: monospace;
+            background-color: #f8f9fa;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .confidence {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .confidence.high { background-color: #d4edda; color: #155724; }
+        .confidence.medium { background-color: #fff3cd; color: #856404; }
+        .confidence.low { background-color: #f8d7da; color: #721c24; }
+        .image-preview {
+            max-width: 100%;
+            max-height: 300px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .calculation-summary {
+            background-color: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 OCR Test - Gas Station Receipt Processing</h1>
+        
+        <div class="upload-area" id="uploadArea">
+            <p>📸 Click here or drag and drop your gas station receipt image</p>
+            <p><small>Supported formats: JPG, PNG, JPEG (Max 10MB)</small></p>
+            <input type="file" id="imageInput" accept="image/*">
+        </div>
+        
+        <div style="text-align: center;">
+            <button class="btn" id="processBtn" disabled>🚀 Process OCR</button>
+            <button class="btn" id="clearBtn">🗑️ Clear</button>
+        </div>
+        
+        <div class="result" id="result">
+            <div id="resultContent"></div>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const imageInput = document.getElementById('imageInput');
+        const processBtn = document.getElementById('processBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const result = document.getElementById('result');
+        const resultContent = document.getElementById('resultContent');
+        
+        let selectedFile = null;
+        let imagePreview = null;
+
+        // File selection handling
+        uploadArea.addEventListener('click', () => imageInput.click());
+        uploadArea.addEventListener('dragover', handleDragOver);
+        uploadArea.addEventListener('dragleave', handleDragLeave);
+        uploadArea.addEventListener('drop', handleDrop);
+        imageInput.addEventListener('change', handleFileSelect);
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        }
+
+        function handleFileSelect(e) {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        }
+
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showResult('Please select an image file.', 'error');
+                return;
+            }
+
+            if (file.size > 10 * 1024 * 1024) {
+                showResult('File size must be less than 10MB.', 'error');
+                return;
+            }
+
+            selectedFile = file;
+            processBtn.disabled = false;
+            
+            // Show image preview
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                if (imagePreview) {
+                    imagePreview.remove();
+                }
+                imagePreview = document.createElement('img');
+                imagePreview.src = e.target.result;
+                imagePreview.className = 'image-preview';
+                uploadArea.appendChild(imagePreview);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Process OCR
+        processBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            showResult('🔄 Processing image with OCR...', 'loading');
+            processBtn.disabled = true;
+
+            try {
+                const formData = new FormData();
+                formData.append('image', selectedFile);
+
+                const response = await fetch('/api/ocr/test-process', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'Authorization': 'Bearer ' + getAuthToken() // You'll need to implement this
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    displayOCRResults(data.data);
+                } else {
+                    showResult(`❌ Error: ${data.message || data.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Network Error: ${error.message}`, 'error');
+            } finally {
+                processBtn.disabled = false;
+            }
+        });
+
+        function displayOCRResults(data) {
+            const extracted = data.extracted_data;
+            const billing = data.billing_calculation;
+            
+            let html = '<h3>✅ OCR Processing Results</h3>';
+            
+            // Extracted Data
+            html += '<div class="data-display">';
+            html += '<h4>📊 Extracted Data (MTR|PRSSR|TEMPT Format)</h4>';
+            
+            // MTR (Meter Readings)
+            if (extracted.stan_awal && extracted.stan_akhir) {
+                const meterDiff = extracted.stan_akhir - extracted.stan_awal;
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">🔢 MTR (Meter Reading)</div>
+                        <div class="field-value">
+                            Start: ${extracted.stan_awal} m³ | 
+                            End: ${extracted.stan_akhir} m³ | 
+                            Difference: ${meterDiff.toFixed(3)} m³
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // PRSSR (Pressure)
+            if (extracted.tekanan_operasi) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">⚡ PRSSR (Pressure)</div>
+                        <div class="field-value">${extracted.tekanan_operasi} Bar</div>
+                    </div>
+                `;
+            }
+            
+            // TEMPT (Temperature)
+            if (extracted.temperatur_operasi) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">🌡️ TEMPT (Temperature)</div>
+                        <div class="field-value">${extracted.temperatur_operasi}°C</div>
+                    </div>
+                `;
+            }
+            
+            // Additional Data
+            if (extracted.tanggal_mulai || extracted.tanggal_selesai) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">📅 Date Range</div>
+                        <div class="field-value">
+                            Start: ${extracted.tanggal_mulai || 'N/A'} | 
+                            End: ${extracted.tanggal_selesai || 'N/A'}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            if (extracted.harga_satuan || extracted.total_harga) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">💰 Pricing</div>
+                        <div class="field-value">
+                            Unit Price: ${extracted.harga_satuan ? 'Rp ' + extracted.harga_satuan.toLocaleString() : 'N/A'} | 
+                            Total: ${extracted.total_harga ? 'Rp ' + extracted.total_harga.toLocaleString() : 'N/A'}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Confidence Score
+            const confidence = extracted.overall_confidence || extracted.confidence || 0;
+            const confidenceClass = confidence >= 80 ? 'high' : confidence >= 60 ? 'medium' : 'low';
+            html += `
+                <div class="field-group">
+                    <div class="field-label">🎯 Confidence Score</div>
+                    <div class="field-value">
+                        <span class="confidence ${confidenceClass}">${confidence}%</span>
+                    </div>
+                </div>
+            `;
+            
+            html += '</div>';
+            
+            // Billing Calculation
+            if (billing && billing.success) {
+                html += '<div class="calculation-summary">';
+                html += '<h4>🧮 Billing Calculation</h4>';
+                
+                if (billing.volume_calculation) {
+                    const vol = billing.volume_calculation.result;
+                    html += `
+                        <div class="field-group">
+                            <div class="field-label">📐 Volume Calculation</div>
+                            <div class="field-value">
+                                Final Volume: ${vol.calculated_volume_m3} m³<br>
+                                Meter Difference: ${vol.meter_difference} m³<br>
+                                Pressure: ${vol.pressure_bar} Bar<br>
+                                Temperature: ${vol.temperature_celsius}°C<br>
+                                Compressibility Factor: ${vol.compressibility_factor}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                if (billing.summary) {
+                    const summary = billing.summary;
+                    html += `
+                        <div class="field-group">
+                            <div class="field-label">💰 Billing Summary</div>
+                            <div class="field-value">
+                                Volume: ${summary.final_volume_m3} m³<br>
+                                Unit Price: Rp ${summary.unit_price.toLocaleString()}<br>
+                                <strong>Total Amount: Rp ${summary.total_amount.toLocaleString()}</strong>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += '</div>';
+            }
+            
+            showResult(html, 'success');
+        }
+
+        function showResult(content, type) {
+            resultContent.innerHTML = content;
+            result.className = `result ${type}`;
+            result.style.display = 'block';
+        }
+
+        // Clear function
+        clearBtn.addEventListener('click', () => {
+            selectedFile = null;
+            processBtn.disabled = true;
+            imageInput.value = '';
+            if (imagePreview) {
+                imagePreview.remove();
+                imagePreview = null;
+            }
+            result.style.display = 'none';
+            uploadArea.innerHTML = `
+                <p>📸 Click here or drag and drop your gas station receipt image</p>
+                <p><small>Supported formats: JPG, PNG, JPEG (Max 10MB)</small></p>
+                <input type="file" id="imageInput" accept="image/*">
+            `;
+            // Re-attach event listeners
+            imageInput.addEventListener('change', handleFileSelect);
+        });
+
+        // Simple auth token function - you may need to adjust this based on your auth system
+        function getAuthToken() {
+            // For testing, you might want to get this from localStorage or prompt
+            return localStorage.getItem('authToken') || prompt('Enter your auth token:');
+        }
+    </script>
+</body>
+</html>

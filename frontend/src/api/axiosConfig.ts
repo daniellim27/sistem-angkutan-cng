@@ -69,7 +69,8 @@ apiClient.interceptors.response.use(
       response.config.url?.includes("/payments") ||
       response.config.url?.includes("/delivery-orders") ||
       response.config.url?.includes("/tracking/") ||
-      response.config.url?.includes("/gas-stations")
+      response.config.url?.includes("/gas-stations") ||
+      response.config.url?.includes("/ocr/")
     ) {
       return response; // Return full response for these endpoints
     }

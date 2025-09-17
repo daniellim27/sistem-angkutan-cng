@@ -50,6 +50,9 @@ const setupExchangeRateModel = require("./exchangeRate.model");
 // NEW: Budget Request Model (re-added for instant approval)
 const setupBudgetRequestModel = require("./budgetRequest.model");
 
+// NEW: OCR Result Model
+const setupOCRResultModel = require("./ocrResult.model");
+
 
 // NEW: Infrastructure Inventory Models
 const setupInfrastructureCategoryModel = require("./infrastructureCategory.model");
@@ -130,6 +133,9 @@ db.ExchangeRate = setupExchangeRateModel(sequelize);
 // Budget Request model (re-added for instant approval)
 db.BudgetRequest = setupBudgetRequestModel(sequelize);
 
+// OCR Result model
+db.OCRResult = setupOCRResultModel(sequelize);
+
 // Infrastructure Inventory models
 db.InfrastructureCategory = setupInfrastructureCategoryModel(sequelize);
 db.InfrastructureLocation = setupInfrastructureLocationModel(sequelize);
@@ -169,6 +175,7 @@ const {
   GasStation,
   ExchangeRate,
   BudgetRequest,
+  OCRResult,
   InfrastructureCategory,
   InfrastructureLocation,
   InfrastructureItem,
@@ -656,6 +663,27 @@ User.hasMany(GasStation, {
 User.hasMany(GasStation, {
   foreignKey: 'updated_by',
   as: 'updatedGasStations',
+});
+
+// === OCR Result Associations ===
+// DeliveryOrder to OCRResult (One-to-Many)
+DeliveryOrder.hasMany(OCRResult, {
+  foreignKey: "delivery_order_id",
+  as: "ocrResults",
+});
+OCRResult.belongsTo(DeliveryOrder, {
+  foreignKey: "delivery_order_id",
+  as: "deliveryOrder",
+});
+
+// User to OCRResult (One-to-Many) for processed_by
+User.hasMany(OCRResult, {
+  foreignKey: "processed_by",
+  as: "processedOCRResults",
+});
+OCRResult.belongsTo(User, {
+  foreignKey: "processed_by",
+  as: "processedBy",
 });
 
 module.exports = db;

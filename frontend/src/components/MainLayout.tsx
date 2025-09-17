@@ -12,6 +12,7 @@ const MainLayout = () => {
     const path = location.pathname;
     if (path === "/") return "CNG Dashboard";
     if (path.startsWith("/delivery-orders")) return "Delivery Orders";
+    if (path.startsWith("/ocr-processing")) return "OCR Processing";
     if (path.startsWith("/big-dos")) return "Big Delivery Orders";
     if (path.startsWith("/live-tracking")) return "Live GPS Tracking";
     if (path.startsWith("/vehicles/tires")) return "Tire Management";
@@ -180,6 +181,23 @@ const MainLayout = () => {
                 <span className="text-xl mr-3">🚚</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
                   Delivery Orders
+                </span>
+              </Link>
+            </li>
+
+            <li className="mb-4">
+              <Link
+                to="/ocr-processing"
+                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
+                  isActiveLink("/ocr-processing")
+                    ? "bg-gray-700 border-l-4 border-blue-500"
+                    : ""
+                }`}
+                title="OCR Processing"
+              >
+                <span className="text-xl mr-3">🔍</span>
+                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
+                  OCR Processing
                 </span>
               </Link>
             </li>

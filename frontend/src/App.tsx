@@ -21,6 +21,7 @@ import DeliveryOrderCreatePage from "./pages/DeliveryOrderCreatePage";
 import DeliveryOrdersPage from "./pages/DeliveryOrders";
 import DeliveryOrderDetailPage from "./pages/DeliveryOrderDetail";
 import EditDeliveryOrder from "./pages/EditDeliveryOrder";
+import OCRProcessingPage from "./pages/OCRProcessing";
 import BigDOListPage from "./pages/BigDOListPage";
 import BigDOCreatePage from "./pages/BigDOCreatePage";
 import BigDODetailPage from "./pages/BigDODetailPage";
@@ -122,6 +123,9 @@ function App() {
             path="delivery-orders/:id/edit"
             element={<EditDeliveryOrder />}
           />
+          
+          {/* OCR Processing Routes */}
+          <Route path="ocr-processing" element={<OCRProcessingPage />} />
 
           <Route path="big-dos" element={<BigDOListPage />} />
           <Route path="big-dos/create" element={<BigDOCreatePage />} />

@@ -45,6 +45,7 @@ services:
       BASE_URL: http://localhost:3000
       GOOGLE_APPLICATION_CREDENTIALS: /app/src/config/angkutan-system-d87e3-ef128576fdb9.json
       FIREBASE_PROJECT_ID: angkutan-system
+      OPENAI_API_KEY:
       AUTO_MIGRATE: "true"
     ports:
       - "3000:3000"

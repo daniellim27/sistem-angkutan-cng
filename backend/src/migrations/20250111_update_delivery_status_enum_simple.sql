@@ -10,37 +10,43 @@ CREATE TYPE delivery_status_simple AS ENUM (
     'cancelled'
 );
 
--- Step 2: Convert existing data and change column type
--- First, update any existing records to map to new values
-UPDATE delivery_orders SET status = 
+-- Step 2: Add temporary column with new enum type
+ALTER TABLE delivery_orders 
+ADD COLUMN status_new delivery_status_simple;
+
+-- Step 3: Populate the new column with mapped values
+UPDATE delivery_orders SET status_new = 
     CASE status::text
-        WHEN 'assigned' THEN 'at_spbu'
-        WHEN 'otw_to_load_location' THEN 'at_spbu' 
-        WHEN 'at_load_location' THEN 'at_spbu'
-        WHEN 'otw_to_base' THEN 'completed'
-        ELSE status::text
-    END::text;
+        WHEN 'assigned' THEN 'at_spbu'::delivery_status_simple
+        WHEN 'otw_to_load_location' THEN 'at_spbu'::delivery_status_simple
+        WHEN 'at_load_location' THEN 'at_spbu'::delivery_status_simple
+        WHEN 'otw_to_unload_location' THEN 'otw_to_unload_location'::delivery_status_simple
+        WHEN 'at_unload_location' THEN 'at_unload_location'::delivery_status_simple
+        WHEN 'otw_to_base' THEN 'completed'::delivery_status_simple
+        WHEN 'completed' THEN 'completed'::delivery_status_simple
+        WHEN 'cancelled' THEN 'cancelled'::delivery_status_simple
+        ELSE 'at_spbu'::delivery_status_simple
+    END;
 
--- Step 3: Change the column type
+-- Step 4: Drop the old column and rename the new one
+ALTER TABLE delivery_orders DROP COLUMN status;
+ALTER TABLE delivery_orders RENAME COLUMN status_new TO status;
+
+-- Step 5: Set NOT NULL constraint and default
 ALTER TABLE delivery_orders 
-ALTER COLUMN status DROP DEFAULT;
+ALTER COLUMN status SET NOT NULL;
 
-ALTER TABLE delivery_orders 
-ALTER COLUMN status TYPE delivery_status_simple 
-USING status::text::delivery_status_simple;
-
--- Step 4: Set new default
 ALTER TABLE delivery_orders 
 ALTER COLUMN status SET DEFAULT 'at_spbu';
 
--- Step 5: Clean up old enum
+-- Step 6: Clean up old enum
 DROP TYPE delivery_status;
 ALTER TYPE delivery_status_simple RENAME TO delivery_status;
 
--- Step 6: Add new timestamp column
+-- Step 7: Add new timestamp column
 ALTER TABLE delivery_orders ADD COLUMN IF NOT EXISTS departed_from_spbu_at TIMESTAMP WITH TIME ZONE;
 
--- Step 7: Migrate timestamp data
+-- Step 8: Migrate timestamp data
 UPDATE delivery_orders 
 SET departed_from_spbu_at = COALESCE(
     departed_to_load_location_at, 
@@ -49,12 +55,12 @@ SET departed_from_spbu_at = COALESCE(
 )
 WHERE departed_from_spbu_at IS NULL;
 
--- Step 8: Drop old timestamp columns
+-- Step 9: Drop old timestamp columns
 ALTER TABLE delivery_orders DROP COLUMN IF EXISTS departed_to_load_location_at;
 ALTER TABLE delivery_orders DROP COLUMN IF EXISTS arrived_at_load_location_at;
 ALTER TABLE delivery_orders DROP COLUMN IF EXISTS departed_from_load_location_at;
 
--- Step 9: Update indexes
+-- Step 10: Update indexes
 DROP INDEX IF EXISTS idx_active_delivery_orders_per_driver_id;
 DROP INDEX IF EXISTS idx_active_delivery_orders_per_vehicle;
 

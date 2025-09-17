@@ -75,14 +75,62 @@ module.exports = {
       }
     });
 
-    // Add indexes for better query performance
-    await queryInterface.addIndex('budget_requests', ['delivery_order_id']);
-    await queryInterface.addIndex('budget_requests', ['driver_id']);
-    await queryInterface.addIndex('budget_requests', ['status']);
-    await queryInterface.addIndex('budget_requests', ['created_at']);
+    // Add indexes for better query performance (with IF NOT EXISTS check)
+    try {
+      await queryInterface.addIndex('budget_requests', ['delivery_order_id'], {
+        name: 'budget_requests_delivery_order_id'
+      });
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+      console.log('Index budget_requests_delivery_order_id already exists, skipping...');
+    }
+
+    try {
+      await queryInterface.addIndex('budget_requests', ['driver_id'], {
+        name: 'budget_requests_driver_id'
+      });
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+      console.log('Index budget_requests_driver_id already exists, skipping...');
+    }
+
+    try {
+      await queryInterface.addIndex('budget_requests', ['status'], {
+        name: 'budget_requests_status'
+      });
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+      console.log('Index budget_requests_status already exists, skipping...');
+    }
+
+    try {
+      await queryInterface.addIndex('budget_requests', ['created_at'], {
+        name: 'budget_requests_created_at'
+      });
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+      console.log('Index budget_requests_created_at already exists, skipping...');
+    }
 
     // Add composite index for common queries
-    await queryInterface.addIndex('budget_requests', ['driver_id', 'delivery_order_id']);
+    try {
+      await queryInterface.addIndex('budget_requests', ['driver_id', 'delivery_order_id'], {
+        name: 'budget_requests_driver_delivery_composite'
+      });
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+      console.log('Index budget_requests_driver_delivery_composite already exists, skipping...');
+    }
   },
 
   async down(queryInterface, Sequelize) {

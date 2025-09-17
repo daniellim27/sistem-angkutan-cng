@@ -57,7 +57,8 @@ const driverExpenseRoutes = require("./routes/driverExpense.routes");
 const instantBudgetRequestRoutes = require("./routes/instantBudgetRequest.routes");
 const vehicleRoutes = require("./routes/vehicle.routes");
 const driverRoutes = require("./routes/driver.routes");
-
+const ocrRoutes = require("./routes/ocr.routes");
+const webOcrRoutes = require("./routes/web/ocr.routes");
 
 // === Import Exchange Rate Routes ===
 const webExchangeRateRoutes = require("./routes/web/exchangeRates.routes");
@@ -177,7 +178,7 @@ initializeDatabase().then(() => {
   app.use("/api/driver-expenses", driverExpenseRoutes);
   app.use("/api/budget-requests", instantBudgetRequestRoutes);
   app.use("/api/drivers", driverRoutes);
-
+  app.use("/api/ocr", ocrRoutes);
 
   // Static uploads
   app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
@@ -205,6 +206,7 @@ initializeDatabase().then(() => {
   app.use("/api/web/deposit-groups", webDepositGroupRoutes);
   app.use("/api/web/utils", utilsRoutes);
   app.use("/api/web/exchange-rates", webExchangeRateRoutes);
+  app.use("/api/web/ocr", webOcrRoutes);
 
   // Add tracking routes for both web and mobile access
   app.use("/api/tracking", trackingRoutes);
