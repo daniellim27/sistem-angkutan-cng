@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import apiClient from "../api/axiosConfig";
+import { formatDeliveryOrdersForExport, exportToExcel, exportToCSV } from "../utils/exportUtils";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -21,6 +22,16 @@ interface DeliveryOrder {
   driver_name: string;
   vehicle_info: string;
   created_at: string;
+  // Location fields
+  load_location?: string; // SPBU location
+  unload_location?: string; // Customer location
+  additional_unload_locations?: Array<{location: string, latitude?: number, longitude?: number}>; // Additional customer locations
+  spbg_location?: string; // Gas filling location
+  // Gas filling fields
+  gas_volume_m3?: number;
+  calculation_method?: 'jisdor' | 'fixed';
+  jisdor_rate?: number;
+  gas_filling_cost?: number;
   financial_summary: {
     trip_allowance: number;
     gaji: number;
@@ -50,6 +61,7 @@ const DeliveryOrdersPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>(""); // Add search state
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false); // Export dropdown state
   const [stats, setStats] = useState({
     total: 0,
     assigned: 0,
@@ -78,8 +90,20 @@ const DeliveryOrdersPage = () => {
     fetchDeliveryOrders();
   }, [statusFilter, poId, searchQuery]); // Add searchQuery to dependencies
 
-  // Handle clicking outside dropdown to close it
-  // Removed click outside handler for PO dropdown
+  // Handle clicking outside export dropdown to close it
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (exportDropdownOpen && !target.closest('.export-dropdown')) {
+        setExportDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [exportDropdownOpen]);
 
   // Removed fetchPurchaseOrders - DOs are now standalone
 
@@ -87,6 +111,26 @@ const DeliveryOrdersPage = () => {
     // Navigate directly to standalone DO creation
     navigate('/delivery-orders/create');
   };
+
+  // Export functions
+  const handleExportExcel = () => {
+    if (deliveryOrders.length === 0) {
+      alert('No delivery orders to export');
+      return;
+    }
+    const exportData = formatDeliveryOrdersForExport(deliveryOrders);
+    exportToExcel(exportData, `delivery_orders_${new Date().toISOString().split('T')[0]}`);
+  };
+
+  const handleExportCSV = () => {
+    if (deliveryOrders.length === 0) {
+      alert('No delivery orders to export');
+      return;
+    }
+    const exportData = formatDeliveryOrdersForExport(deliveryOrders);
+    exportToCSV(exportData, `delivery_orders_${new Date().toISOString().split('T')[0]}`);
+  };
+
 
   const fetchDeliveryOrders = async () => {
     try {
@@ -178,6 +222,53 @@ const DeliveryOrdersPage = () => {
           )}
         </div>
         <div className="flex items-center space-x-3">
+          {/* Export Dropdown */}
+          <div className="relative export-dropdown">
+            <button
+              onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
+              className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded flex items-center"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Export
+              <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            
+            {exportDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-50 border border-gray-200">
+                <div className="py-1">
+                  <button
+                    onClick={() => {
+                      handleExportExcel();
+                      setExportDropdownOpen(false);
+                    }}
+                    className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700"
+                  >
+                    <svg className="w-4 h-4 mr-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Export to Excel
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleExportCSV();
+                      setExportDropdownOpen(false);
+                    }}
+                    className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-green-50 hover:text-green-700"
+                  >
+                    <svg className="w-4 h-4 mr-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Export to CSV
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          
           {/* Add Delivery Order Button - Direct Creation */}
           <button
             onClick={handleAddDeliveryOrder}
@@ -186,8 +277,6 @@ const DeliveryOrdersPage = () => {
             <span className="mr-2">+</span>
             Add Delivery Order
           </button>
-            
-          {/* PO dropdown removed - DOs are now standalone */}
         </div>
       </div>
 
@@ -273,6 +362,12 @@ const DeliveryOrdersPage = () => {
                 Vehicle
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                SPBU Location
+              </th>
+              <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                Customer Locations
+              </th>
+              <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                 Quantity & Unit
               </th>
               <th className="px-4 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
@@ -344,6 +439,85 @@ const DeliveryOrdersPage = () => {
                         {dOrder.vehicle_info}
                       </div>
                     </td>
+
+                    {/* SPBU Location */}
+                    <td className="px-4 py-4">
+                      <div className="text-sm text-gray-700">
+                        {dOrder.load_location || dOrder.spbg_location || "N/A"}
+                      </div>
+                    </td>
+
+                     {/* Customer Locations */}
+                     <td className="px-4 py-4">
+                       <div className="space-y-1">
+                         {/* Check if we have any locations at all */}
+                         {(() => {
+                           const hasPrimaryLocation = dOrder.unload_location && dOrder.unload_location.trim() !== '';
+                           const hasAdditionalLocations = dOrder.additional_unload_locations && dOrder.additional_unload_locations.length > 0;
+                           
+                           if (!hasPrimaryLocation && !hasAdditionalLocations) {
+                             return <div className="text-sm text-gray-400">N/A</div>;
+                           }
+                           
+                           // If we only have primary location and no additional locations, show just the primary
+                           if (hasPrimaryLocation && !hasAdditionalLocations) {
+                             return (
+                               <div className="text-sm text-gray-700">
+                                 {dOrder.unload_location}
+                               </div>
+                             );
+                           }
+                           
+                           // If we only have additional locations and no primary, show them without the "+" prefix
+                           if (!hasPrimaryLocation && hasAdditionalLocations) {
+                             const validLocations = dOrder.additional_unload_locations
+                               ?.filter((location: any) => location && location.location && location.location.trim() !== '') || [];
+                             
+                             if (validLocations.length === 0) {
+                               return <div className="text-sm text-gray-400">N/A</div>;
+                             }
+                             
+                             return (
+                               <div className="space-y-1">
+                                 {validLocations.map((location, idx) => (
+                                   <div key={idx} className="text-sm text-gray-700">
+                                     {location.location}
+                                   </div>
+                                 ))}
+                               </div>
+                             );
+                           }
+                           
+                           // If we have both primary and additional locations
+                           const validAdditionalLocations = dOrder.additional_unload_locations
+                             ?.filter((location: any) => location && location.location && location.location.trim() !== '') || [];
+                           
+                           if (validAdditionalLocations.length === 0) {
+                             return (
+                               <div className="text-sm text-gray-700">
+                                 {dOrder.unload_location}
+                               </div>
+                             );
+                           }
+                           
+                           return (
+                             <div className="space-y-1">
+                               {/* Primary customer location */}
+                               <div className="text-sm text-gray-700">
+                                 {dOrder.unload_location}
+                               </div>
+                               
+                               {/* Additional customer locations - only show "+" if there are multiple */}
+                               {validAdditionalLocations.map((location, idx) => (
+                                 <div key={idx} className="text-xs text-gray-500">
+                                   {validAdditionalLocations.length === 1 ? location.location : `+ ${location.location}`}
+                                 </div>
+                               ))}
+                             </div>
+                           );
+                         })()}
+                       </div>
+                     </td>
 
                     {/* Quantity & Unit Column */}
                     <td className="px-4 py-4">
@@ -607,7 +781,7 @@ const DeliveryOrdersPage = () => {
             ) : (
               <tr>
                 <td
-                  colSpan={10} // Updated to account for removed PO Number column
+                  colSpan={12} // Updated to account for added SPBU Location and Customer Locations columns
                   className="px-4 py-12 text-center text-gray-500"
                 >
                   <div className="flex flex-col items-center">

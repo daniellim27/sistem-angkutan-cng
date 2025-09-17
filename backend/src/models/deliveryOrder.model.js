@@ -111,6 +111,37 @@ module.exports = (sequelize) => {
         comment: 'JSON array of additional unload locations: [{"location": "Address", "latitude": "lat", "longitude": "lng"}]'
       },
 
+      // === GAS FILLING FIELDS ===
+      gas_volume_m3: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        comment: 'Gas volume in cubic meters',
+        validate: { min: 0 }
+      },
+      spbg_location: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: 'SPBG (Stasiun Pengisian Bahan Bakar Gas) location for gas filling'
+      },
+      calculation_method: {
+        type: DataTypes.ENUM('jisdor', 'fixed'),
+        allowNull: true,
+        defaultValue: 'jisdor',
+        comment: 'Method for calculating gas filling cost (jisdor or fixed)'
+      },
+      jisdor_rate: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        comment: 'JISDOR rate in IDR per cubic meter',
+        validate: { min: 0 }
+      },
+      gas_filling_cost: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+        comment: 'Calculated gas filling cost',
+        validate: { min: 0 }
+      },
+
       // === DISTANCE TRACKING FIELDS ===
       planned_route_distance_km: {
         type: DataTypes.DECIMAL(10, 3),
