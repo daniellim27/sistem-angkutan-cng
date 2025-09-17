@@ -405,7 +405,7 @@ const DeliveryOrderCreatePage = () => {
             {/* Multiple Unload Locations */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Unload Locations *
+                Customer Locations *
               </label>
               <div className="space-y-2">
                 {unloadLocations.map((location, index) => (

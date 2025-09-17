@@ -747,7 +747,7 @@ const EditDeliveryOrder: React.FC = () => {
         <div className="mt-6">
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-700">
-              Unload Locations
+              Customer Locations
             </label>
             <button
               type="button"
