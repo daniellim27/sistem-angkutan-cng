@@ -264,9 +264,6 @@ const DeliveryOrdersPage = () => {
                 Name
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                PO Number
-              </th>
-              <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                 Customer
               </th>
               <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
@@ -319,15 +316,6 @@ const DeliveryOrdersPage = () => {
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-700">
                         {dOrder.do_name || "N/A"}
-                      </div>
-                    </td>
-
-                    {/* PO Number */}
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-700">
-                        {dOrder.purchaseOrder?.po_number || 
-                        dOrder.standalone_po_number || 
-                        `STANDALONE-${dOrder.id}`}
                       </div>
                     </td>
 
@@ -619,7 +607,7 @@ const DeliveryOrdersPage = () => {
             ) : (
               <tr>
                 <td
-                  colSpan={11} // Updated to account for new Name column
+                  colSpan={10} // Updated to account for removed PO Number column
                   className="px-4 py-12 text-center text-gray-500"
                 >
                   <div className="flex flex-col items-center">
