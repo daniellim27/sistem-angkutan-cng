@@ -68,6 +68,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
       payment_status = "proses_tagihan",
       status = "assigned",
       do_name,
+      deposit_group_id, // Add deposit group support
       // Gas filling fields
       gas_volume_m3,
       spbg_location,
@@ -317,7 +318,26 @@ exports.createDeliveryOrder = async (req, res, next) => {
       transaction,
     });
 
-    // Note: Deposit group integration removed - DOs are now standalone
+    // Add DO to deposit group if specified
+    if (deposit_group_id) {
+      const depositGroup = await DepositGroup.findByPk(deposit_group_id, { transaction });
+      if (!depositGroup) {
+        await transaction.rollback();
+        return res.status(400).json({
+          success: false,
+          message: 'Deposit group not found'
+        });
+      }
+
+      // Create deposit group member entry
+      await DepositGroupMember.create({
+        group_id: deposit_group_id,
+        delivery_order_id: deliveryOrder.id,
+        quantity: minimal_load_quantity
+      }, { transaction });
+
+      console.log(`✅ Added DO ${deliveryOrder.do_number} to deposit group ${depositGroup.group_name}`);
+    }
 
     // Update vehicle status
     await Vehicle.update(

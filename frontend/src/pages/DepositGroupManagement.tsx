@@ -2,6 +2,22 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../api/axiosConfig';
 
+interface DeliveryOrder {
+  id: number;
+  do_number: string;
+  customer_name: string;
+  item_name: string;
+  minimal_load_quantity: number;
+  unit: string;
+  unit_price: string;
+  total_amount: string;
+  final_amount: string;
+  payment_status: string;
+  status: string;
+  member_quantity?: number;
+  created_at: string;
+}
+
 interface DepositGroup {
   id: number;
   group_name: string;
@@ -14,6 +30,7 @@ interface DepositGroup {
   total_selisih_amount: string;
   selisih_details: string | null;
   selisih_status: string;
+  delivery_orders?: DeliveryOrder[]; // Added by backend response
   created_at: string;
   updated_at: string;
 }
@@ -33,10 +50,11 @@ interface PurchaseOrder {
 }
 
 interface DepositGroupWithMembers extends DepositGroup {
-  purchase_orders: PurchaseOrder[];
+  delivery_orders: DeliveryOrder[];
+  purchase_orders?: PurchaseOrder[]; // Keep for compatibility
   total_deposits: number;
   total_balance: number;
-  po_count: number;
+  do_count: number;
 }
 
 const DepositGroupManagement = () => {
@@ -44,47 +62,66 @@ const DepositGroupManagement = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showPOModal, setShowPOModal] = useState(false);
+  const [showDOModal, setShowDOModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<DepositGroupWithMembers | null>(null);
   const [editingGroup, setEditingGroup] = useState<DepositGroup | null>(null);
   const [allPurchaseOrders, setAllPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [loadingPOs, setLoadingPOs] = useState(false);
+  const [drivers, setDrivers] = useState<any[]>([]);
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [loadingDriversVehicles, setLoadingDriversVehicles] = useState(false);
 
   // Form data for creating/editing groups
   const [formData, setFormData] = useState({
     group_name: '',
     target_quantity: '',
     deposited_amount: '',
-    unit: 'ton'
+    unit: 'kubik' // Fixed to kubik (m³)
   });
 
-  // Form data for creating POs
-  const [poFormData, setPOFormData] = useState({
-    po_number: '',
+  // Form data for creating DOs
+  const [doFormData, setDOFormData] = useState({
     customer_name: '',
     item_name: '',
-    total_quantity: '',
-    unit: 'ton',
+    minimal_load_quantity: '',
+    unit: 'kubik', // DOs always use kubik
     unit_price: '',
     load_location: '',
-    unload_location: ''
+    unload_location: '',
+    driver_id: '',
+    vehicle_id: '',
+    trip_allowance: '0',
+    gaji: '0',
+    do_name: ''
   });
 
-  // Unit options for selection
-  const unitOptions = [
-    { value: 'ton', label: 'Ton' },
-    { value: 'kubik', label: 'Kubik (m³)' },
-    { value: 'kilogram', label: 'Kilogram' }
-  ];
+  // Unit is always kubik (m³) for deposit groups
 
   useEffect(() => {
     const initializeData = async () => {
       const purchaseOrders = await fetchAllPurchaseOrders();
       await fetchGroups(purchaseOrders); // Pass POs directly to avoid state timing issues
+      await fetchDriversAndVehicles();
     };
     initializeData();
   }, []);
+
+  const fetchDriversAndVehicles = async () => {
+    try {
+      setLoadingDriversVehicles(true);
+      const [driversRes, vehiclesRes] = await Promise.all([
+        apiClient.get('/users?role=driver'),
+        apiClient.get('/vehicles')
+      ]);
+      setDrivers(driversRes.data.data || driversRes.data || []);
+      setVehicles(vehiclesRes.data.data || vehiclesRes.data || []);
+    } catch (err) {
+      console.error('Failed to fetch drivers and vehicles:', err);
+    } finally {
+      setLoadingDriversVehicles(false);
+    }
+  };
 
   const fetchAllPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
     try {
@@ -113,28 +150,29 @@ const DepositGroupManagement = () => {
       // The API returns data directly, not wrapped in a 'data' property
       const groupsData = response.data || [];
       
-      // Use passed POs or fall back to state
+      // Use passed POs or fall back to state (keeping for compatibility)
       const posToUse = purchaseOrders || allPurchaseOrders;
       
-      // Calculate balance as: deposited_amount - sum_of_po_amounts
+      // Calculate balance - now based on DO amounts instead of PO amounts
       console.log('🔍 Debug - allPurchaseOrders length:', posToUse.length);
-      console.log('🔍 Debug - allPurchaseOrders:', posToUse.map(po => ({ id: po.id, deposit_group_id: po.deposit_group_id })));
       console.log('🔍 Debug - groupsData:', groupsData.map((g: DepositGroup) => ({ id: g.id, name: g.group_name })));
       
       const transformedGroups = groupsData.map((group: DepositGroup) => {
-        // Find POs for this group
+        // For now, keep PO references for compatibility but note they represent DOs
+        // The backend should return delivery orders associated with the group
         const groupPos = posToUse.filter((po: PurchaseOrder) => po.deposit_group_id === group.id);
-        console.log(`🔍 Debug - Group ${group.id} (${group.group_name}): Found ${groupPos.length} POs`, groupPos.map(po => ({ id: po.id, deposit_group_id: po.deposit_group_id })));
         const totalPOAmount = groupPos.reduce((sum, po) => sum + parseFloat(po.total_amount), 0);
         const depositedAmount = parseFloat(group.deposited_amount);
         const calculatedBalance = depositedAmount - totalPOAmount;
         
+        const deliveryOrders = group.delivery_orders || [];
         return {
           ...group,
-          purchase_orders: groupPos,
+          delivery_orders: deliveryOrders, // Use DOs from backend response
+          purchase_orders: groupPos, // Keep for compatibility
           total_deposits: depositedAmount,
-          total_balance: calculatedBalance, // Use calculated balance instead of API balance
-          po_count: groupPos.length
+          total_balance: calculatedBalance,
+          do_count: deliveryOrders.length
         };
       });
       setGroups(transformedGroups);
@@ -204,7 +242,7 @@ const DepositGroupManagement = () => {
       group_name: '',
       target_quantity: '',
       deposited_amount: '',
-      unit: 'ton'
+      unit: 'kubik' // Always kubik (m³)
     });
   };
 
@@ -220,57 +258,64 @@ const DepositGroupManagement = () => {
     setShowMembersModal(true);
   };
 
-  const openPOModal = (group: DepositGroupWithMembers) => {
+  const openDOModal = (group: DepositGroupWithMembers) => {
     setSelectedGroup(group);
-    setShowPOModal(true);
+    setShowDOModal(true);
   };
 
-  const handlePOSubmit = async (e: React.FormEvent) => {
+  const handleDOSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!selectedGroup) return;
 
     try {
       const payload = {
-        ...poFormData,
-        total_quantity: parseFloat(poFormData.total_quantity),
-        unit_price: parseFloat(poFormData.unit_price),
-        deposit_group_id: selectedGroup.id
+        ...doFormData,
+        minimal_load_quantity: parseFloat(doFormData.minimal_load_quantity),
+        unit_price: parseFloat(doFormData.unit_price),
+        trip_allowance: parseFloat(doFormData.trip_allowance),
+        gaji: parseFloat(doFormData.gaji),
+        deposit_group_id: selectedGroup.id,
+        unit: 'kubik' // Force kubik for DOs
       };
 
-      await apiClient.post('/purchase-orders', payload);
-      setShowPOModal(false);
-      resetPOForm();
-      // Refresh purchase orders first, then groups (so balance calculation has updated PO data)
+      await apiClient.post('/web/delivery-orders', payload);
+      setShowDOModal(false);
+      resetDOForm();
+      // Refresh groups after creating DO
       const updatedPOs = await fetchAllPurchaseOrders();
       fetchGroups(updatedPOs);
     } catch (err) {
-      setError('Failed to create purchase order.');
+      setError('Failed to create delivery order.');
       console.error(err);
     }
   };
 
-  const resetPOForm = () => {
-    setPOFormData({
-      po_number: '',
+  const resetDOForm = () => {
+    setDOFormData({
       customer_name: '',
       item_name: '',
-      total_quantity: '',
-      unit: 'ton',
+      minimal_load_quantity: '',
+      unit: 'kubik',
       unit_price: '',
       load_location: '',
-      unload_location: ''
+      unload_location: '',
+      driver_id: '',
+      vehicle_id: '',
+      trip_allowance: '0',
+      gaji: '0',
+      do_name: ''
     });
   };
 
   const closeModal = () => {
     setShowCreateModal(false);
-    setShowPOModal(false);
+    setShowDOModal(false);
     setShowMembersModal(false);
     setEditingGroup(null);
     setSelectedGroup(null);
     resetForm();
-    resetPOForm();
+    resetDOForm();
   };
 
   const formatCurrency = (amount: number) => {
@@ -289,10 +334,9 @@ const DepositGroupManagement = () => {
     });
   };
 
-  // Get unit display name
+  // Get unit display name (always kubik for deposit groups)
   const getUnitLabel = (value: string) => {
-    const unit = unitOptions.find(u => u.value === value);
-    return unit ? unit.label : value;
+    return "Kubik (m³)";
   };
 
   if (loading) return <div className="text-center p-8">Loading deposit groups...</div>;
@@ -388,17 +432,17 @@ const DepositGroupManagement = () => {
 
               <div className="flex space-x-2">
                 <button
-                  onClick={() => openPOModal(group)}
+                  onClick={() => openDOModal(group)}
                   className="flex-1 bg-green-500 hover:bg-green-600 text-white text-sm py-2 px-3 rounded"
                 >
-                  Add PO
+                  Add DO
                 </button>
-                <button
-                  onClick={() => openMembersModal(group)}
-                  className="flex-1 bg-gray-500 hover:bg-gray-600 text-white text-sm py-2 px-3 rounded"
-                >
-                  View POs
-                </button>
+                 <button
+                   onClick={() => openMembersModal(group)}
+                   className="flex-1 bg-gray-500 hover:bg-gray-600 text-white text-sm py-2 px-3 rounded"
+                 >
+                   View DOs
+                 </button>
                 <button
                   onClick={() => handleEdit(group)}
                   className="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded"
@@ -477,23 +521,17 @@ const DepositGroupManagement = () => {
                   />
                 </div>
 
-                {/* Unit */}
+                {/* Unit (Fixed to m³) */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Unit *
+                    Unit
                   </label>
-                  <select
-                    value={formData.unit}
-                    onChange={(e) => setFormData(prev => ({ ...prev, unit: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    required
-                  >
-                    {unitOptions.map(unit => (
-                      <option key={unit.value} value={unit.value}>
-                        {unit.label}
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    type="text"
+                    value="Kubik (m³)"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                    disabled
+                  />
                 </div>
 
                 {/* Deposited Amount */}
@@ -534,27 +572,27 @@ const DepositGroupManagement = () => {
         </div>
       )}
 
-      {/* PO Creation Modal */}
-      {showPOModal && selectedGroup && (
+      {/* DO Creation Modal */}
+      {showDOModal && selectedGroup && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Create Purchase Order in {selectedGroup.group_name}
+                Create Delivery Order in {selectedGroup.group_name}
               </h3>
               
-              <form onSubmit={handlePOSubmit} className="space-y-4">
+              <form onSubmit={handleDOSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* PO Number */}
+                  {/* DO Name */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      PO Number *
+                      DO Name *
                     </label>
                     <input
                       type="text"
-                      value={poFormData.po_number}
-                      onChange={(e) => setPOFormData(prev => ({ ...prev, po_number: e.target.value }))}
-                      placeholder="Enter PO number"
+                      value={doFormData.do_name}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, do_name: e.target.value }))}
+                      placeholder="Enter DO name"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
                       required
                     />
@@ -567,8 +605,8 @@ const DepositGroupManagement = () => {
                     </label>
                     <input
                       type="text"
-                      value={poFormData.customer_name}
-                      onChange={(e) => setPOFormData(prev => ({ ...prev, customer_name: e.target.value }))}
+                      value={doFormData.customer_name}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, customer_name: e.target.value }))}
                       placeholder="Enter customer name"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
                       required
@@ -582,48 +620,69 @@ const DepositGroupManagement = () => {
                     </label>
                     <input
                       type="text"
-                      value={poFormData.item_name}
-                      onChange={(e) => setPOFormData(prev => ({ ...prev, item_name: e.target.value }))}
+                      value={doFormData.item_name}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, item_name: e.target.value }))}
                       placeholder="Enter item name"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
                       required
                     />
                   </div>
 
-                  {/* Total Quantity */}
+                  {/* Driver */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Total Quantity *
+                      Driver *
+                    </label>
+                    <select
+                      value={doFormData.driver_id}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, driver_id: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      required
+                    >
+                      <option value="">Select Driver</option>
+                      {drivers.map(driver => (
+                        <option key={driver.id} value={driver.id}>
+                          {driver.full_name || driver.username}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Vehicle */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Vehicle *
+                    </label>
+                    <select
+                      value={doFormData.vehicle_id}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, vehicle_id: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      required
+                    >
+                      <option value="">Select Vehicle</option>
+                      {vehicles.map(vehicle => (
+                        <option key={vehicle.id} value={vehicle.id}>
+                          {vehicle.license_plate} - {vehicle.brand}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Minimal Load Quantity */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Minimal Load Quantity *
                     </label>
                     <input
                       type="number"
-                      value={poFormData.total_quantity}
-                      onChange={(e) => setPOFormData(prev => ({ ...prev, total_quantity: e.target.value }))}
+                      value={doFormData.minimal_load_quantity}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, minimal_load_quantity: e.target.value }))}
                       placeholder="Enter quantity"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
                       min="0"
                       step="0.01"
                       required
                     />
-                  </div>
-
-                  {/* Unit */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Unit *
-                    </label>
-                    <select
-                      value={poFormData.unit}
-                      onChange={(e) => setPOFormData(prev => ({ ...prev, unit: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    >
-                      {unitOptions.map(unit => (
-                        <option key={unit.value} value={unit.value}>
-                          {unit.label}
-                        </option>
-                      ))}
-                    </select>
                   </div>
 
                   {/* Unit Price */}
@@ -633,8 +692,8 @@ const DepositGroupManagement = () => {
                     </label>
                     <input
                       type="number"
-                      value={poFormData.unit_price}
-                      onChange={(e) => setPOFormData(prev => ({ ...prev, unit_price: e.target.value }))}
+                      value={doFormData.unit_price}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, unit_price: e.target.value }))}
                       placeholder="Enter unit price"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
                       min="0"
@@ -643,16 +702,48 @@ const DepositGroupManagement = () => {
                     />
                   </div>
 
-                  {/* SPBU Location */}
+                  {/* Trip Allowance */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      SPBU Location
+                      Trip Allowance (IDR)
+                    </label>
+                    <input
+                      type="number"
+                      value={doFormData.trip_allowance}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, trip_allowance: e.target.value }))}
+                      placeholder="Enter trip allowance"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+
+                  {/* Gaji */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Gaji (IDR)
+                    </label>
+                    <input
+                      type="number"
+                      value={doFormData.gaji}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, gaji: e.target.value }))}
+                      placeholder="Enter gaji"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+
+                  {/* Load Location */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Load Location
                     </label>
                     <input
                       type="text"
-                      value={poFormData.load_location}
-                      onChange={(e) => setPOFormData(prev => ({ ...prev, load_location: e.target.value }))}
-                      placeholder="Enter SPBU location"
+                      value={doFormData.load_location}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, load_location: e.target.value }))}
+                      placeholder="Enter load location"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     />
                   </div>
@@ -664,10 +755,23 @@ const DepositGroupManagement = () => {
                     </label>
                     <input
                       type="text"
-                      value={poFormData.unload_location}
-                      onChange={(e) => setPOFormData(prev => ({ ...prev, unload_location: e.target.value }))}
+                      value={doFormData.unload_location}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, unload_location: e.target.value }))}
                       placeholder="Enter unload location"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+
+                  {/* Unit (Read-only) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Unit
+                    </label>
+                    <input
+                      type="text"
+                      value="Kubik (m³)"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                      disabled
                     />
                   </div>
                 </div>
@@ -684,7 +788,7 @@ const DepositGroupManagement = () => {
                     type="submit"
                     className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
                   >
-                    Create PO
+                    Create DO
                   </button>
                 </div>
               </form>
@@ -700,7 +804,7 @@ const DepositGroupManagement = () => {
             <div className="mt-3">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-medium text-gray-900">
-                  Purchase Orders in {selectedGroup.group_name}
+                  Delivery Orders in {selectedGroup.group_name}
                 </h3>
                 <button
                   onClick={closeModal}
@@ -715,7 +819,7 @@ const DepositGroupManagement = () => {
               {loadingPOs ? (
                 <div className="text-center py-8">
                   <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  <p className="mt-2 text-gray-500">Loading purchase orders...</p>
+                  <p className="mt-2 text-gray-500">Loading delivery orders...</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -723,7 +827,7 @@ const DepositGroupManagement = () => {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          PO Number
+                          DO Number
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Customer
@@ -741,39 +845,39 @@ const DepositGroupManagement = () => {
                           Total Amount
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
+                          Payment Status
                         </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {selectedGroup.purchase_orders.map((po) => (
-                        <tr key={po.id} className="hover:bg-gray-50">
+                      {selectedGroup.delivery_orders.map((do_item) => (
+                        <tr key={do_item.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {po.po_number}
+                            {do_item.do_number}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {po.customer_name}
+                            {do_item.customer_name}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {po.item_name}
+                            {do_item.item_name}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                            {po.total_quantity} {getUnitLabel(po.unit)}
+                            {do_item.minimal_load_quantity} Kubik
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                            {formatCurrency(parseFloat(po.unit_price))}
+                            {formatCurrency(parseFloat(do_item.unit_price))}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                            {formatCurrency(parseFloat(po.total_amount))}
+                            {formatCurrency(parseFloat(do_item.total_amount))}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                              po.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-                              po.status === 'partial' ? 'bg-yellow-100 text-yellow-800' :
-                              po.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                              do_item.payment_status === 'paid' ? 'bg-green-100 text-green-800' :
+                              do_item.payment_status === 'partial' ? 'bg-yellow-100 text-yellow-800' :
+                              do_item.payment_status === 'proses_tagihan' ? 'bg-blue-100 text-blue-800' :
                               'bg-red-100 text-red-800'
                             }`}>
-                              {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
+                              {do_item.payment_status.replace('_', ' ').charAt(0).toUpperCase() + do_item.payment_status.replace('_', ' ').slice(1)}
                             </span>
                           </td>
                         </tr>
@@ -783,9 +887,9 @@ const DepositGroupManagement = () => {
                 </div>
               )}
 
-              {!loadingPOs && selectedGroup.purchase_orders.length === 0 && (
+              {!loadingPOs && selectedGroup.delivery_orders.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
-                  <p>No purchase orders in this group yet.</p>
+                  <p>No delivery orders in this group yet.</p>
                 </div>
               )}
             </div>

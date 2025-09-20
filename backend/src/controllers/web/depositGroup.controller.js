@@ -69,6 +69,9 @@ module.exports = {
     try {
        const { group_name, target_quantity, deposited_amount, unit, delivery_order_ids = [], purchase_order_id } = req.body;
       
+      // Force unit to always be 'kubik' for deposit groups
+      const finalUnit = 'kubik';
+      
       // *** FIX STARTS HERE ***
       // The initial balance of the group should be the amount that was deposited.
       const balance = deposited_amount; 
@@ -80,7 +83,7 @@ module.exports = {
         target_quantity, 
         deposited_amount, 
         remaining_quantity, 
-        unit, 
+        unit: finalUnit, // Always kubik
         status: 'active'
       });
 
@@ -168,7 +171,7 @@ module.exports = {
             {
               model: DeliveryOrder,
               as: 'deliveryOrder', // ✅ Must match the alias defined in the association
-              attributes: ['id', 'do_number', 'customer_name', 'final_amount', 'total_amount', 'is_amount_finalized', 'payment_status']
+              attributes: ['id', 'do_number', 'customer_name', 'item_name', 'minimal_load_quantity', 'unit', 'unit_price', 'final_amount', 'total_amount', 'is_amount_finalized', 'payment_status', 'status']
             }
           ]
         });
@@ -191,7 +194,11 @@ module.exports = {
         
         return {
           ...group.get({ plain: true }),
-          status
+          status,
+          delivery_orders: members.map(member => ({
+            ...member.deliveryOrder.get({ plain: true }),
+            member_quantity: member.quantity
+          }))
         };
       }));
       

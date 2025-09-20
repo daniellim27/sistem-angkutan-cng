@@ -16,7 +16,7 @@ const CreateDepositGroup = () => {
     group_name: '',
     target_quantity: '',
     deposited_amount: '',
-    unit: 'ton'
+    unit: 'kubik' // Fixed to kubik (m³)
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
