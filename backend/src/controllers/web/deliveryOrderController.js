@@ -758,6 +758,7 @@ exports.updateDeliveryOrder = async (req, res, next) => {
       load_longitude,
       unload_latitude,
       unload_longitude,
+      additional_unload_locations, // Add support for additional unload locations
       payment_status,
       status,
       do_name,
@@ -802,6 +803,7 @@ exports.updateDeliveryOrder = async (req, res, next) => {
       load_longitude: load_longitude ?? deliveryOrder.load_longitude,
       unload_latitude: unload_latitude ?? deliveryOrder.unload_latitude,
       unload_longitude: unload_longitude ?? deliveryOrder.unload_longitude,
+      additional_unload_locations: additional_unload_locations ?? deliveryOrder.additional_unload_locations,
       payment_status: payment_status ?? deliveryOrder.payment_status,
       status: status ?? deliveryOrder.status,
       do_name: do_name ?? deliveryOrder.do_name,

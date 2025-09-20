@@ -24,6 +24,7 @@ interface DeliveryOrder {
   updated_at: string;
   load_location?: string;
   unload_location?: string;
+  additional_unload_locations?: Array<{location: string, latitude?: number, longitude?: number}>;
   financial_summary: {
     trip_allowance: number;
     gaji: number;
@@ -327,7 +328,7 @@ const TrackDeliveryDetail: React.FC = () => {
             </div>
 
             {/* Location Information */}
-            {(deliveryOrder.load_location || deliveryOrder.unload_location) && (
+            {(deliveryOrder.load_location || deliveryOrder.unload_location || (deliveryOrder.additional_unload_locations && deliveryOrder.additional_unload_locations.length > 0)) && (
               <div className="bg-white rounded-lg shadow-sm p-6 lg:col-span-2">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Locations</h2>
                 <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -337,10 +338,23 @@ const TrackDeliveryDetail: React.FC = () => {
                       <dd className="text-sm text-gray-900 mt-1">{deliveryOrder.load_location}</dd>
                     </div>
                   )}
-                  {deliveryOrder.unload_location && (
+                  {(deliveryOrder.unload_location || (deliveryOrder.additional_unload_locations && deliveryOrder.additional_unload_locations.length > 0)) && (
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Unload Location:</dt>
-                      <dd className="text-sm text-gray-900 mt-1">{deliveryOrder.unload_location}</dd>
+                      <dt className="text-sm font-medium text-gray-500">Customer Locations:</dt>
+                      <dd className="text-sm text-gray-900 mt-1 space-y-1">
+                        {deliveryOrder.unload_location && (
+                          <div className="text-sm text-gray-900">{deliveryOrder.unload_location}</div>
+                        )}
+                        {deliveryOrder.additional_unload_locations && deliveryOrder.additional_unload_locations.length > 0 && (
+                          deliveryOrder.additional_unload_locations
+                            .filter((location: any) => location && location.location && location.location.trim() !== '')
+                            .map((location: any, idx: number) => (
+                              <div key={idx} className="text-sm text-gray-700">
+                                {location.location}
+                              </div>
+                            ))
+                        )}
+                      </dd>
                     </div>
                   )}
                 </dl>

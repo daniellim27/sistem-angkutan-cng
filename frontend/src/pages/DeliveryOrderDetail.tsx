@@ -45,6 +45,15 @@ interface DeliveryOrder {
   // Surat jalan photos
   surat_jalan_photo_url?: string | string[];
   nota_photo_url?: string | string[];
+  // Per-location documentation
+  location_documentation?: Array<{
+    location_index: number;
+    location_name: string;
+    photos: string[];
+    uploaded_at: string;
+    completed: boolean;
+    completed_at?: string;
+  }>;
   // Added financial and expense data
   expenses?: DriverExpense[];
   financial_summary?: {
@@ -564,6 +573,98 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
               <p className="text-gray-500 text-lg">No surat jalan documents uploaded yet</p>
               <p className="text-gray-400 text-sm mt-2">Documents will appear here once the driver confirms the load</p>
             </div>
+          </div>
+        )}
+
+        {/* Per-Location Documentation */}
+        {deliveryOrder.location_documentation && deliveryOrder.location_documentation.length > 0 && (
+          <div className="bg-white p-6 rounded-lg shadow border-t-4 border-purple-500">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">📍 Per-Location Documentation</h2>
+            
+            {deliveryOrder.location_documentation.map((locationDoc, index) => (
+              <div key={index} className="mb-6 last:mb-0">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-lg font-medium text-gray-800 flex items-center">
+                    <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-sm font-medium mr-3">
+                      Lokasi {locationDoc.location_index + 1}
+                    </span>
+                    {locationDoc.location_name}
+                  </h3>
+                  <div className="flex items-center space-x-2">
+                    {locationDoc.completed && (
+                      <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm font-medium flex items-center">
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Completed
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-500">
+                      Uploaded: {new Date(locationDoc.uploaded_at).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+                
+                {locationDoc.photos && locationDoc.photos.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {locationDoc.photos.map((photoUrl, photoIndex) => (
+                      <div key={photoIndex} className="relative group">
+                        <div className="bg-gray-50 border-2 border-dashed border-purple-200 rounded-lg p-4 hover:border-purple-300 transition-colors">
+                          <div className="flex items-center justify-center space-x-2 mb-3">
+                            <svg className="w-8 h-8 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <span className="text-lg font-medium text-gray-700">
+                              Photo {photoIndex + 1}
+                            </span>
+                          </div>
+                          
+                          <div className="mb-3">
+                            <img
+                              src={`${BACKEND_URL}/${photoUrl}`}
+                              alt={`Location ${locationDoc.location_name} - Photo ${photoIndex + 1}`}
+                              className="w-full h-48 object-cover rounded-lg"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                const parent = target.parentElement;
+                                if (parent) {
+                                  parent.innerHTML = `
+                                    <div class="flex items-center justify-center h-48 bg-gray-200 rounded-lg">
+                                      <span class="text-gray-500">Image not available</span>
+                                    </div>
+                                  `;
+                                }
+                              }}
+                            />
+                          </div>
+                          
+                          <a
+                            href={`${BACKEND_URL}/${photoUrl}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            View Full Size
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {(!locationDoc.photos || locationDoc.photos.length === 0) && (
+                  <div className="text-center py-4 bg-gray-50 rounded-lg">
+                    <p className="text-gray-500">No photos uploaded for this location yet</p>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
 

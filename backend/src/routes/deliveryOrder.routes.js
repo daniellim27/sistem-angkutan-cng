@@ -151,12 +151,27 @@ router.post(
   loadConfirmationController.confirmLoad
 );
 
+// Upload surat jalan photo separately (after load confirmation)
+router.post(
+  "/:id/upload-surat-jalan",
+  checkRole(["driver"]),
+  suratJalanUpload.array("surat_jalan_photo", 10), // Allow up to 10 surat jalan photos
+  loadConfirmationController.uploadSuratJalanPhoto
+);
+
 // Upload nota photo endpoint (before arrive at unload)
 router.post(
   "/:id/upload-nota",
   checkRole(["driver"]),
   suratJalanUpload.array("nota_photo", 5), // Allow up to 5 nota photos
   doController.uploadNotaPhoto
+);
+
+// Complete location endpoint (for sequential location completion)
+router.post(
+  "/:id/complete-location",
+  checkRole(["driver"]),
+  doController.completeLocation
 );
 
 router.patch(

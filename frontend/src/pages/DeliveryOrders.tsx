@@ -69,6 +69,11 @@ const DeliveryOrdersPage = () => {
     completed: 0,
     cancelled: 0,
   });
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalItems, setTotalItems] = useState(0);
   // Removed purchaseOrders state - DOs are now standalone
   // Removed PO dropdown state - DOs are now standalone
   const navigate = useNavigate();
@@ -88,7 +93,7 @@ const DeliveryOrdersPage = () => {
 
   useEffect(() => {
     fetchDeliveryOrders();
-  }, [statusFilter, poId, searchQuery]); // Add searchQuery to dependencies
+  }, [statusFilter, poId || "", searchQuery, currentPage, itemsPerPage]); // Add pagination dependencies with consistent array size
 
   // Handle clicking outside export dropdown to close it
   useEffect(() => {
@@ -135,8 +140,12 @@ const DeliveryOrdersPage = () => {
   const fetchDeliveryOrders = async () => {
     try {
       setLoading(true);
-      let url = "/delivery-orders";
+      let url = "/delivery-orders"; // Use the web endpoint that supports pagination
       const params = new URLSearchParams();
+
+      // Add pagination parameters
+      params.append("page", currentPage.toString());
+      params.append("limit", itemsPerPage.toString());
 
       if (statusFilter !== "all") {
         params.append("status", statusFilter);
@@ -156,11 +165,12 @@ const DeliveryOrdersPage = () => {
 
       const response = await apiClient.get(url);
 
-      // Handle full response format
+      // Handle paginated response format
       const orders = response.data.success
         ? response.data.data
         : response.data || [];
       const stats = response.data.success ? response.data.stats : null;
+      const pagination = response.data.success ? response.data.pagination : null;
 
       // Ensure unit field exists with fallback - DOs are always kubik
       const processedOrders = orders.map((order: DeliveryOrder) => ({
@@ -169,6 +179,12 @@ const DeliveryOrdersPage = () => {
       }));
 
       setDeliveryOrders(processedOrders);
+
+      // Update pagination state
+      if (pagination) {
+        setTotalPages(pagination.totalPages);
+        setTotalItems(pagination.total);
+      }
 
       // Use extracted stats
       if (stats) {
@@ -179,6 +195,26 @@ const DeliveryOrdersPage = () => {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Pagination handlers
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (newItemsPerPage: number) => {
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1); // Reset to first page when changing items per page
+  };
+
+  // Reset pagination when filters change
+  const handleFilterChange = (filterType: string, value: string) => {
+    setCurrentPage(1); // Reset to first page
+    if (filterType === 'status') {
+      setStatusFilter(value);
+    } else if (filterType === 'search') {
+      setSearchQuery(value);
     }
   };
 
@@ -289,7 +325,7 @@ const DeliveryOrdersPage = () => {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleFilterChange('search', e.target.value)}
             placeholder="Search delivery orders by DO number, name, customer, or item..."
             className="border border-gray-300 rounded-md px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
@@ -300,7 +336,7 @@ const DeliveryOrdersPage = () => {
           </label>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => handleFilterChange('status', e.target.value)}
             className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Statuses</option>
@@ -311,6 +347,22 @@ const DeliveryOrdersPage = () => {
             <option value="at_unload_location">At Customer</option>
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Items per page:
+          </label>
+          <select
+            value={itemsPerPage}
+            onChange={(e) => handleItemsPerPageChange(parseInt(e.target.value))}
+            className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
           </select>
         </div>
       </div>
@@ -811,6 +863,95 @@ const DeliveryOrdersPage = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6 mt-6 rounded-lg shadow">
+          <div className="flex-1 flex justify-between sm:hidden">
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+          <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm text-gray-700">
+                Showing{' '}
+                <span className="font-medium">{Math.min((currentPage - 1) * itemsPerPage + 1, totalItems)}</span>
+                {' '}to{' '}
+                <span className="font-medium">{Math.min(currentPage * itemsPerPage, totalItems)}</span>
+                {' '}of{' '}
+                <span className="font-medium">{totalItems}</span>
+                {' '}results
+              </p>
+            </div>
+            <div>
+              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="sr-only">Previous</span>
+                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                
+                {/* Page Numbers */}
+                {(() => {
+                  const pages = [];
+                  const maxVisiblePages = 5;
+                  let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+                  let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+                  
+                  if (endPage - startPage < maxVisiblePages - 1) {
+                    startPage = Math.max(1, endPage - maxVisiblePages + 1);
+                  }
+                  
+                  for (let i = startPage; i <= endPage; i++) {
+                    pages.push(
+                      <button
+                        key={i}
+                        onClick={() => handlePageChange(i)}
+                        className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                          i === currentPage
+                            ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                            : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                        }`}
+                      >
+                        {i}
+                      </button>
+                    );
+                  }
+                  return pages;
+                })()}
+                
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="sr-only">Next</span>
+                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </nav>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Unit Summary Stats */}
       {deliveryOrders.length > 0 && (

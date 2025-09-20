@@ -2,11 +2,27 @@
 import React, { useState } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
+import DropdownNavSection from "./ui/DropdownNavSection";
 
 const MainLayout = () => {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
+  
+  // State for dropdown sections
+  const [dropdownStates, setDropdownStates] = useState({
+    operations: true,
+    fleetManagement: false,
+    inventory: false,
+    finance: false,
+  });
+  
+  const toggleDropdown = (section: keyof typeof dropdownStates) => {
+    setDropdownStates(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
 
   const getPageTitle = () => {
     const path = location.pathname;
@@ -161,283 +177,139 @@ const MainLayout = () => {
             </li>
 
             {/* Operations Section */}
-            {!sidebarMinimized && (
-              <li className="mb-2">
-                <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                  Operations
-                </div>
-              </li>
-            )}
-            <li className="mb-4">
-              <Link
-                to="/delivery-orders"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/delivery-orders")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Delivery Orders"
-              >
-                <span className="text-xl mr-3">🚚</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Delivery Orders
-                </span>
-              </Link>
-            </li>
-
-            <li className="mb-4">
-              <Link
-                to="/ocr-processing"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/ocr-processing")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="OCR Processing"
-              >
-                <span className="text-xl mr-3">🔍</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  OCR Processing
-                </span>
-              </Link>
-            </li>
-
-            <li className="mb-4">
-              <Link
-                to="/big-dos"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/big-dos")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Big Delivery Orders"
-              >
-                <span className="text-xl mr-3">🚛</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Big DOs
-                </span>
-              </Link>
-            </li>
+            <DropdownNavSection
+              title="Operations"
+              icon="⚡"
+              items={[
+                {
+                  to: "/delivery-orders",
+                  title: "Delivery Orders",
+                  icon: "🚚",
+                  label: "Delivery Orders"
+                },
+                {
+                  to: "/ocr-processing",
+                  title: "OCR Processing",
+                  icon: "🔍",
+                  label: "OCR Processing"
+                },
+                {
+                  to: "/big-dos",
+                  title: "Big Delivery Orders",
+                  icon: "🚛",
+                  label: "Big DOs"
+                }
+              ]}
+              sidebarMinimized={sidebarMinimized}
+              isOpen={dropdownStates.operations}
+              onToggle={() => toggleDropdown('operations')}
+            />
 
             {/* Fleet Management Section */}
-            {!sidebarMinimized && (
-              <li className="mb-2 mt-6">
-                <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                  Fleet Management
-                </div>
-              </li>
-            )}
-            <li className="mb-4">
-              <Link
-                to="/vehicles"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/vehicles") &&
-                  !location.pathname.startsWith("/vehicles/tires")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Fleet Management"
-              >
-                <span className="text-xl mr-3">🚛</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Fleet Management
-                </span>
-              </Link>
-            </li>
-            <li className="mb-4">
-              <Link
-                to="/live-tracking"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/live-tracking")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Live GPS Tracking"
-              >
-                <span className="text-xl mr-3">🗺️</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Live GPS Tracking
-                </span>
-              </Link>
-            </li>
-            <li className="mb-4">
-              <Link
-                to="/vehicles/tires"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/vehicles/tires")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Tire Management"
-              >
-                <span className="text-xl mr-3">🛞</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Tire Management
-                </span>
-              </Link>
-            </li>
-            <li className="mb-4">
-              <Link
-                to="/drivers"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/drivers")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Driver Management"
-              >
-                <span className="text-xl mr-3">👨‍💼</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Driver Management
-                </span>
-              </Link>
-            </li>
-            <li className="mb-4">
-              <Link
-                to="/driver-expenses"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/driver-expenses")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Driver Expense Management"
-              >
-                <span className="text-xl mr-3">💰</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Pengeluaran Driver
-                </span>
-              </Link>
-            </li>
+            <DropdownNavSection
+              title="Fleet Management"
+              icon="🚛"
+              items={[
+                {
+                  to: "/vehicles",
+                  title: "Fleet Management",
+                  icon: "🚛",
+                  label: "Fleet Management",
+                  excludePaths: ["/vehicles/tires"]
+                },
+                {
+                  to: "/live-tracking",
+                  title: "Live GPS Tracking",
+                  icon: "🗺️",
+                  label: "Live GPS Tracking"
+                },
+                {
+                  to: "/vehicles/tires",
+                  title: "Tire Management",
+                  icon: "🛞",
+                  label: "Tire Management"
+                },
+                {
+                  to: "/drivers",
+                  title: "Driver Management",
+                  icon: "👨‍💼",
+                  label: "Driver Management"
+                },
+                {
+                  to: "/driver-expenses",
+                  title: "Driver Expense Management",
+                  icon: "💰",
+                  label: "Pengeluaran Driver"
+                }
+              ]}
+              sidebarMinimized={sidebarMinimized}
+              isOpen={dropdownStates.fleetManagement}
+              onToggle={() => toggleDropdown('fleetManagement')}
+            />
 
             {/* Inventory Management Section */}
-            {!sidebarMinimized && (
-              <li className="mb-2 mt-6">
-                <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                  Inventory
-                </div>
-              </li>
-            )}
-            <li className="mb-4">
-              <Link
-                to="/stock"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/stock")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Inventory Management"
-              >
-                <span className="text-xl mr-3">📦</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Inventory Management
-                </span>
-              </Link>
-            </li>
-            <li className="mb-4">
-              <Link
-                to="/infrastructure"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/infrastructure")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Infrastructure Inventory"
-              >
-                <span className="text-xl mr-3">🏗️</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Infrastructure Inventory
-                </span>
-              </Link>
-            </li>
-            <li className="mb-4">
-              <Link
-                to="/vehicles/tires/removed"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/vehicles/tires/removed")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Used Tires"
-              >
-                <span className="text-xl mr-3">🔄</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Used Tires
-                </span>
-              </Link>
-            </li>
+            <DropdownNavSection
+              title="Inventory"
+              icon="📦"
+              items={[
+                {
+                  to: "/stock",
+                  title: "Inventory Management",
+                  icon: "📦",
+                  label: "Inventory Management"
+                },
+                {
+                  to: "/infrastructure",
+                  title: "Infrastructure Inventory",
+                  icon: "🏗️",
+                  label: "Infrastructure Inventory"
+                },
+                {
+                  to: "/vehicles/tires/removed",
+                  title: "Used Tires",
+                  icon: "🔄",
+                  label: "Used Tires"
+                }
+              ]}
+              sidebarMinimized={sidebarMinimized}
+              isOpen={dropdownStates.inventory}
+              onToggle={() => toggleDropdown('inventory')}
+            />
 
-            {/* NEW: Accounting Section */}
-            {!sidebarMinimized && (
-              <li className="mb-2 mt-6">
-                <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                  Finance
-                </div>
-              </li>
-            )}
-            <li className="mb-4">
-              <Link
-                to="/cash"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/cash")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Cash Book"
-              >
-                <span className="text-xl mr-3">💰</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Cash Book
-                </span>
-              </Link>
-            </li>
-            <li className="mb-4">
-              <Link
-                to="/cash-coordinator"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/cash-coordinator")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Cash Coordinator"
-              >
-                <span className="text-xl mr-3">👥</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Cash Coordinator
-                </span>
-              </Link>
-            </li>
-            <li className="mb-4">
-              <Link
-                to="/tempo"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/tempo")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Credit Book"
-              >
-                <span className="text-xl mr-3">🤬</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Credit Book
-                </span>
-              </Link>
-            </li>
-            <li className="mb-4">
-              <Link
-                to="/vehicle-expense-cash"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/vehicle-expense-cash")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Vehicle Expense Cash"
-              >
-                <span className="text-xl mr-3">🚗</span>
-                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Kas Pengeluaran Mobil
-                </span>
-              </Link>
-            </li>
+            {/* Finance Section */}
+            <DropdownNavSection
+              title="Finance"
+              icon="💰"
+              items={[
+                {
+                  to: "/cash",
+                  title: "Cash Book",
+                  icon: "💰",
+                  label: "Cash Book"
+                },
+                {
+                  to: "/cash-coordinator",
+                  title: "Cash Coordinator",
+                  icon: "👥",
+                  label: "Cash Coordinator"
+                },
+                {
+                  to: "/tempo",
+                  title: "Credit Book",
+                  icon: "🤬",
+                  label: "Credit Book"
+                },
+                {
+                  to: "/vehicle-expense-cash",
+                  title: "Vehicle Expense Cash",
+                  icon: "🚗",
+                  label: "Kas Pengeluaran Mobil"
+                }
+              ]}
+              sidebarMinimized={sidebarMinimized}
+              isOpen={dropdownStates.finance}
+              onToggle={() => toggleDropdown('finance')}
+            />
           </ul>
         </nav>
 

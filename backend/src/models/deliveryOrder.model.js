@@ -177,6 +177,11 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Array of nota (receipt) photo URLs uploaded when driver arrives at customer location",
       },
+      location_documentation: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        comment: "Per-location documentation: [{location_index: 0, location_name: 'Bandung', photos: ['url1'], uploaded_at: 'timestamp', completed: true}]",
+      },
 
       // === PAYMENT FIELDS ===
       payment_status: {

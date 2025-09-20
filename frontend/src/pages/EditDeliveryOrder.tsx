@@ -202,7 +202,20 @@ const EditDeliveryOrder: React.FC = () => {
         load_location: data.load_location || "",
         unload_location: data.unload_location || "",
         load_locations: data.load_locations && data.load_locations.length > 0 ? data.load_locations : [data.load_location || ""],
-        unload_locations: data.unload_locations && data.unload_locations.length > 0 ? data.unload_locations : [data.unload_location || ""],
+        unload_locations: (() => {
+          // If we have additional_unload_locations, combine primary + additional
+          if (data.additional_unload_locations && data.additional_unload_locations.length > 0) {
+            const primary = data.unload_location || "";
+            const additional = data.additional_unload_locations.map((loc: any) => 
+              typeof loc === 'string' ? loc : loc.location || ""
+            );
+            return [primary, ...additional].filter(loc => loc.trim() !== "");
+          }
+          // Otherwise use legacy unload_locations or fallback to primary
+          return data.unload_locations && data.unload_locations.length > 0 
+            ? data.unload_locations 
+            : [data.unload_location || ""];
+        })(),
         notes: data.notes || "",
         trip_allowance: data.trip_allowance || 0,
         gaji: data.gaji || 0,
@@ -272,7 +285,7 @@ const EditDeliveryOrder: React.FC = () => {
         unload_location: formData.unload_locations[0] || "",
         // Add new array fields
         load_locations: formData.load_locations.filter(loc => loc.trim() !== ""),
-        unload_locations: formData.unload_locations.filter(loc => loc.trim() !== "")
+        additional_unload_locations: formData.unload_locations.slice(1).filter(loc => loc.trim() !== "") // Only additional locations (excluding first one)
       };
 
       await apiClient.put(`/delivery-orders/${id}`, submissionData);

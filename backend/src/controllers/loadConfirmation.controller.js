@@ -44,11 +44,12 @@ exports.confirmLoad = async (req, res, next) => {
       suratJalanFile = suratJalanFiles[0];
     }
 
-    if (!suratJalanFile && suratJalanFiles.length === 0) {
-      return res.status(400).json({
-        message: "Foto surat jalan harus diupload.",
-      });
-    }
+    // Foto surat jalan now optional - can be uploaded later
+    // if (!suratJalanFile && suratJalanFiles.length === 0) {
+    //   return res.status(400).json({
+    //     message: "Foto surat jalan harus diupload.",
+    //   });
+    // }
 
     // Process file upload - handle both single file and multiple files
     let surat_jalan_photo_url = [];
@@ -143,6 +144,95 @@ exports.confirmLoad = async (req, res, next) => {
       stack: error.stack,
       code: error.code,
       response: error.response?.data,
+    });
+    next(error);
+  }
+};
+
+/**
+ * @desc    Upload surat jalan photos separately from load confirmation
+ * @route   POST /api/delivery-orders/:id/upload-surat-jalan
+ * @access  Private (Driver only)
+ */
+exports.uploadSuratJalanPhoto = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const driverId = req.user.id;
+
+    console.log("Upload surat jalan photo request:", {
+      id,
+      driverId,
+    });
+    console.log("Uploaded files:", req.files);
+
+    // Accept both single and multiple file upload
+    const suratJalanFiles = req.files || [];
+
+    console.log("Files received:", {
+      filesLength: suratJalanFiles.length
+    });
+
+    if (suratJalanFiles.length === 0) {
+      return res.status(400).json({
+        message: "Minimal 1 foto surat jalan harus diupload.",
+      });
+    }
+
+    // Process file upload - handle multiple files
+    let surat_jalan_photo_url = [];
+    
+    if (suratJalanFiles.length > 0) {
+      // Multiple files uploaded
+      surat_jalan_photo_url = suratJalanFiles.map((f) =>
+        f.path.replace(/\\/g, "/")
+      );
+    }
+
+    // Cari delivery order
+    const deliveryOrder = await DeliveryOrder.findOne({
+      where: {
+        id,
+        driver_id: driverId,
+      },
+    });
+
+    if (!deliveryOrder) {
+      return res.status(404).json({
+        message:
+          "Delivery Order tidak ditemukan atau Anda tidak berhak mengaksesnya.",
+      });
+    }
+
+    // Update delivery order with surat jalan photos
+    const existingPhotos = deliveryOrder.surat_jalan_photo_url || [];
+    const updatedPhotos = [...existingPhotos, ...surat_jalan_photo_url];
+
+    await deliveryOrder.update({
+      surat_jalan_photo_url: updatedPhotos,
+    });
+
+    res.status(200).json({
+      message: "Foto surat jalan berhasil diupload.",
+      delivery_order: {
+        id: deliveryOrder.id,
+        do_number: deliveryOrder.do_number,
+        status: deliveryOrder.status,
+        surat_jalan_photo_url: updatedPhotos,
+        photos_uploaded: surat_jalan_photo_url.length,
+        total_photos: updatedPhotos.length,
+      },
+    });
+
+    console.log("Surat jalan photos uploaded successfully:", {
+      orderId: id,
+      newPhotos: surat_jalan_photo_url.length,
+      totalPhotos: updatedPhotos.length
+    });
+  } catch (error) {
+    console.error("Full error in uploadSuratJalanPhoto:", {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
     });
     next(error);
   }

@@ -15,6 +15,7 @@ import {
   TextInput,
   Platform,
   Linking,
+  Image,
 } from "react-native";
 import { useLocalSearchParams, useFocusEffect, useRouter } from "expo-router";
 import LoadConfirmationModal from "../../components/LoadConfirmationModal";
@@ -24,6 +25,8 @@ import {
   confirmLoad,
   createBudgetRequest,
   getBudgetRequests,
+  completeLocation,
+  uploadSuratJalanPhoto,
 } from "../../src/services/api";
 import { FontAwesome5 } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -57,6 +60,7 @@ interface DeliveryOrderDetails {
   actual_load_quantity?: number;
   load_location: string;
   unload_location: string;
+  additional_unload_locations?: Array<{location: string, latitude?: number, longitude?: number}>;
   load_latitude: string; // Add these fields
   load_longitude: string;
   unload_latitude: string;
@@ -102,6 +106,7 @@ const TripDetailScreen = () => {
   const [trip, setTrip] = useState<DeliveryOrderDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [currentCustomerLocationIndex, setCurrentCustomerLocationIndex] = useState(0);
 
   // REF untuk prevent multiple calls
   const isLoadingRef = useRef(false);
@@ -128,6 +133,11 @@ const TripDetailScreen = () => {
   const [budgetRequests, setBudgetRequests] = useState<BudgetRequest[]>([]);
   const [receiptImage, setReceiptImage] = useState<any>(null);
   const [evidenceImage, setEvidenceImage] = useState<any>(null);
+  const [showSuratJalanModal, setShowSuratJalanModal] = useState(false);
+  const [uploadingSuratJalan, setUploadingSuratJalan] = useState(false);
+  const [suratJalanPhotos, setSuratJalanPhotos] = useState<any[]>([]);
+  const [currentLocationIndex, setCurrentLocationIndex] = useState<number>(0);
+  const [showLocationDocModal, setShowLocationDocModal] = useState(false);
 
   const expenseTypes = [
     { label: "BBM/Solar", value: "bbm" },
@@ -362,13 +372,97 @@ const TripDetailScreen = () => {
     }
   };
 
+  // Helper functions for multiple customer locations
+  const getAllCustomerLocations = () => {
+    if (!trip) return [];
+    
+    const locations = [];
+    
+    // Add primary unload location
+    if (trip.unload_location && trip.unload_latitude && trip.unload_longitude) {
+      locations.push({
+        location: trip.unload_location,
+        latitude: parseFloat(trip.unload_latitude),
+        longitude: parseFloat(trip.unload_longitude),
+      });
+    }
+    
+    // Add additional unload locations
+    if (trip.additional_unload_locations) {
+      trip.additional_unload_locations.forEach((loc) => {
+        if (loc.location && loc.latitude && loc.longitude) {
+          locations.push({
+            location: loc.location,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+          });
+        }
+      });
+    }
+    
+    return locations;
+  };
+
+  const getCurrentCustomerLocation = () => {
+    const allLocations = getAllCustomerLocations();
+    return allLocations[currentCustomerLocationIndex] || null;
+  };
+
+  const getNextCustomerLocation = () => {
+    const allLocations = getAllCustomerLocations();
+    return allLocations[currentCustomerLocationIndex + 1] || null;
+  };
+
+  const hasMoreCustomerLocations = () => {
+    const allLocations = getAllCustomerLocations();
+    return currentCustomerLocationIndex < allLocations.length - 1;
+  };
+
+  const moveToNextCustomerLocation = () => {
+    if (hasMoreCustomerLocations()) {
+      setCurrentCustomerLocationIndex(prev => prev + 1);
+    }
+  };
+
+  const handleNextLocation = async () => {
+    if (!trip || !hasMoreCustomerLocations()) return;
+    
+    try {
+      // Complete the current location first
+      const response = await completeLocation(trip.id, currentCustomerLocationIndex);
+      console.log('Complete location response:', response.data);
+      
+      // Update the trip data first to get the latest location documentation
+      await fetchTripDetails();
+      
+      // Move to next location in UI
+      setCurrentCustomerLocationIndex(prev => prev + 1);
+      
+      // Show success message with context
+      const allLocations = getAllCustomerLocations();
+      const completedLocation = allLocations[currentCustomerLocationIndex];
+      const nextLocation = allLocations[currentCustomerLocationIndex + 1];
+      
+      Alert.alert(
+        "Berhasil",
+        response.data.data?.has_more_locations 
+          ? `Lokasi "${completedLocation?.location || `Lokasi ${currentCustomerLocationIndex + 1}`}" selesai. Selanjutnya menuju "${nextLocation?.location || `Lokasi ${currentCustomerLocationIndex + 2}`}".`
+          : `Semua lokasi selesai! Tugas "${trip.do_number}" siap diselesaikan.`
+      );
+    } catch (err: any) {
+      console.error('Error in handleNextLocation:', err);
+      Alert.alert(
+        "Error",
+        err.response?.data?.message || "Gagal menyelesaikan lokasi"
+      );
+    }
+  };
+
   const getNavigationTarget = (): LocationData | null => {
     if (!trip) return null;
 
     const loadLat = parseFloat(trip.load_latitude);
     const loadLng = parseFloat(trip.load_longitude);
-    const unloadLat = parseFloat(trip.unload_latitude);
-    const unloadLng = parseFloat(trip.unload_longitude);
 
     // Smart routing based on DO status
     switch (trip.status) {
@@ -381,15 +475,21 @@ const TripDetailScreen = () => {
           type: "load",
         };
       case "at_load_location":
-        // Show both locations but prioritize unload for navigation
-        return {
-          latitude: unloadLat,
-          longitude: unloadLng,
-          address: trip.unload_location,
-          type: "unload",
-        };
       case "otw_to_unload_location":
       case "at_unload_location":
+        // Use current customer location instead of primary unload location
+        const currentLocation = getCurrentCustomerLocation();
+        if (currentLocation) {
+          return {
+            latitude: currentLocation.latitude,
+            longitude: currentLocation.longitude,
+            address: currentLocation.location,
+            type: "unload",
+          };
+        }
+        // Fallback to primary unload location if no current location
+        const unloadLat = parseFloat(trip.unload_latitude);
+        const unloadLng = parseFloat(trip.unload_longitude);
         return {
           latitude: unloadLat,
           longitude: unloadLng,
@@ -420,6 +520,12 @@ const TripDetailScreen = () => {
   const handleOpenMap = () => {
     if (!trip) return;
 
+    // Use current customer location for unload coordinates
+    const currentLocation = getCurrentCustomerLocation();
+    const unloadLat = currentLocation?.latitude?.toString() || trip.unload_latitude;
+    const unloadLng = currentLocation?.longitude?.toString() || trip.unload_longitude;
+    const unloadAddress = currentLocation?.location || trip.unload_location;
+
     router.push({
       pathname: "/trip-map-view",
       params: {
@@ -427,9 +533,9 @@ const TripDetailScreen = () => {
         loadLat: trip.load_latitude,
         loadLng: trip.load_longitude,
         loadAddress: trip.load_location,
-        unloadLat: trip.unload_latitude,
-        unloadLng: trip.unload_longitude,
-        unloadAddress: trip.unload_location,
+        unloadLat: unloadLat,
+        unloadLng: unloadLng,
+        unloadAddress: unloadAddress,
         status: trip.status,
         doNumber: trip.do_number,
       },
@@ -802,6 +908,42 @@ const TripDetailScreen = () => {
     );
   };
 
+  const handleSuratJalanUpload = async (photos: any[]) => {
+    if (!trip) return;
+
+    setUploadingSuratJalan(true);
+    try {
+      console.log("Starting surat jalan upload process...");
+      console.log("Trip ID:", trip.id);
+      console.log("Surat jalan photos:", photos);
+
+      await uploadSuratJalanPhoto(trip.id, photos);
+      setShowSuratJalanModal(false);
+      setSuratJalanPhotos([]);
+      await fetchTripDetails(); // Refresh data
+
+      Alert.alert(
+        "Berhasil!",
+        `${photos.length} foto surat jalan berhasil diupload.`,
+        [{ text: "OK" }]
+      );
+    } catch (error: any) {
+      console.error("Surat jalan upload error:", error);
+      
+      let errorMessage = "Gagal mengunggah foto surat jalan";
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert("Error", errorMessage);
+    } finally {
+      setUploadingSuratJalan(false);
+    }
+  };
+
+
   const handleLoadConfirmation = async (loadData: {
     actual_load_quantity: number;
     surat_jalan_photo: any;
@@ -955,7 +1097,12 @@ const TripDetailScreen = () => {
           <Text style={styles.detailText}>DO: {trip.do_number}</Text>
           <Text style={styles.detailText}>Customer: {trip.customer_name}</Text>
           <Text style={styles.detailText}>
-            Rute: {trip.load_location} → {trip.unload_location}
+            Rute: {trip.load_location} → {getCurrentCustomerLocation()?.location || trip.unload_location}
+            {hasMoreCustomerLocations() && (
+              <Text style={styles.nextLocationText}>
+                {'\n'}Selanjutnya: {getNextCustomerLocation()?.location}
+              </Text>
+            )}
           </Text>
           <View style={styles.statusContainer}>
             <Text style={styles.detailText}>Status: </Text>
@@ -973,7 +1120,7 @@ const TripDetailScreen = () => {
 
           {/* SPBU Location */}
           <TouchableOpacity
-            style={styles.locationItem}
+            style={styles.locationFlowItem}
             onPress={() =>
               router.push({
                 pathname: "/map-view",
@@ -986,49 +1133,128 @@ const TripDetailScreen = () => {
               })
             }
           >
-            <FontAwesome5 name="arrow-up" size={16} color="#3498db" />
-            <View style={styles.locationText}>
-              <Text style={styles.locationLabel}>Loading Location:</Text>
-              <Text style={styles.locationValue}>{trip.load_location}</Text>
-              <Text style={styles.coordinatesText}>
-                {parseFloat(trip.load_latitude).toFixed(6)},{" "}
-                {parseFloat(trip.load_longitude).toFixed(6)}
+            <View style={styles.locationFlowIndex}>
+              <FontAwesome5 name="gas-pump" size={14} color="#fff" />
+            </View>
+            <View style={styles.locationFlowContent}>
+              <Text style={styles.locationFlowLabel}>SPBU Location</Text>
+              <Text style={styles.locationFlowValue}>{trip.load_location}</Text>
+              <Text style={styles.locationFlowCoords}>
+                {parseFloat(trip.load_latitude).toFixed(6)}, {parseFloat(trip.load_longitude).toFixed(6)}
               </Text>
             </View>
             <FontAwesome5 name="map-marker-alt" size={16} color="#3498db" />
           </TouchableOpacity>
 
-          {/* Unload Location */}
-          <TouchableOpacity
-            style={styles.locationItem}
-            onPress={() =>
-              router.push({
-                pathname: "/map-view",
-                params: {
-                  lat: trip.unload_latitude,
-                  lng: trip.unload_longitude,
-                  title: trip.unload_location,
-                  type: "unload",
-                },
-              })
-            }
-          >
-            <FontAwesome5 name="arrow-down" size={16} color="#e74c3c" />
-            <View style={styles.locationText}>
-              <Text style={styles.locationLabel}>Unloading Location:</Text>
-              <Text style={styles.locationValue}>{trip.unload_location}</Text>
-              <Text style={styles.coordinatesText}>
-                {parseFloat(trip.unload_latitude).toFixed(6)},{" "}
-                {parseFloat(trip.unload_longitude).toFixed(6)}
+          {/* Customer Locations Flow */}
+          {getAllCustomerLocations().map((location, index) => (
+            <View key={index}>
+              {/* Connection Line */}
+              <View style={styles.connectionLine} />
+              
+              <TouchableOpacity
+                style={[
+                  styles.locationFlowItem,
+                  index === currentCustomerLocationIndex && styles.currentLocationFlowItem
+                ]}
+                onPress={() => {
+                  setCurrentCustomerLocationIndex(index);
+                  router.push({
+                    pathname: "/map-view",
+                    params: {
+                      lat: location.latitude.toString(),
+                      lng: location.longitude.toString(),
+                      title: location.location,
+                      type: "unload",
+                    },
+                  });
+                }}
+              >
+                <View style={[
+                  styles.locationFlowIndex,
+                  index === currentCustomerLocationIndex && styles.currentLocationFlowIndex
+                ]}>
+                  <Text style={[
+                    styles.locationFlowIndexText,
+                    index === currentCustomerLocationIndex && styles.currentLocationFlowIndexText
+                  ]}>
+                    {index + 1}
+                  </Text>
+                </View>
+                <View style={styles.locationFlowContent}>
+                  <Text style={[
+                    styles.locationFlowLabel,
+                    index === currentCustomerLocationIndex && styles.currentLocationFlowLabel
+                  ]}>
+                    Location {index + 1}
+                    {index === currentCustomerLocationIndex && ' (Current)'}
+                  </Text>
+                  <Text style={[
+                    styles.locationFlowValue,
+                    index === currentCustomerLocationIndex && styles.currentLocationFlowValue
+                  ]}>
+                    {location.location}
+                  </Text>
+                  <Text style={styles.locationFlowCoords}>
+                    {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+                  </Text>
+                </View>
+                <FontAwesome5 
+                  name="map-marker-alt" 
+                  size={16} 
+                  color={index === currentCustomerLocationIndex ? "#3b82f6" : "#e74c3c"} 
+                />
+              </TouchableOpacity>
+            </View>
+          ))}
+
+          {/* Show next location hint if there are more */}
+          {hasMoreCustomerLocations() && (
+            <View style={styles.nextLocationHint}>
+              <FontAwesome5 name="arrow-down" size={14} color="#666" />
+              <Text style={styles.nextLocationHintText}>
+                Selanjutnya: {getNextCustomerLocation()?.location}
               </Text>
             </View>
-            <FontAwesome5 name="map-marker-alt" size={16} color="#e74c3c" />
-          </TouchableOpacity>
+          )}
 
           {/* Divider */}
           <View
             style={{ height: 1, backgroundColor: "#eee", marginVertical: 16 }}
           />
+
+          {/* Quick Navigation for Multiple Locations */}
+          {getAllCustomerLocations().length > 1 && (
+            <>
+              <View style={styles.locationNavButtons}>
+                <TouchableOpacity
+                  style={[styles.navButton, currentCustomerLocationIndex === 0 && styles.navButtonDisabled]}
+                  onPress={() => setCurrentCustomerLocationIndex(Math.max(0, currentCustomerLocationIndex - 1))}
+                  disabled={currentCustomerLocationIndex === 0}
+                >
+                  <FontAwesome5 name="chevron-left" size={16} color={currentCustomerLocationIndex === 0 ? "#ccc" : "#3b82f6"} />
+                  <Text style={[styles.navButtonText, currentCustomerLocationIndex === 0 && styles.navButtonTextDisabled]}>
+                    Sebelumnya
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.navButton, !hasMoreCustomerLocations() && styles.navButtonDisabled]}
+                  onPress={handleNextLocation}
+                  disabled={!hasMoreCustomerLocations()}
+                >
+                  <Text style={[styles.navButtonText, !hasMoreCustomerLocations() && styles.navButtonTextDisabled]}>
+                    {hasMoreCustomerLocations() ? "Lokasi Berikutnya" : "Selesaikan"}
+                  </Text>
+                  <FontAwesome5 name="chevron-right" size={16} color={!hasMoreCustomerLocations() ? "#ccc" : "#3b82f6"} />
+                </TouchableOpacity>
+              </View>
+
+              <View
+                style={{ height: 1, backgroundColor: "#eee", marginVertical: 16 }}
+              />
+            </>
+          )}
 
           {/* Map Preview Button */}
           <TouchableOpacity
@@ -1092,6 +1318,154 @@ const TripDetailScreen = () => {
             </View>
           )}
         </View>
+
+        {/* SURAT JALAN PHOTOS SECTION */}
+        {trip.status !== "assigned" && trip.status !== "otw_to_load_location" && trip.status !== "at_load_location" && (
+          <View style={styles.detailCard}>
+            <Text style={styles.cardTitle}>📄 Foto Surat Jalan</Text>
+            
+            {trip.surat_jalan_photo_url && Array.isArray(trip.surat_jalan_photo_url) && trip.surat_jalan_photo_url.length > 0 ? (
+              <View>
+                <Text style={styles.photoCountText}>
+                  {trip.surat_jalan_photo_url.length} foto surat jalan telah diupload
+                </Text>
+                <TouchableOpacity
+                  style={styles.addMorePhotosButton}
+                  onPress={() => setShowSuratJalanModal(true)}
+                  disabled={isTripCompleted}
+                >
+                  <FontAwesome5 name="plus" size={16} color="#3b82f6" />
+                  <Text style={styles.addMorePhotosText}>
+                    {isTripCompleted ? "Perjalanan selesai" : "Tambah Foto"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View>
+                <Text style={styles.noPhotosText}>
+                  Belum ada foto surat jalan yang diupload
+                </Text>
+                {!isTripCompleted && (
+                  <TouchableOpacity
+                    style={styles.uploadSuratJalanButton}
+                    onPress={() => setShowSuratJalanModal(true)}
+                  >
+                    <FontAwesome5 name="camera" size={20} color="#fff" />
+                    <Text style={styles.uploadSuratJalanText}>
+                      Upload Foto Surat Jalan
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* DELIVERY DOCUMENTATION BY LOCATION SECTION */}
+        {trip.status !== "assigned" && trip.status !== "otw_to_load_location" && trip.status !== "at_load_location" && (
+          <View style={styles.detailCard}>
+            <Text style={styles.cardTitle}>📋 Dokumentasi Pengiriman per Lokasi</Text>
+            
+            {getAllCustomerLocations().map((location, index) => {
+              // Get location documentation for this specific location
+              const locationDocs = trip.location_documentation || [];
+              const locationDoc = locationDocs.find(doc => doc.location_index === index);
+              
+              // Define the required documentation fields
+              const documentationFields = [
+                { key: 'pressure_bar', label: 'Pressure Bar', icon: 'tachometer-alt', type: 'text' },
+                { key: 'foto_temperature', label: 'Foto Temperature', icon: 'thermometer-half', type: 'photo' },
+                { key: 'foto_stan_awal', label: 'Foto Stan Awal', icon: 'play-circle', type: 'photo' },
+                { key: 'foto_stan_akhir', label: 'Foto Stan Akhir', icon: 'stop-circle', type: 'photo' },
+              ];
+              
+              // Calculate completion status
+              const completedFields = documentationFields.filter(field => {
+                if (field.type === 'text') {
+                  return locationDoc && locationDoc[field.key];
+                } else {
+                  return locationDoc && locationDoc[field.key] && locationDoc[field.key].length > 0;
+                }
+              });
+              
+              const completionPercentage = Math.round((completedFields.length / documentationFields.length) * 100);
+              
+              return (
+                <View key={index} style={styles.locationDocItem}>
+                  <View style={styles.locationDocHeader}>
+                    <View style={styles.locationDocInfo}>
+                      <Text style={styles.locationDocTitle}>
+                        📍 {location.location}
+                      </Text>
+                      <Text style={styles.locationDocStatus}>
+                        {completedFields.length}/{documentationFields.length} dokumentasi lengkap ({completionPercentage}%)
+                      </Text>
+                    </View>
+                    
+                    {!isTripCompleted && (
+                      <TouchableOpacity
+                        style={[
+                          styles.locationDocButton,
+                          completionPercentage === 100 ? styles.completeLocationButton : styles.incompleteLocationButton
+                        ]}
+                        onPress={() => {
+                          setCurrentLocationIndex(index);
+                          setShowLocationDocModal(true);
+                        }}
+                      >
+                        <FontAwesome5 
+                          name={completionPercentage === 100 ? "check-circle" : "edit"} 
+                          size={16} 
+                          color={completionPercentage === 100 ? "#27ae60" : "#fff"} 
+                        />
+                        <Text style={[
+                          styles.locationDocButtonText,
+                          completionPercentage === 100 ? styles.completeLocationButtonText : styles.incompleteLocationButtonText
+                        ]}>
+                          {completionPercentage === 100 ? "Lengkap" : "Lengkapi"}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  
+                  {/* Show documentation status */}
+                  <View style={styles.documentationGrid}>
+                    {documentationFields.map((field) => {
+                      const isCompleted = field.type === 'text' 
+                        ? (locationDoc && locationDoc[field.key])
+                        : (locationDoc && locationDoc[field.key] && locationDoc[field.key].length > 0);
+                      
+                      return (
+                        <View key={field.key} style={styles.docFieldItem}>
+                          <FontAwesome5 
+                            name={field.icon} 
+                            size={16} 
+                            color={isCompleted ? "#27ae60" : "#ccc"} 
+                          />
+                          <Text style={[
+                            styles.docFieldText,
+                            isCompleted ? styles.docFieldCompleted : styles.docFieldIncomplete
+                          ]}>
+                            {field.label}
+                          </Text>
+                          {isCompleted && (
+                            <FontAwesome5 name="check" size={12} color="#27ae60" />
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              );
+            })}
+            
+            {getAllCustomerLocations().length === 0 && (
+              <Text style={styles.noLocationsText}>
+                Tidak ada lokasi pelanggan yang tersedia
+              </Text>
+            )}
+          </View>
+        )}
 
         {/* RIWAYAT PENGELUARAN */}
         <View style={styles.historyCard}>
@@ -1598,6 +1972,238 @@ const TripDetailScreen = () => {
         minimalQuantity={trip?.minimal_load_quantity || 0}
         isLoading={submittingLoad}
       />
+
+      {/* Surat Jalan Upload Modal */}
+      <Modal
+        visible={showSuratJalanModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowSuratJalanModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <ScrollView style={styles.scrollContainer}>
+              <Text style={styles.modalTitle}>Upload Foto Surat Jalan</Text>
+              <Text style={styles.modalSubtitle}>
+                Silakan ambil foto surat jalan sebagai bukti muatan yang telah diangkut
+              </Text>
+
+              {/* Photo Upload Section */}
+              <View style={styles.photoSection}>
+                {/* Add Photo Button */}
+                <TouchableOpacity 
+                  style={styles.addPhotoButton} 
+                  onPress={() => {
+                    Alert.alert(
+                      "Pilih Foto Surat Jalan",
+                      "Bagaimana cara Anda ingin mengambil foto?",
+                      [
+                        { 
+                          text: "Kamera", 
+                          onPress: async () => {
+                            try {
+                              const permission = await ImagePicker.requestCameraPermissionsAsync();
+                              if (!permission.granted) {
+                                Alert.alert("Error", "Permission to access camera was denied");
+                                return;
+                              }
+                              const result = await ImagePicker.launchCameraAsync({
+                                allowsEditing: true,
+                                quality: 0.8,
+                              });
+                              if (!result.canceled && result.assets?.[0]) {
+                                setSuratJalanPhotos(prev => [...prev, result.assets[0]]);
+                              }
+                            } catch (error) {
+                              Alert.alert("Error", "Failed to take picture");
+                            }
+                          }
+                        },
+                        { 
+                          text: "Galeri", 
+                          onPress: async () => {
+                            try {
+                              const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                              if (!permission.granted) {
+                                Alert.alert("Error", "Permission to access gallery was denied");
+                                return;
+                              }
+                              const result = await ImagePicker.launchImageLibraryAsync({
+                                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                allowsEditing: true,
+                                quality: 0.8,
+                              });
+                              if (!result.canceled && result.assets?.[0]) {
+                                setSuratJalanPhotos(prev => [...prev, result.assets[0]]);
+                              }
+                            } catch (error) {
+                              Alert.alert("Error", "Failed to pick image");
+                            }
+                          }
+                        },
+                        { 
+                          text: "Batal", 
+                          style: "cancel" 
+                        },
+                      ],
+                      { cancelable: true }
+                    );
+                  }}
+                >
+                  <Text style={styles.addPhotoIcon}>📷</Text>
+                  <Text style={styles.addPhotoText}>Tambah Foto Surat Jalan</Text>
+                </TouchableOpacity>
+
+                {/* Display Selected Photos */}
+                {suratJalanPhotos.length > 0 && (
+                  <View style={styles.photosContainer}>
+                    <Text style={styles.photosTitle}>
+                      Foto Surat Jalan ({suratJalanPhotos.length} foto)
+                    </Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photosScrollView}>
+                      {suratJalanPhotos.map((photo, index) => (
+                        <View key={index} style={styles.photoItem}>
+                          <Image source={{ uri: photo.uri }} style={styles.photoThumbnail} />
+                          <TouchableOpacity
+                            style={styles.removePhotoButton}
+                            onPress={() => setSuratJalanPhotos(prev => prev.filter((_, i) => i !== index))}
+                          >
+                            <Text style={styles.removePhotoText}>❌</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.buttonContainer}>
+                <TouchableOpacity
+                  style={[styles.button, styles.cancelButton]}
+                  onPress={() => {
+                    setShowSuratJalanModal(false);
+                    setSuratJalanPhotos([]);
+                  }}
+                  disabled={uploadingSuratJalan}
+                >
+                  <Text style={styles.cancelButtonText}>Batal</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    styles.confirmButton,
+                    (suratJalanPhotos.length === 0 || uploadingSuratJalan) && styles.disabledButton,
+                  ]}
+                  onPress={() => handleSuratJalanUpload(suratJalanPhotos)}
+                  disabled={suratJalanPhotos.length === 0 || uploadingSuratJalan}
+                >
+                  {uploadingSuratJalan ? (
+                    <View style={styles.loadingContainer}>
+                      <ActivityIndicator size="small" color="#fff" />
+                      <Text style={[styles.confirmButtonText, { marginLeft: 8 }]}>
+                        Mengunggah...
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.confirmButtonText}>
+                      Upload Foto
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+
+      {/* Location Documentation Modal */}
+      <Modal
+        visible={showLocationDocModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowLocationDocModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>
+              Dokumentasi Pengiriman
+            </Text>
+            <TouchableOpacity onPress={() => setShowLocationDocModal(false)}>
+              <FontAwesome5 name="times" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            {/* Location Info */}
+            {getAllCustomerLocations()[currentLocationIndex] && (
+              <View style={styles.locationInfoCard}>
+                <FontAwesome5 name="map-marker-alt" size={20} color="#3b82f6" />
+                <Text style={styles.locationInfoText}>
+                  {getAllCustomerLocations()[currentLocationIndex].location}
+                </Text>
+              </View>
+            )}
+
+            {/* Documentation Fields */}
+            <View style={styles.docFormSection}>
+              <Text style={styles.docSectionTitle}>📊 Pressure Bar</Text>
+              <TextInput
+                style={styles.docTextInput}
+                placeholder="Masukkan nilai pressure bar"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.docFormSection}>
+              <Text style={styles.docSectionTitle}>🌡️ Foto Temperature</Text>
+              <TouchableOpacity style={styles.docPhotoButton}>
+                <FontAwesome5 name="camera" size={20} color="#3b82f6" />
+                <Text style={styles.docPhotoButtonText}>Ambil Foto Temperature</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.docFormSection}>
+              <Text style={styles.docSectionTitle}>▶️ Foto Stan Awal</Text>
+              <TouchableOpacity style={styles.docPhotoButton}>
+                <FontAwesome5 name="camera" size={20} color="#3b82f6" />
+                <Text style={styles.docPhotoButtonText}>Ambil Foto Stan Awal</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.docFormSection}>
+              <Text style={styles.docSectionTitle}>⏹️ Foto Stan Akhir</Text>
+              <TouchableOpacity style={styles.docPhotoButton}>
+                <FontAwesome5 name="camera" size={20} color="#3b82f6" />
+                <Text style={styles.docPhotoButtonText}>Ambil Foto Stan Akhir</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setShowLocationDocModal(false)}
+              >
+                <Text style={styles.cancelButtonText}>Batal</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.submitButton}
+                onPress={() => {
+                  // Handle documentation save
+                  setShowLocationDocModal(false);
+                  Alert.alert("Berhasil!", "Dokumentasi berhasil disimpan.", [{ text: "OK" }]);
+                }}
+              >
+                <Text style={styles.submitButtonText}>Simpan Dokumentasi</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
     </>
   );
 };
@@ -2278,6 +2884,587 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     fontWeight: '600',
+  },
+
+  // Multiple customer locations styles
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  customerLocationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  currentLocationItem: {
+    backgroundColor: '#e3f2fd',
+    borderColor: '#3b82f6',
+    borderWidth: 2,
+  },
+  locationItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  locationIndex: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#e9ecef',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  currentLocationIndex: {
+    backgroundColor: '#3b82f6',
+  },
+  locationIndexText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  currentLocationIndexText: {
+    color: '#fff',
+  },
+  locationItemText: {
+    flex: 1,
+  },
+  locationItemAddress: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    marginBottom: 2,
+  },
+  currentLocationAddress: {
+    color: '#1565c0',
+    fontWeight: '600',
+  },
+  locationItemCoords: {
+    fontSize: 12,
+    color: '#666',
+  },
+  locationNavButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+  },
+  navButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#3b82f6',
+    minWidth: 120,
+    justifyContent: 'center',
+  },
+  navButtonDisabled: {
+    backgroundColor: '#f5f5f5',
+    borderColor: '#ddd',
+  },
+  navButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#3b82f6',
+    marginHorizontal: 6,
+  },
+  navButtonTextDisabled: {
+    color: '#ccc',
+  },
+  nextLocationText: {
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+
+  // Location Flow Styles
+  locationFlowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  currentLocationFlowItem: {
+    backgroundColor: '#e3f2fd',
+    borderColor: '#3b82f6',
+    borderWidth: 2,
+  },
+  locationFlowIndex: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#6c757d',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  currentLocationFlowIndex: {
+    backgroundColor: '#3b82f6',
+  },
+  locationFlowIndexText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  currentLocationFlowIndexText: {
+    color: '#fff',
+  },
+  locationFlowContent: {
+    flex: 1,
+  },
+  locationFlowLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  currentLocationFlowLabel: {
+    color: '#1565c0',
+  },
+  locationFlowValue: {
+    fontSize: 15,
+    color: '#555',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  currentLocationFlowValue: {
+    color: '#1565c0',
+    fontWeight: '600',
+  },
+  locationFlowCoords: {
+    fontSize: 12,
+    color: '#9ca3af',
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+  },
+  connectionLine: {
+    width: 2,
+    height: 16,
+    backgroundColor: '#e9ecef',
+    marginLeft: 27,
+    marginBottom: 4,
+  },
+  nextLocationHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    marginTop: 8,
+  },
+  nextLocationHintText: {
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
+    marginLeft: 6,
+  },
+
+  // Surat Jalan Upload Styles
+  photoCountText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 12,
+  },
+  noPhotosText: {
+    fontSize: 14,
+    color: '#888',
+    textAlign: 'center',
+    marginBottom: 16,
+    fontStyle: 'italic',
+  },
+  uploadSuratJalanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3b82f6',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  uploadSuratJalanText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+  addMorePhotosButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f8f9fa',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#3b82f6',
+    marginTop: 8,
+  },
+  addMorePhotosText: {
+    color: '#3b82f6',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  uploadNotaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#9b59b6',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  uploadNotaText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+
+  // Location-based Nota Upload Styles
+  locationNotaItem: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  locationNotaHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  locationNotaInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  locationNotaTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  locationNotaStatus: {
+    fontSize: 14,
+    color: '#666',
+  },
+  locationNotaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  uploadLocationButton: {
+    backgroundColor: '#9b59b6',
+  },
+  addMoreLocationButton: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#3b82f6',
+  },
+  locationNotaButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  uploadLocationButtonText: {
+    color: '#fff',
+  },
+  addMoreLocationButtonText: {
+    color: '#3b82f6',
+  },
+  locationPhotoPreview: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e9ecef',
+  },
+  photoPreviewTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    marginBottom: 8,
+  },
+  photoPreviewItem: {
+    alignItems: 'center',
+    marginRight: 16,
+    padding: 8,
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  photoPreviewText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+  },
+  noLocationsText: {
+    textAlign: 'center',
+    color: '#888',
+    fontStyle: 'italic',
+    paddingVertical: 20,
+  },
+
+  // Location Documentation Styles
+  locationDocItem: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  locationDocHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  locationDocInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  locationDocTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  locationDocStatus: {
+    fontSize: 14,
+    color: '#666',
+  },
+  locationDocButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  incompleteLocationButton: {
+    backgroundColor: '#e67e22',
+  },
+  completeLocationButton: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#27ae60',
+  },
+  locationDocButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  incompleteLocationButtonText: {
+    color: '#fff',
+  },
+  completeLocationButtonText: {
+    color: '#27ae60',
+  },
+  documentationGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  docFieldItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    minWidth: '45%',
+    marginBottom: 8,
+  },
+  docFieldText: {
+    fontSize: 12,
+    marginLeft: 8,
+    marginRight: 4,
+    flex: 1,
+  },
+  docFieldCompleted: {
+    color: '#27ae60',
+    fontWeight: '500',
+  },
+  docFieldIncomplete: {
+    color: '#666',
+  },
+
+  // Documentation Modal Styles
+  locationInfoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e3f2fd',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  locationInfoText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1976d2',
+    marginLeft: 12,
+  },
+  docFormSection: {
+    marginBottom: 20,
+  },
+  docSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  docTextInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    fontSize: 16,
+    backgroundColor: '#fff',
+  },
+  docPhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#3b82f6',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    paddingVertical: 20,
+    backgroundColor: '#f8f9fa',
+  },
+  docPhotoButtonText: {
+    fontSize: 16,
+    color: '#3b82f6',
+    marginLeft: 10,
+    fontWeight: '500',
+  },
+
+  // Modal Overlay Styles (reused from NotaUploadModal)
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scrollContainer: {
+    maxHeight: '100%',
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#666',
+    lineHeight: 22,
+  },
+  photoSection: {
+    marginBottom: 30,
+  },
+  addPhotoButton: {
+    borderWidth: 2,
+    borderColor: '#ddd',
+    borderStyle: 'dashed',
+    borderRadius: 10,
+    padding: 20,
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    marginBottom: 15,
+  },
+  addPhotoIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  addPhotoText: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: 'bold',
+  },
+  photosContainer: {
+    marginTop: 15,
+  },
+  photosTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  photosScrollView: {
+    maxHeight: 120,
+  },
+  photoItem: {
+    marginRight: 15,
+    alignItems: 'center',
+  },
+  photoThumbnail: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    marginBottom: 5,
+  },
+  removePhotoButton: {
+    backgroundColor: 'rgba(255, 71, 87, 0.9)',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+    top: -8,
+    right: -8,
+  },
+  removePhotoText: {
+    fontSize: 12,
+    color: 'white',
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 15,
+  },
+  button: {
+    flex: 1,
+    paddingVertical: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  confirmButton: {
+    backgroundColor: '#28a745',
+  },
+  confirmButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  disabledButton: {
+    backgroundColor: '#ccc',
   },
 });
 

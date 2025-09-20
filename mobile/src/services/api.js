@@ -239,8 +239,84 @@ export const updateDeliveryStatus = (doId, action) => {
   return apiClient.patch(`/delivery-orders/${endpoint}`);
 };
 
-export const uploadNotaPhoto = async (doId, notaPhotos) => {
+export const uploadSuratJalanPhoto = async (doId, suratJalanPhotos) => {
   try {
+    console.log("uploadSuratJalanPhoto called with:", {
+      doId,
+      suratJalanPhotosCount: Array.isArray(suratJalanPhotos) ? suratJalanPhotos.length : 1,
+    });
+
+    const formData = new FormData();
+
+    if (Array.isArray(suratJalanPhotos)) {
+      for (let i = 0; i < suratJalanPhotos.length; i++) {
+        const photo = suratJalanPhotos[i];
+        if (photo && photo.uri) {
+          const ext = photo.uri.split(".").pop() || "jpg";
+          console.log(`Adding surat jalan photo ${i + 1} to FormData:`, {
+            uri: photo.uri,
+            fileName: photo.fileName || `surat_jalan_${i}.${ext}`,
+            mimeType: photo.mimeType || "image/jpeg"
+          });
+
+          await appendFileToFormData(
+            formData,
+            "surat_jalan_photo",
+            {
+              ...photo,
+              fileName: photo.fileName || `surat_jalan_${i}.${ext}`,
+              mimeType: photo.mimeType || "image/jpeg",
+            }
+          );
+        } else {
+          console.warn("Skipping surat jalan photo without uri:", photo);
+        }
+      }
+    } else if (suratJalanPhotos && suratJalanPhotos.uri) {
+      const photo = suratJalanPhotos;
+      const ext = photo.uri.split(".").pop() || "jpg";
+      await appendFileToFormData(
+        formData,
+        "surat_jalan_photo",
+        {
+          ...photo,
+          fileName: photo.fileName || `surat_jalan.${ext}`,
+          mimeType: photo.mimeType || "image/jpeg",
+        }
+      );
+    }
+
+    // Log form data for debugging
+    console.log("Surat Jalan FormData contents:");
+    for (const [key, value] of formData.entries()) {
+      console.log(key, value);
+    }
+
+    return apiClient.post(`/delivery-orders/${doId}/upload-surat-jalan`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      timeout: 60000, // 60 seconds for photo upload
+    });
+  } catch (error) {
+    console.error("Error in uploadSuratJalanPhoto API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+export const uploadNotaPhoto = async (doId, notaPhotos, locationIndex = null, locationName = null) => {
+  try {
+    console.log("uploadNotaPhoto called with:", {
+      doId,
+      notaPhotosCount: Array.isArray(notaPhotos) ? notaPhotos.length : 1,
+      locationIndex,
+      locationName
+    });
+
     const formData = new FormData();
 
     if (Array.isArray(notaPhotos)) {
@@ -248,6 +324,11 @@ export const uploadNotaPhoto = async (doId, notaPhotos) => {
         const photo = notaPhotos[i];
         if (photo && photo.uri) {
           const ext = photo.uri.split(".").pop() || "jpg";
+          console.log(`Adding photo ${i + 1} to FormData:`, {
+            uri: photo.uri,
+            fileName: photo.fileName || `nota_${doId}_${i}.${ext}`,
+            mimeType: photo.mimeType || "image/jpeg"
+          });
           await appendFileToFormData(
             formData,
             "nota_photo",
@@ -264,6 +345,11 @@ export const uploadNotaPhoto = async (doId, notaPhotos) => {
     } else if (notaPhotos && notaPhotos.uri) {
       const photo = notaPhotos;
       const ext = photo.uri.split(".").pop() || "jpg";
+      console.log("Adding single photo to FormData:", {
+        uri: photo.uri,
+        fileName: photo.fileName || `nota_${doId}.${ext}`,
+        mimeType: photo.mimeType || "image/jpeg"
+      });
       await appendFileToFormData(
         formData,
         "nota_photo",
@@ -275,26 +361,63 @@ export const uploadNotaPhoto = async (doId, notaPhotos) => {
       );
     }
 
+    // Add location context if provided
+    if (locationIndex !== null && locationIndex !== undefined && locationName) {
+      formData.append('location_index', locationIndex.toString());
+      formData.append('location_name', locationName);
+      console.log("Added location context:", { locationIndex, locationName });
+    } else {
+      console.log("Location context NOT added:", { locationIndex, locationName });
+    }
+
     // Log form data for debugging
     console.log("FormData contents for nota upload:");
     for (const [key, value] of formData.entries()) {
       console.log(key, value);
     }
 
-    return apiClient.post(`/delivery-orders/${doId}/upload-nota`, formData, {
+    console.log("Sending upload request...");
+    const response = await apiClient.post(`/delivery-orders/${doId}/upload-nota`, formData, {
       headers: {
         "Content-Type": "multipart/form-data",
       },
-      timeout: 30000,
+      timeout: 60000, // Increased timeout to 60 seconds for large images
     });
+    
+    console.log("Upload response received:", response.data);
+    return response;
   } catch (error) {
     console.error("Error in uploadNotaPhoto API call:", {
       message: error.message,
       stack: error.stack,
       response: error.response?.data,
+      status: error.response?.status,
+      code: error.code
     });
+    
+    // Add more specific error handling
+    if (error.code === 'ECONNABORTED') {
+      error.code = 'TIMEOUT';
+      error.message = 'Upload timeout - please try again with smaller images';
+    } else if (error.message === 'Network Error') {
+      error.code = 'NETWORK_ERROR';
+    }
+    
     throw error;
   }
+};
+
+export const completeLocation = async (doId, locationIndex) => {
+  console.log(`🚀 Making API call to complete location ${locationIndex} for order ${doId}`);
+  console.log(`API URL: /delivery-orders/${doId}/complete-location`);
+  console.log(`Request body:`, { location_index: locationIndex });
+  
+  const response = await apiClient.post(`/delivery-orders/${doId}/complete-location`, {
+    location_index: locationIndex
+  });
+  
+  console.log(`✅ API response received:`, response.data);
+  return response;
 };
 
 export const getLoadStatus = (doId) => {

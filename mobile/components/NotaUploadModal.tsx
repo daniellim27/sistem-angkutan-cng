@@ -9,6 +9,7 @@ import {
   Image,
   ScrollView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -26,6 +27,7 @@ const NotaUploadModal: React.FC<NotaUploadModalProps> = ({
   isLoading = false,
 }) => {
   const [notaPhotos, setNotaPhotos] = useState<any[]>([]);
+  const [uploadTimeout, setUploadTimeout] = useState<NodeJS.Timeout | null>(null);
 
   const handleImagePicker = () => {
     if (Platform.OS === "web") {
@@ -72,49 +74,92 @@ const NotaUploadModal: React.FC<NotaUploadModalProps> = ({
 
   const takePicture = async () => {
     try {
+      console.log("Requesting camera permission...");
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
         Alert.alert("Error", "Permission to access camera was denied");
         return;
       }
+      
+      console.log("Launching camera...");
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         quality: 0.8,
+        base64: false,
       });
+      
+      console.log("Camera result:", result);
       if (!result.canceled && result.assets?.[0]) {
+        const photo = result.assets[0];
+        console.log("Photo taken:", photo);
         // ✅ Append new photo to existing array
-        setNotaPhotos(prev => [...prev, result.assets[0]]);
+        setNotaPhotos(prev => [...prev, photo]);
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to take picture");
+      console.error("Error taking picture:", error);
+      Alert.alert("Error", "Failed to take picture. Please try again.");
     }
   };
 
   const pickFromGallery = async () => {
     try {
+      console.log("Requesting media library permission...");
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
         Alert.alert("Error", "Permission to access gallery was denied");
         return;
       }
+      
+      console.log("Launching image library...");
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         quality: 0.8,
+        base64: false,
       });
+      
+      console.log("Gallery result:", result);
       if (!result.canceled && result.assets?.[0]) {
-        setNotaPhotos(prev => [...prev, result.assets[0]]);
+        const photo = result.assets[0];
+        console.log("Photo selected:", photo);
+        setNotaPhotos(prev => [...prev, photo]);
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to pick image");
+      console.error("Error picking image:", error);
+      Alert.alert("Error", "Failed to pick image. Please try again.");
     }
   };
 
   const handleConfirm = () => {
-    if (notaPhotos.length === 0) {
-      Alert.alert("Error", "Silakan pilih foto nota terlebih dahulu");
-      return;
+    // Nota photos are now optional - drivers can proceed without photos
+    // if (notaPhotos.length === 0) {
+    //   Alert.alert("Error", "Silakan pilih foto nota terlebih dahulu");
+    //   return;
+    // }
+    
+    // Validate that selected photos have valid URIs (if any photos are selected)
+    if (notaPhotos.length > 0) {
+      const invalidPhotos = notaPhotos.filter(photo => !photo.uri);
+      if (invalidPhotos.length > 0) {
+        Alert.alert("Error", "Beberapa foto tidak valid. Silakan pilih ulang foto nota.");
+        return;
+      }
     }
+    
+    console.log("Confirming nota upload with photos:", notaPhotos);
+    
+    // Set a timeout to prevent infinite loading
+    const timeout = setTimeout(() => {
+      Alert.alert(
+        "Upload Timeout",
+        "Upload memakan waktu terlalu lama. Silakan coba lagi atau gunakan foto yang lebih kecil.",
+        [
+          { text: "OK", onPress: () => onClose() }
+        ]
+      );
+    }, 120000); // 2 minutes timeout
+    
+    setUploadTimeout(timeout);
     onConfirm(notaPhotos);
   };
 
@@ -123,6 +168,11 @@ const NotaUploadModal: React.FC<NotaUploadModalProps> = ({
   };
 
   const handleClose = () => {
+    // Clear timeout if exists
+    if (uploadTimeout) {
+      clearTimeout(uploadTimeout);
+      setUploadTimeout(null);
+    }
     setNotaPhotos([]);
     onClose();
   };
@@ -130,9 +180,28 @@ const NotaUploadModal: React.FC<NotaUploadModalProps> = ({
   // Reset photos when modal closes
   useEffect(() => {
     if (!visible) {
-      setNotaPhotos([]);
+      // Clear timeout when modal closes
+      if (uploadTimeout) {
+        clearTimeout(uploadTimeout);
+        setUploadTimeout(null);
+      }
+      // Only reset photos if modal is closing (not just re-rendering)
+      const timer = setTimeout(() => {
+        setNotaPhotos([]);
+      }, 100); // Small delay to ensure modal is fully closed
+      
+      return () => clearTimeout(timer);
     }
-  }, [visible]);
+  }, [visible, uploadTimeout]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (uploadTimeout) {
+        clearTimeout(uploadTimeout);
+      }
+    };
+  }, [uploadTimeout]);
 
   return (
     <Modal
@@ -146,15 +215,22 @@ const NotaUploadModal: React.FC<NotaUploadModalProps> = ({
           <ScrollView style={styles.scrollContainer}>
             <Text style={styles.modalTitle}>Upload Foto Nota</Text>
             <Text style={styles.modalSubtitle}>
-              Silakan ambil foto nota dari pelanggan sebagai bukti penyerahan barang
+              Silakan ambil foto nota dari pelanggan sebagai bukti penyerahan barang (opsional)
             </Text>
+
+            {/* Info Section */}
+            <View style={styles.infoSection}>
+              <Text style={styles.infoText}>
+                💡 Foto nota bersifat opsional. Anda dapat melanjutkan tanpa mengupload foto atau mengupload foto nota sebagai bukti penyerahan barang.
+              </Text>
+            </View>
 
             {/* Photo Upload Section */}
             <View style={styles.photoSection}>
               {/* Add Photo Button */}
               <TouchableOpacity style={styles.addPhotoButton} onPress={handleImagePicker}>
                 <Text style={styles.addPhotoIcon}>📷</Text>
-                <Text style={styles.addPhotoText}>Tambah Foto Nota</Text>
+                <Text style={styles.addPhotoText}>Tambah Foto Nota (Opsional)</Text>
               </TouchableOpacity>
 
               {/* Display Selected Photos */}
@@ -194,14 +270,23 @@ const NotaUploadModal: React.FC<NotaUploadModalProps> = ({
                 style={[
                   styles.button,
                   styles.confirmButton,
-                  (notaPhotos.length === 0 || isLoading) && styles.disabledButton,
+                  isLoading && styles.disabledButton,
                 ]}
                 onPress={handleConfirm}
-                disabled={notaPhotos.length === 0 || isLoading}
+                disabled={isLoading}
               >
-                <Text style={styles.confirmButtonText}>
-                  {isLoading ? "Mengunggah..." : "Konfirmasi & Lanjutkan"}
-                </Text>
+                {isLoading ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={[styles.confirmButtonText, { marginLeft: 8 }]}>
+                      Mengunggah...
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.confirmButtonText}>
+                    {notaPhotos.length > 0 ? "Upload & Lanjutkan" : "Lewati & Lanjutkan"}
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -242,6 +327,19 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     color: '#666',
     lineHeight: 22,
+  },
+  infoSection: {
+    backgroundColor: '#e3f2fd',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: '#3498db',
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#1976d2',
+    lineHeight: 20,
   },
   photoSection: {
     marginBottom: 30,
@@ -331,6 +429,11 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     backgroundColor: '#ccc',
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

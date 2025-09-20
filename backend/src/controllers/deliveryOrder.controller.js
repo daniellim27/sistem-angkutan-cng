@@ -242,6 +242,7 @@ exports.getMyDeliveryOrders = async (req, res, next) => {
             )`),
             "expenses_total", // Nama alias untuk total expense
           ],
+          "location_documentation", // Include location documentation for multiple locations
         ],
       },
       include: [
@@ -761,6 +762,7 @@ exports.departFromSPBU = (req, res, next) => {
 exports.uploadNotaPhoto = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const { location_index, location_name } = req.body;
     const driverId = req.user.id;
 
     // Find the delivery order
@@ -776,10 +778,10 @@ exports.uploadNotaPhoto = async (req, res, next) => {
     }
 
     // Check if driver is at the right status to upload nota
-    if (order.status !== "otw_to_unload_location") {
+    if (order.status !== "otw_to_unload_location" && order.status !== "at_unload_location") {
       return res.status(400).json({
         success: false,
-        message: "Foto nota hanya dapat diunggah ketika dalam perjalanan ke lokasi pelanggan.",
+        message: "Foto nota hanya dapat diunggah ketika dalam perjalanan atau di lokasi pelanggan.",
       });
     }
 
@@ -806,12 +808,13 @@ exports.uploadNotaPhoto = async (req, res, next) => {
       notaFile = notaFiles[0];
     }
 
-    if (!notaFile && notaFiles.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Foto nota harus diunggah.",
-      });
-    }
+    // Nota photos are now optional - drivers can proceed without photos
+    // if (!notaFile && notaFiles.length === 0) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Foto nota harus diunggah.",
+    //   });
+    // }
 
     // Process file upload - handle both single file and multiple files (same as surat jalan)
     let nota_photo_url = [];
@@ -825,23 +828,245 @@ exports.uploadNotaPhoto = async (req, res, next) => {
       // Single file uploaded  
       nota_photo_url = [notaFile.path.replace(/\\/g, "/")];
     }
+    // If no files uploaded, nota_photo_url remains empty array - this is now allowed
 
-    // Update delivery order with nota photo URLs
+    // Update both legacy and new location-specific storage
     const currentPhotos = order.nota_photo_url || [];
+    const currentLocationDocs = order.location_documentation || [];
+    
+    // If location context is provided, store per-location
+    if (location_index !== undefined && location_name) {
+      const locationIndex = parseInt(location_index);
+      
+      console.log(`📸 Processing nota upload for location ${locationIndex} (${location_name})`);
+      console.log(`📸 Current location docs before update:`, JSON.stringify(currentLocationDocs, null, 2));
+      
+      // Find existing documentation for this location or create new
+      const existingDocIndex = currentLocationDocs.findIndex(doc => doc.location_index === locationIndex);
+      
+      if (existingDocIndex >= 0) {
+        // Update existing location documentation
+        const existingPhotos = currentLocationDocs[existingDocIndex].photos || [];
+        currentLocationDocs[existingDocIndex].photos = [
+          ...existingPhotos,
+          ...nota_photo_url
+        ];
+        currentLocationDocs[existingDocIndex].uploaded_at = new Date().toISOString();
+        console.log(`Updated existing location doc for index ${locationIndex}:`, currentLocationDocs[existingDocIndex]);
+      } else {
+        // Create new location documentation
+        const newDoc = {
+          location_index: locationIndex,
+          location_name: location_name,
+          photos: nota_photo_url,
+          uploaded_at: new Date().toISOString(),
+          completed: false
+        };
+        currentLocationDocs.push(newDoc);
+        console.log(`Created new location doc for index ${locationIndex}:`, newDoc);
+      }
+    }
+
+    console.log(`📸 Final location docs to save:`, JSON.stringify(currentLocationDocs, null, 2));
+
+    // Update nota_photo_url using Sequelize
     await order.update({
-      nota_photo_url: [...currentPhotos, ...nota_photo_url],
+      nota_photo_url: [...currentPhotos, ...nota_photo_url], // Legacy storage
     });
+    
+    // Update location_documentation using raw SQL to ensure proper JSONB handling
+    const updateQuery = `
+      UPDATE delivery_orders 
+      SET location_documentation = :locationDocs
+      WHERE id = :orderId
+    `;
+    
+    const { sequelize } = require('../models');
+    await sequelize.query(updateQuery, {
+      replacements: {
+        locationDocs: JSON.stringify(currentLocationDocs),
+        orderId: id
+      }
+    });
+    
+    // Reload the order to get the updated data
+    await order.reload();
+    
+    console.log(`📸 Order updated successfully with location docs`);
+    console.log(`📸 Order after reload - location_documentation:`, JSON.stringify(order.location_documentation, null, 2));
+
+    const responseMessage = nota_photo_url.length > 0 
+      ? `${nota_photo_url.length} foto nota berhasil diunggah.`
+      : "Status lokasi berhasil diperbarui.";
 
     res.json({
       success: true,
-      message: "Foto nota berhasil diunggah.",
+      message: responseMessage,
       data: {
-        nota_photo_url: [...currentPhotos, ...nota_photo_url],
+        nota_photo_url: order.nota_photo_url,
+        location_documentation: order.location_documentation,
+        photos_uploaded: nota_photo_url.length,
       },
     });
 
   } catch (err) {
     console.error("Error uploading nota photo:", err);
+    next(err);
+  }
+};
+
+// POST /api/delivery-orders/:id/complete-location
+exports.completeLocation = async (req, res, next) => {
+  console.log('🔥 COMPLETE LOCATION ENDPOINT CALLED 🔥');
+  console.log('Request params:', req.params);
+  console.log('Request body:', req.body);
+  
+  const transaction = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const { location_index } = req.body;
+    const driverId = req.user.id;
+
+    // Find the delivery order
+    const order = await DeliveryOrder.findOne({
+      where: { id, driver_id: driverId },
+      transaction,
+    });
+
+    if (!order) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Delivery Order tidak ditemukan.",
+      });
+    }
+
+    // Check if driver is at customer location
+    if (order.status !== "at_unload_location") {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Lokasi hanya dapat diselesaikan ketika berada di lokasi pelanggan.",
+      });
+    }
+
+    const locationIndex = parseInt(location_index);
+    const currentLocationDocs = order.location_documentation || [];
+    
+    console.log(`Completing location ${locationIndex} for order ${id}`);
+    console.log('Current location docs:', currentLocationDocs);
+    
+    // Build all locations array first
+    const allLocations = [];
+    
+    // Add primary unload location
+    if (order.unload_location) {
+      allLocations.push({ index: 0, location: order.unload_location });
+    }
+    
+    // Add additional unload locations
+    if (order.additional_unload_locations && Array.isArray(order.additional_unload_locations)) {
+      order.additional_unload_locations.forEach((loc, idx) => {
+        if (typeof loc === 'string') {
+          allLocations.push({ index: idx + 1, location: loc });
+        } else if (loc.location) {
+          allLocations.push({ index: idx + 1, location: loc.location });
+        }
+      });
+    }
+    
+    // Mark the specified location as completed
+    const docIndex = currentLocationDocs.findIndex(doc => doc.location_index === locationIndex);
+    console.log(`Looking for location index ${locationIndex}, found at docIndex: ${docIndex}`);
+    console.log(`Current location docs before update:`, JSON.stringify(currentLocationDocs, null, 2));
+    
+    if (docIndex >= 0) {
+      console.log(`Before update - doc at index ${docIndex}:`, JSON.stringify(currentLocationDocs[docIndex], null, 2));
+      // Force update the completion status
+      currentLocationDocs[docIndex] = {
+        ...currentLocationDocs[docIndex],
+        completed: true,
+        completed_at: new Date().toISOString()
+      };
+      console.log(`After update - doc at index ${docIndex}:`, JSON.stringify(currentLocationDocs[docIndex], null, 2));
+      console.log(`Updated existing location doc at index ${docIndex}:`, currentLocationDocs[docIndex]);
+    } else {
+      // If location documentation doesn't exist yet, create it
+      const targetLocation = allLocations.find(loc => loc.index === locationIndex);
+      console.log(`Target location for index ${locationIndex}:`, targetLocation);
+      
+      if (targetLocation) {
+        const newDoc = {
+          location_index: locationIndex,
+          location_name: targetLocation.location,
+          photos: [],
+          completed: true,
+          uploaded_at: new Date().toISOString(),
+          completed_at: new Date().toISOString()
+        };
+        currentLocationDocs.push(newDoc);
+        console.log(`Created new location doc:`, newDoc);
+      }
+    }
+    
+    // Ensure all completed fields are boolean true (not string "true")
+    currentLocationDocs.forEach((doc, index) => {
+      if (doc.completed === 'true' || doc.completed === 1) {
+        doc.completed = true;
+        console.log(`Fixed completion status for doc ${index}:`, doc);
+      }
+    });
+
+    const isLastLocation = locationIndex >= allLocations.length - 1;
+    const hasMoreLocations = !isLastLocation;
+
+    console.log(`About to update database with location docs:`, JSON.stringify(currentLocationDocs, null, 2));
+    
+    // Update the order with the new location documentation using raw SQL
+    // This ensures the JSON field is properly updated in the database
+    const updateQuery = `
+      UPDATE delivery_orders 
+      SET location_documentation = :locationDocs
+      WHERE id = :orderId AND driver_id = :driverId
+    `;
+    
+    await sequelize.query(updateQuery, {
+      replacements: {
+        locationDocs: JSON.stringify(currentLocationDocs),
+        orderId: id,
+        driverId: driverId
+      },
+      transaction
+    });
+
+    // Refresh the order from database to ensure we have the latest data
+    await order.reload();
+    
+    console.log(`Updated order ${id} with location docs from database:`, JSON.stringify(order.location_documentation, null, 2));
+    console.log(`Has more locations: ${hasMoreLocations}, is last location: ${isLastLocation}`);
+    
+    // Log the final response data for debugging
+    const responseData = {
+      location_documentation: order.location_documentation,
+      has_more_locations: hasMoreLocations,
+      next_location_index: hasMoreLocations ? locationIndex + 1 : null,
+      can_complete_task: !hasMoreLocations,
+    };
+    console.log('Response data being sent:', JSON.stringify(responseData, null, 2));
+
+    // Commit the transaction
+    await transaction.commit();
+
+    res.json({
+      success: true,
+      message: hasMoreLocations ? "Lokasi selesai. Lanjut ke lokasi berikutnya." : "Semua lokasi selesai. Siap menyelesaikan tugas.",
+      data: responseData,
+    });
+
+  } catch (err) {
+    // Rollback the transaction on error
+    await transaction.rollback();
+    console.error("Error completing location:", err);
     next(err);
   }
 };

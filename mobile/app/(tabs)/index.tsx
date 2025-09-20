@@ -12,10 +12,9 @@ import {
   Alert,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import apiClient, { updateDeliveryStatus, uploadNotaPhoto } from "../../src/services/api";
+import apiClient, { updateDeliveryStatus, uploadNotaPhoto, completeLocation } from "../../src/services/api";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { FontAwesome5 } from "@expo/vector-icons";
-import NotaUploadModal from "../../components/NotaUploadModal";
 
 // === UPDATED INTERFACES ===
 interface Vehicle {
@@ -46,6 +45,19 @@ interface DeliveryOrder {
     | "cancelled";
   load_location: string;
   unload_location: string;
+  load_latitude?: string;
+  load_longitude?: string;
+  unload_latitude?: string;
+  unload_longitude?: string;
+  additional_unload_locations?: Array<{location: string, latitude?: number, longitude?: number}>;
+  location_documentation?: Array<{
+    location_index: number;
+    location_name: string;
+    photos: string[];
+    completed: boolean;
+    uploaded_at: string;
+    completed_at?: string;
+  }>;
   purchaseOrder?: PurchaseOrder;
   vehicle?: Vehicle;
   trip_allowance: number;
@@ -72,16 +84,33 @@ const DriverDashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
-  const [showNotaModal, setShowNotaModal] = useState(false);
-  const [selectedOrderForNota, setSelectedOrderForNota] = useState<number | null>(null);
-  const [uploadingNota, setUploadingNota] = useState(false);
+  const [currentLocationIndex, setCurrentLocationIndex] = useState<{[orderId: number]: number}>({});
 
   const fetchMyTasks = async () => {
     try {
       const response = await apiClient.get<DeliveryOrder[]>(
-        "/delivery-orders/me"
+        `/delivery-orders/me?t=${Date.now()}`
       );
+      console.log('Fetched delivery orders:', response.data.map(order => ({
+        id: order.id,
+        location_documentation: order.location_documentation
+      })));
+      
       setDeliveryOrders(response.data);
+      
+      // Initialize current location index for orders with multiple locations
+      const newLocationIndex: {[orderId: number]: number} = {};
+      response.data.forEach(order => {
+        if (hasMultipleCustomerLocations(order)) {
+          // Check if there's existing location documentation to determine current index
+          const locationDocs = order.location_documentation || [];
+          const completedCount = locationDocs.filter(doc => doc.completed === true).length;
+          console.log(`Order ${order.id} location docs:`, locationDocs, `completed count: ${completedCount}`);
+          newLocationIndex[order.id] = completedCount;
+        }
+      });
+      setCurrentLocationIndex(prev => ({ ...prev, ...newLocationIndex }));
+      
       setError(null);
     } catch (err: any) {
       console.error(
@@ -108,10 +137,57 @@ const DriverDashboard = () => {
   };
 
   const handleUpdateStatus = async (orderId: number, action: string) => {
-    // Special handling for arrive_at_unload - show nota upload modal first
+    console.log(`handleUpdateStatus called for order ${orderId}, action: ${action}`);
+    
+    // Special handling for arrive_at_unload - directly update status (no modal)
     if (action === "arrive_at_unload") {
-      setSelectedOrderForNota(orderId);
-      setShowNotaModal(true);
+      console.log(`Directly updating status to arrive_at_unload for order ${orderId}`);
+      setUpdatingStatus(orderId);
+      try {
+        await updateDeliveryStatus(orderId, action);
+        await fetchMyTasks(); // Refresh data
+        Alert.alert("Berhasil", "Berhasil tiba di lokasi pelanggan");
+      } catch (err: any) {
+        console.error(`Error updating status for order ${orderId}:`, err);
+        Alert.alert("Error", err.message || "Gagal memperbarui status");
+      } finally {
+        setUpdatingStatus(null);
+      }
+      return;
+    }
+
+    // Special handling for upload_nota - directly process location (no modal)
+    if (action === "upload_nota") {
+      console.log(`Directly processing location for order ${orderId}`);
+      setUpdatingStatus(orderId);
+      try {
+        // Find the selected order to get location context
+        const selectedOrder = deliveryOrders.find(order => order.id === orderId);
+        if (!selectedOrder) {
+          throw new Error("Order tidak ditemukan");
+        }
+
+        const currentIndex = getCurrentLocationIndex(orderId);
+        const currentLocationName = getAllCustomerLocations(selectedOrder)[currentIndex]?.location || `Lokasi ${currentIndex + 1}`;
+        
+        // Process location without photos (since photos are now optional)
+        await (uploadNotaPhoto as any)(orderId, [], currentIndex, currentLocationName);
+        await fetchMyTasks(); // Refresh data
+        
+        Alert.alert("Berhasil", `Lokasi ${currentLocationName} berhasil diproses`);
+      } catch (err: any) {
+        console.error(`Error processing location for order ${orderId}:`, err);
+        Alert.alert("Error", err.message || "Gagal memproses lokasi");
+      } finally {
+        setUpdatingStatus(null);
+      }
+      return;
+    }
+
+    // Special handling for next_customer - complete current location and move to next
+    if (action === "next_customer") {
+      console.log(`Calling handleNextCustomer for order ${orderId}`);
+      await handleNextCustomer(orderId);
       return;
     }
 
@@ -150,43 +226,81 @@ const DriverDashboard = () => {
     }
   };
 
-  const handleNotaUpload = async (notaPhotos: any[]) => {
-    if (!selectedOrderForNota) return;
-
-    setUploadingNota(true);
+  const handleNextCustomer = async (orderId: number) => {
+    setUpdatingStatus(orderId);
     try {
-      // First upload the nota photos
-      await uploadNotaPhoto(selectedOrderForNota, notaPhotos);
+      // Get the current location index for this order
+      const currentIndex = getCurrentLocationIndex(orderId);
+      console.log(`Completing location ${currentIndex} for order ${orderId}`);
       
-      // Then update the status to arrive_at_unload
-      await updateDeliveryStatus(selectedOrderForNota, "arrive_at_unload");
+      // Complete the current location
+      const response = await completeLocation(orderId, currentIndex);
+      console.log('Complete location response:', response.data);
+      console.log('Response location_documentation:', response.data.data?.location_documentation);
+      console.log('Response has_more_locations:', response.data.data?.has_more_locations);
       
-      // Refresh data
+      // Log the detailed location documentation
+      if (response.data.data?.location_documentation) {
+        response.data.data.location_documentation.forEach((doc: any, index: number) => {
+          console.log(`Response doc ${index}:`, {
+            location_index: doc.location_index,
+            location_name: doc.location_name,
+            completed: doc.completed,
+            completed_type: typeof doc.completed,
+            photos: doc.photos,
+            uploaded_at: doc.uploaded_at,
+            completed_at: doc.completed_at
+          });
+        });
+      }
+      
+      // Update the current location index to the next location
+      setCurrentLocationIndex(prev => ({
+        ...prev,
+        [orderId]: currentIndex + 1
+      }));
+      
+      // Refresh data to get updated location documentation
       await fetchMyTasks();
       
-      // Close modal
-      setShowNotaModal(false);
-      setSelectedOrderForNota(null);
+      // Log the updated order data after refresh
+      const updatedOrder = deliveryOrders.find(order => order.id === orderId);
+      if (updatedOrder) {
+        console.log(`Order ${orderId} after refresh:`, {
+          location_documentation: updatedOrder.location_documentation,
+          hasMultiple: hasMultipleCustomerLocations(updatedOrder),
+          hasMore: hasMoreCustomerLocations(updatedOrder)
+        });
+      }
 
-      Alert.alert(
-        "Berhasil",
-        `${notaPhotos.length} foto nota berhasil diunggah dan status diperbarui ke 'Tiba di Pelanggan'`
-      );
+      // Get current location info for better messaging
+      const allOrderLocations = getAllCustomerLocations(deliveryOrders.find(o => o.id === orderId)!);
+      const completedLocation = allOrderLocations[currentIndex];
+      const nextLocation = allOrderLocations[currentIndex + 1];
+      
+      if (response.data.has_more_locations) {
+        Alert.alert(
+          "Berhasil",
+          `Lokasi "${completedLocation?.location || `Lokasi ${currentIndex + 1}`}" selesai. Selanjutnya menuju "${nextLocation?.location || `Lokasi ${currentIndex + 2}`}".`
+        );
+      } else {
+        Alert.alert(
+          "Berhasil", 
+          `Semua lokasi selesai! Tugas "${deliveryOrders.find(o => o.id === orderId)?.do_number}" dapat diselesaikan sekarang.`
+        );
+      }
     } catch (err: any) {
-      console.error("Error uploading nota:", err);
+      console.error('Error in handleNextCustomer:', err);
       Alert.alert(
         "Error",
-        err.response?.data?.message || "Gagal mengunggah foto nota. Silakan coba lagi."
+        err.response?.data?.message || "Gagal menyelesaikan lokasi"
       );
     } finally {
-      setUploadingNota(false);
+      setUpdatingStatus(null);
     }
   };
 
-  const handleCloseNotaModal = () => {
-    setShowNotaModal(false);
-    setSelectedOrderForNota(null);
-  };
+
 
   useFocusEffect(
     useCallback(() => {
@@ -199,6 +313,134 @@ const DriverDashboard = () => {
     setRefreshing(true);
     fetchMyTasks();
   }, []);
+
+  // Helper function to check if order has multiple customer locations
+  const hasMultipleCustomerLocations = (order: DeliveryOrder) => {
+    return order.additional_unload_locations && order.additional_unload_locations.length > 0;
+  };
+
+  // Helper function to get current location index for an order
+  const getCurrentLocationIndex = (orderId: number) => {
+    const order = deliveryOrders.find(o => o.id === orderId);
+    
+    console.log(`🔍 getCurrentLocationIndex for order ${orderId}:`, {
+      hasLocationDocs: !!(order?.location_documentation && order.location_documentation.length > 0),
+      locationDocs: order?.location_documentation,
+      allLocations: order ? getAllCustomerLocations(order) : []
+    });
+    
+    // If there's location documentation from backend, use that to determine current location
+    if (order?.location_documentation && order.location_documentation.length > 0) {
+      const allLocations = getAllCustomerLocations(order);
+      let currentIndex = 0;
+      
+      for (let i = 0; i < allLocations.length; i++) {
+        const locationDoc = order.location_documentation.find(doc => doc.location_index === i);
+        console.log(`🔍 Location ${i}:`, {
+          hasDoc: !!locationDoc,
+          hasPhotos: !!(locationDoc?.photos && locationDoc.photos.length > 0),
+          photosCount: locationDoc?.photos?.length || 0,
+          completed: locationDoc?.completed,
+          doc: locationDoc
+        });
+        
+        // If this location is completed, move to next
+        if (locationDoc && (locationDoc.completed === true || String(locationDoc.completed) === 'true' || Number(locationDoc.completed) === 1)) {
+          console.log(`🔍 Location ${i} is completed, moving to next location`);
+          continue; // Continue to next location
+        }
+        
+        // If we reach here, this is the current active location (either no doc, no photos, or has photos but not completed)
+        currentIndex = i;
+        console.log(`🔍 Setting currentIndex to ${currentIndex} for location ${i}`);
+        break;
+      }
+      
+      console.log(`Order ${orderId} - calculated current index: ${currentIndex} from location docs`);
+      return Math.min(currentIndex, allLocations.length - 1);
+    }
+    
+    // Fallback to local state
+    const localIndex = currentLocationIndex[orderId] || 0;
+    console.log(`Order ${orderId} - using local index: ${localIndex}`);
+    return localIndex;
+  };
+
+  // Helper function to get all customer locations for an order
+  const getAllCustomerLocations = (order: DeliveryOrder) => {
+    const locations = [];
+    
+    // Add primary unload location
+    if (order.unload_location && order.unload_latitude && order.unload_longitude) {
+      locations.push({
+        location: order.unload_location,
+        latitude: parseFloat(order.unload_latitude),
+        longitude: parseFloat(order.unload_longitude),
+      });
+    }
+    
+    // Add additional unload locations
+    if (order.additional_unload_locations) {
+      order.additional_unload_locations.forEach((loc) => {
+        if (loc.location && loc.latitude && loc.longitude) {
+          locations.push({
+            location: loc.location,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+          });
+        }
+      });
+    }
+    
+    return locations;
+  };
+
+  // Helper function to check if there are more locations for an order
+  const hasMoreCustomerLocations = (order: DeliveryOrder) => {
+    const allLocations = getAllCustomerLocations(order);
+    const currentIndex = getCurrentLocationIndex(order.id);
+    
+    console.log(`Checking hasMoreCustomerLocations for order ${order.id}:`, {
+      totalLocations: allLocations.length,
+      currentIndex,
+      locationDocs: order.location_documentation
+    });
+    
+    // If there's location documentation from backend, use that to determine if there are more locations
+    if (order.location_documentation && order.location_documentation.length > 0) {
+      console.log('Location docs details:', order.location_documentation.map(doc => ({
+        location_index: doc.location_index,
+        completed: doc.completed,
+        completed_type: typeof doc.completed,
+        photos: doc.photos?.length || 0,
+        full_doc: doc
+      })));
+      
+      // Check if all locations have been completed
+      let allCompleted = true;
+      for (let i = 0; i < allLocations.length; i++) {
+        const locationDoc = order.location_documentation.find(doc => doc.location_index === i);
+        const isCompleted = locationDoc && (
+          locationDoc.completed === true || 
+          String(locationDoc.completed) === 'true' || 
+          Number(locationDoc.completed) === 1
+        );
+        if (!isCompleted) {
+          allCompleted = false;
+          break;
+        }
+      }
+      
+      const hasMore = !allCompleted;
+      console.log(`Using location docs: allCompleted=${allCompleted}, hasMore=${hasMore}`);
+      return hasMore;
+    }
+    
+    // Fallback to checking current index - there are more locations if current index is not the last one
+    const hasMore = currentIndex < allLocations.length - 1;
+    console.log(`Using fallback: currentIndex=${currentIndex}, total=${allLocations.length}, hasMore=${hasMore}`);
+    return hasMore;
+  };
 
   // === NEW STATUS ACTIONS MAPPING ===
   const getStatusActions = (order: DeliveryOrder) => {
@@ -239,13 +481,70 @@ const DriverDashboard = () => {
           disabled: isUpdating,
         };
       case "at_unload_location":
-        return {
-          action: "start_return",
-          label: "Selesaikan Tugas",
-          icon: "check-circle",
-          color: "#27ae60",
-          disabled: isUpdating,
-        };
+        // Check if this order has multiple customer locations and if there are more locations to complete
+        const hasMultiple = hasMultipleCustomerLocations(order);
+        const hasMore = hasMoreCustomerLocations(order);
+        console.log(`Order ${order.id} at_unload_location: hasMultiple=${hasMultiple}, hasMore=${hasMore}`);
+        
+        if (hasMultiple && hasMore) {
+          // Check if current location has been processed (photos optional, but location documented)
+          const currentIndex = getCurrentLocationIndex(order.id);
+          const currentLocationDocs = order.location_documentation || [];
+          const currentLocationDoc = currentLocationDocs.find(doc => doc.location_index === currentIndex);
+          const hasPhotos = currentLocationDoc && currentLocationDoc.photos && currentLocationDoc.photos.length > 0;
+          const isProcessed = currentLocationDoc && currentLocationDoc.uploaded_at; // Location has been processed (with or without photos)
+          
+          console.log(`Order ${order.id} at_unload_location status check:`, {
+            currentIndex,
+            hasPhotos,
+            isProcessed,
+            hasMultiple,
+            hasMore,
+            totalDocs: currentLocationDocs.length,
+            currentDoc: currentLocationDoc
+          });
+          console.log(`Order ${order.id} location docs:`, JSON.stringify(currentLocationDocs, null, 2));
+          console.log(`Order ${order.id} current location doc:`, JSON.stringify(currentLocationDoc, null, 2));
+          
+          if (isProcessed) {
+            console.log(`Order ${order.id} returning next_customer action - location already processed`);
+            // Location already processed (with or without photos), show next location button
+            const allLocations = getAllCustomerLocations(order);
+            const isLastLocation = currentIndex >= allLocations.length - 1;
+            
+            return {
+              action: "next_customer",
+              label: isLastLocation ? "Selesaikan Semua Lokasi" : "Menuju Lokasi Berikutnya",
+              icon: "arrow-right",
+              color: "#f39c12",
+              disabled: isUpdating,
+            };
+          } else {
+            console.log(`Order ${order.id} returning upload_nota action - location not processed yet`);
+            // Location not processed yet, show upload nota option (photos optional)
+            const allLocations = getAllCustomerLocations(order);
+            const currentLocation = allLocations[currentIndex];
+            const locationName = currentLocation?.location || `Lokasi ${currentIndex + 1}`;
+            
+            return {
+              action: "upload_nota",
+              label: `Proses Lokasi - ${locationName}`,
+              icon: "check-circle",
+              color: "#9b59b6",
+              disabled: isUpdating,
+            };
+          }
+        } else {
+          console.log(`Order ${order.id} returning start_return action`);
+          // Single location or all locations completed - complete task directly
+          return {
+            action: "start_return",
+            label: "Selesaikan Tugas",
+            icon: "check-circle",
+            color: "#27ae60",
+            disabled: isUpdating,
+          };
+        }
       default:
         return null;
     }
@@ -257,6 +556,7 @@ const DriverDashboard = () => {
     if (!actionConfig) return null;
 
     const handlePress = () => {
+      console.log(`Button pressed for order ${order.id}, action: ${actionConfig.action}`);
       if (actionConfig.special) {
         // Navigate to detail page for load confirmation
         router.push(`/trip-detail/${order.id}`);
@@ -361,7 +661,14 @@ const DriverDashboard = () => {
           </View>
           <View style={styles.locationContainer}>
             <FontAwesome5 name="arrow-down" size={14} color="#e74c3c" />
-            <Text style={styles.locationText}>{item.unload_location}</Text>
+            <Text style={styles.locationText}>
+              {item.unload_location}
+              {hasMultipleCustomerLocations(item) && (
+                <Text style={styles.multipleLocationsHint}>
+                  {' '}(+{item.additional_unload_locations!.length} lokasi lagi)
+                </Text>
+              )}
+            </Text>
           </View>
         </View>
 
@@ -428,13 +735,6 @@ const DriverDashboard = () => {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
-      />
-      {/* Nota Upload Modal */}
-      <NotaUploadModal
-        visible={showNotaModal}
-        onClose={handleCloseNotaModal}
-        onConfirm={handleNotaUpload}
-        isLoading={uploadingNota}
       />
     </View>
   );
@@ -534,6 +834,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#155724",
     textAlign: "center",
+    fontStyle: "italic",
+  },
+  multipleLocationsHint: {
+    fontSize: 11,
+    color: "#666",
     fontStyle: "italic",
   },
 });

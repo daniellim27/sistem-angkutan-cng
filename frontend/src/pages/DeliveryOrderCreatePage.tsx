@@ -180,7 +180,7 @@ const DeliveryOrderCreatePage = () => {
         vehicle_id: parseInt(formData.vehicle_id),
         load_location: formData.load_location,
         unload_location: formData.unload_location,
-        additional_unload_locations: unloadLocations.filter(loc => loc.trim() !== ''), // Include additional unload locations
+        additional_unload_locations: unloadLocations.slice(1).filter(loc => loc.trim() !== ''), // Include only additional locations (excluding first one)
         trip_allowance: parseFloat(formData.trip_allowance),
         gaji: parseFloat(formData.gaji),
         do_name: formData.do_name,
@@ -412,7 +412,7 @@ const DeliveryOrderCreatePage = () => {
                   <div key={index} className="flex gap-2">
                     <input
                       type="text"
-                      value={location}
+                        value={location}
                       onChange={(e) => updateUnloadLocation(index, e.target.value)}
                       placeholder={`Unload location ${index + 1}`}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"

@@ -122,20 +122,21 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
   const handleConfirm = () => {
     const quantity = parseFloat(actualQuantity);
     if (!actualQuantity || isNaN(quantity)) {
-      Alert.alert("Error", "Masukkan berat muatan aktual yang valid");
+      Alert.alert("Error", "Masukkan volume muatan aktual yang valid");
       return;
     }
     if (quantity < minimalQuantity) {
       Alert.alert(
         "Error",
-        `Muatan aktual (${quantity} ton) kurang dari minimal yang ditetapkan (${minimalQuantity} ton)`
+        `Muatan aktual (${quantity} m³) kurang dari minimal yang ditetapkan (${minimalQuantity} m³)`
       );
       return;
     }
-    if (suratJalanPhotos.length === 0) {
-      Alert.alert("Error", "Minimal 1 foto surat jalan harus diambil");
-      return;
-    }
+    // Surat jalan photos are now optional - drivers can upload them later
+    // if (suratJalanPhotos.length === 0) {
+    //   Alert.alert("Error", "Minimal 1 foto surat jalan harus diambil");
+    //   return;
+    // }
     onConfirm({
       actual_load_quantity: quantity,
       surat_jalan_photo: suratJalanPhotos,
@@ -166,16 +167,16 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
           <View style={styles.infoSection}>
             <FontAwesome5 name="info-circle" size={20} color="#3498db" />
             <Text style={styles.infoText}>
-              Masukkan berat muatan aktual yang sudah dimuat ke kendaraan dan
-              ambil foto surat jalan.
+              Masukkan volume muatan aktual yang sudah dimuat ke kendaraan. 
+              Foto surat jalan dapat diambil sekarang atau nanti di halaman detail perjalanan.
             </Text>
           </View>
 
           <View style={styles.quantitySection}>
-            <Text style={styles.label}>Berat Muatan</Text>
+            <Text style={styles.label}>Volume Muatan</Text>
             <View style={styles.quantityInfo}>
               <Text style={styles.minimalText}>
-                Minimal: {minimalQuantity} ton
+                Minimal: {minimalQuantity} m³
               </Text>
             </View>
             <TextInput
@@ -186,11 +187,11 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
               keyboardType="numeric"
               editable={!isLoading}
             />
-            <Text style={styles.unitText}>ton</Text>
+            <Text style={styles.unitText}>m³</Text>
           </View>
 
           <View style={styles.photoSection}>
-            <Text style={styles.label}>Foto Surat Jalan *</Text>
+            <Text style={styles.label}>Foto Surat Jalan (Opsional)</Text>
             
             {suratJalanPhotos.length > 0 ? (
               <View style={styles.photoPreviewContainer}>
@@ -256,11 +257,11 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
           <TouchableOpacity
             style={[
               styles.confirmButton,
-              (!actualQuantity || suratJalanPhotos.length === 0 || isLoading) &&
+              (!actualQuantity || isLoading) &&
                 styles.disabledButton,
             ]}
             onPress={handleConfirm}
-            disabled={!actualQuantity || suratJalanPhotos.length === 0 || isLoading}
+            disabled={!actualQuantity || isLoading}
           >
             {isLoading ? (
               <ActivityIndicator color="#fff" />
