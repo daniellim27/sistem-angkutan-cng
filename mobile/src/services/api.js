@@ -469,4 +469,85 @@ export const deleteBudgetRequest = async (requestId) => {
   return apiClient.delete(`/budget-requests/${requestId}`);
 };
 
+export const uploadDocumentationPhotos = async (doId, locationIndex, documentationData) => {
+  try {
+    console.log("uploadDocumentationPhotos called with:", {
+      doId,
+      locationIndex,
+      documentationData
+    });
+
+    const formData = new FormData();
+    
+    // Add location index
+    formData.append('location_index', locationIndex.toString());
+    
+    // Helper function to add photos to FormData
+    const addPhotosToFormData = async (photos, fieldName) => {
+      if (!photos || photos.length === 0) return;
+      
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i];
+        if (photo && photo.uri) {
+          const ext = photo.uri.split(".").pop() || "jpg";
+          console.log(`Adding ${fieldName} photo ${i + 1} to FormData:`, {
+            uri: photo.uri,
+            fileName: photo.fileName || `${fieldName}_${locationIndex}_${i}.${ext}`,
+            mimeType: photo.mimeType || "image/jpeg"
+          });
+
+          await appendFileToFormData(
+            formData,
+            fieldName,
+            {
+              ...photo,
+              fileName: photo.fileName || `${fieldName}_${locationIndex}_${i}.${ext}`,
+              mimeType: photo.mimeType || "image/jpeg",
+            }
+          );
+        } else {
+          console.warn(`Skipping ${fieldName} photo without uri:`, photo);
+        }
+      }
+    };
+
+    // Add each type of documentation photo
+    if (documentationData.pressureBarPhotos) {
+      await addPhotosToFormData(documentationData.pressureBarPhotos, 'pressure_bar');
+    }
+    
+    if (documentationData.temperaturePhotos) {
+      await addPhotosToFormData(documentationData.temperaturePhotos, 'temperature');
+    }
+    
+    if (documentationData.stanAwalPhotos) {
+      await addPhotosToFormData(documentationData.stanAwalPhotos, 'stan_awal');
+    }
+    
+    if (documentationData.stanAkhirPhotos) {
+      await addPhotosToFormData(documentationData.stanAkhirPhotos, 'stan_akhir');
+    }
+
+    // Log form data for debugging
+    console.log("Documentation FormData contents:");
+    for (const [key, value] of formData.entries()) {
+      console.log(key, value);
+    }
+
+    return apiClient.post(`/delivery-orders/${doId}/upload-documentation`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      timeout: 60000, // 60 seconds for photo upload
+    });
+  } catch (error) {
+    console.error("Error in uploadDocumentationPhotos API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
 export default apiClient;

@@ -1,6 +1,6 @@
 // mobile/app/trip-detail/[id].tsx
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -27,9 +27,11 @@ import {
   getBudgetRequests,
   completeLocation,
   uploadSuratJalanPhoto,
+  uploadDocumentationPhotos,
 } from "../../src/services/api";
 import { FontAwesome5 } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Interface untuk data yang akan kita terima
 interface Expense {
@@ -138,6 +140,11 @@ const TripDetailScreen = () => {
   const [suratJalanPhotos, setSuratJalanPhotos] = useState<any[]>([]);
   const [currentLocationIndex, setCurrentLocationIndex] = useState<number>(0);
   const [showLocationDocModal, setShowLocationDocModal] = useState(false);
+  // Location-specific photo arrays - each index corresponds to a location
+  const [pressureBarPhotos, setPressureBarPhotos] = useState<any[]>([]);
+  const [temperaturePhotos, setTemperaturePhotos] = useState<any[]>([]);
+  const [stanAwalPhotos, setStanAwalPhotos] = useState<any[]>([]);
+  const [stanAkhirPhotos, setStanAkhirPhotos] = useState<any[]>([]);
 
   const expenseTypes = [
     { label: "BBM/Solar", value: "bbm" },
@@ -147,6 +154,31 @@ const TripDetailScreen = () => {
     { label: "Tambah Pengeluaran", value: "pengeluaran_tambahan" },
     { label: "Lain-lain", value: "lainnya" },
   ];
+
+  // Load photos from storage when trip is available
+  useEffect(() => {
+    const loadAllPhotos = async () => {
+      if (trip?.id) {
+        console.log("Loading photos for trip:", trip.id);
+        
+        const [pressureBar, temperature, stanAwal, stanAkhir] = await Promise.all([
+          loadPhotosFromStorage(trip.id, 'pressure_bar'),
+          loadPhotosFromStorage(trip.id, 'temperature'),
+          loadPhotosFromStorage(trip.id, 'stan_awal'),
+          loadPhotosFromStorage(trip.id, 'stan_akhir'),
+        ]);
+
+        setPressureBarPhotos(pressureBar);
+        setTemperaturePhotos(temperature);
+        setStanAwalPhotos(stanAwal);
+        setStanAkhirPhotos(stanAkhir);
+        
+        console.log("Photos loaded successfully");
+      }
+    };
+
+    loadAllPhotos();
+  }, [trip?.id]);
 
   const fetchTripDetails = useCallback(async () => {
     if (!id || isLoadingRef.current) {
@@ -372,6 +404,453 @@ const TripDetailScreen = () => {
     }
   };
 
+  const handlePressureBarPhoto = () => {
+    if (Platform.OS === "web") {
+      // For web, use HTML file input
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = (e) => {
+        const target = e.target as HTMLInputElement | null;
+        if (target && target.files && target.files[0]) {
+          const file = target.files[0];
+          const photoData = {
+            uri: URL.createObjectURL(file),
+            fileName: file.name,
+            type: file.type,
+          };
+          setLocationPhoto(pressureBarPhotos, setPressureBarPhotos, currentLocationIndex, photoData, 'pressure_bar');
+        }
+      };
+      input.click();
+    } else {
+      Alert.alert(
+        "Foto Pressure Bar",
+        "Bagaimana cara Anda ingin mengambil foto pressure bar?",
+        [
+          { text: "Kamera", onPress: takePressureBarPicture },
+          { text: "Galeri", onPress: pickPressureBarFromGallery },
+          { text: "Batal", style: "cancel" },
+        ],
+        { cancelable: true }
+      );
+    }
+  };
+
+  const takePressureBarPicture = async () => {
+    try {
+      console.log("Starting pressure bar camera...");
+      
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      console.log("Pressure bar camera permission result:", permissionResult);
+
+      if (permissionResult.granted === false) {
+        Alert.alert(
+          "Permission Diperlukan",
+          "Aplikasi memerlukan izin untuk mengakses kamera. Silakan berikan izin di pengaturan aplikasi.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 0.8,
+        base64: false,
+      });
+
+      console.log("Pressure bar camera result:", result);
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const takenImage = result.assets[0];
+        setLocationPhoto(pressureBarPhotos, setPressureBarPhotos, currentLocationIndex, takenImage, 'pressure_bar');
+        console.log("Pressure bar photo set for location", currentLocationIndex, ":", takenImage);
+      }
+    } catch (error) {
+      console.error("Error taking pressure bar picture:", error);
+      Alert.alert("Error", "Gagal mengambil foto pressure bar");
+    }
+  };
+
+  const pickPressureBarFromGallery = async () => {
+    try {
+      console.log("Opening pressure bar gallery...");
+      
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      console.log("Pressure bar gallery permission result:", permissionResult);
+
+      if (permissionResult.granted === false) {
+        Alert.alert(
+          "Permission Diperlukan",
+          "Aplikasi memerlukan izin untuk mengakses galeri foto. Silakan berikan izin di pengaturan aplikasi.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: "images",
+        allowsEditing: false,
+        quality: 0.8,
+        base64: false,
+      });
+
+      console.log("Pressure bar gallery result:", result);
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selectedImage = result.assets[0];
+        setLocationPhoto(pressureBarPhotos, setPressureBarPhotos, currentLocationIndex, selectedImage, 'pressure_bar');
+        console.log("Pressure bar photo selected for location", currentLocationIndex, ":", selectedImage);
+      }
+    } catch (error) {
+      console.error("Error picking pressure bar image:", error);
+      Alert.alert("Error", "Gagal memilih foto pressure bar");
+    }
+  };
+
+  // Temperature photo handlers
+  const handleTemperaturePhoto = () => {
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = (e) => {
+        const target = e.target as HTMLInputElement | null;
+        if (target && target.files && target.files[0]) {
+          const file = target.files[0];
+          const photoData = {
+            uri: URL.createObjectURL(file),
+            fileName: file.name,
+            type: file.type,
+          };
+          setLocationPhoto(temperaturePhotos, setTemperaturePhotos, currentLocationIndex, photoData, 'temperature');
+        }
+      };
+      input.click();
+    } else {
+      Alert.alert(
+        "Foto Temperature",
+        "Bagaimana cara Anda ingin mengambil foto temperature?",
+        [
+          { text: "Kamera", onPress: takeTemperaturePicture },
+          { text: "Galeri", onPress: pickTemperatureFromGallery },
+          { text: "Batal", style: "cancel" },
+        ],
+        { cancelable: true }
+      );
+    }
+  };
+
+  const takeTemperaturePicture = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (permissionResult.granted === false) {
+        Alert.alert(
+          "Permission Diperlukan",
+          "Aplikasi memerlukan izin untuk mengakses kamera.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 0.8,
+        base64: false,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setLocationPhoto(temperaturePhotos, setTemperaturePhotos, currentLocationIndex, result.assets[0], 'temperature');
+      }
+    } catch (error) {
+      Alert.alert("Error", "Gagal mengambil foto temperature");
+    }
+  };
+
+  const pickTemperatureFromGallery = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permissionResult.granted === false) {
+        Alert.alert(
+          "Permission Diperlukan",
+          "Aplikasi memerlukan izin untuk mengakses galeri foto.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: "images",
+        allowsEditing: false,
+        quality: 0.8,
+        base64: false,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setLocationPhoto(temperaturePhotos, setTemperaturePhotos, currentLocationIndex, result.assets[0], 'temperature');
+      }
+    } catch (error) {
+      Alert.alert("Error", "Gagal memilih foto temperature");
+    }
+  };
+
+  // Stan Awal photo handlers
+  const handleStanAwalPhoto = () => {
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = (e) => {
+        const target = e.target as HTMLInputElement | null;
+        if (target && target.files && target.files[0]) {
+          const file = target.files[0];
+          const photoData = {
+            uri: URL.createObjectURL(file),
+            fileName: file.name,
+            type: file.type,
+          };
+          setLocationPhoto(stanAwalPhotos, setStanAwalPhotos, currentLocationIndex, photoData, 'stan_awal');
+        }
+      };
+      input.click();
+    } else {
+      Alert.alert(
+        "Foto Stan Awal",
+        "Bagaimana cara Anda ingin mengambil foto stan awal?",
+        [
+          { text: "Kamera", onPress: takeStanAwalPicture },
+          { text: "Galeri", onPress: pickStanAwalFromGallery },
+          { text: "Batal", style: "cancel" },
+        ],
+        { cancelable: true }
+      );
+    }
+  };
+
+  const takeStanAwalPicture = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (permissionResult.granted === false) {
+        Alert.alert(
+          "Permission Diperlukan",
+          "Aplikasi memerlukan izin untuk mengakses kamera.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 0.8,
+        base64: false,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setLocationPhoto(stanAwalPhotos, setStanAwalPhotos, currentLocationIndex, result.assets[0], 'stan_awal');
+      }
+    } catch (error) {
+      Alert.alert("Error", "Gagal mengambil foto stan awal");
+    }
+  };
+
+  const pickStanAwalFromGallery = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permissionResult.granted === false) {
+        Alert.alert(
+          "Permission Diperlukan",
+          "Aplikasi memerlukan izin untuk mengakses galeri foto.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: "images",
+        allowsEditing: false,
+        quality: 0.8,
+        base64: false,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setLocationPhoto(stanAwalPhotos, setStanAwalPhotos, currentLocationIndex, result.assets[0], 'stan_awal');
+      }
+    } catch (error) {
+      Alert.alert("Error", "Gagal memilih foto stan awal");
+    }
+  };
+
+  // Stan Akhir photo handlers
+  const handleStanAkhirPhoto = () => {
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = (e) => {
+        const target = e.target as HTMLInputElement | null;
+        if (target && target.files && target.files[0]) {
+          const file = target.files[0];
+          const photoData = {
+            uri: URL.createObjectURL(file),
+            fileName: file.name,
+            type: file.type,
+          };
+          setLocationPhoto(stanAkhirPhotos, setStanAkhirPhotos, currentLocationIndex, photoData, 'stan_akhir');
+        }
+      };
+      input.click();
+    } else {
+      Alert.alert(
+        "Foto Stan Akhir",
+        "Bagaimana cara Anda ingin mengambil foto stan akhir?",
+        [
+          { text: "Kamera", onPress: takeStanAkhirPicture },
+          { text: "Galeri", onPress: pickStanAkhirFromGallery },
+          { text: "Batal", style: "cancel" },
+        ],
+        { cancelable: true }
+      );
+    }
+  };
+
+  const takeStanAkhirPicture = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (permissionResult.granted === false) {
+        Alert.alert(
+          "Permission Diperlukan",
+          "Aplikasi memerlukan izin untuk mengakses kamera.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 0.8,
+        base64: false,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setLocationPhoto(stanAkhirPhotos, setStanAkhirPhotos, currentLocationIndex, result.assets[0], 'stan_akhir');
+      }
+    } catch (error) {
+      Alert.alert("Error", "Gagal mengambil foto stan akhir");
+    }
+  };
+
+  const pickStanAkhirFromGallery = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permissionResult.granted === false) {
+        Alert.alert(
+          "Permission Diperlukan",
+          "Aplikasi memerlukan izin untuk mengakses galeri foto.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: "images",
+        allowsEditing: false,
+        quality: 0.8,
+        base64: false,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setLocationPhoto(stanAkhirPhotos, setStanAkhirPhotos, currentLocationIndex, result.assets[0], 'stan_akhir');
+      }
+    } catch (error) {
+      Alert.alert("Error", "Gagal memilih foto stan akhir");
+    }
+  };
+
+  // Helper functions for location-specific photos
+  const getLocationPhoto = (photoArray: any[], locationIndex: number) => {
+    return photoArray[locationIndex] || null;
+  };
+
+  const setLocationPhoto = async (
+    photoArray: any[], 
+    setPhotoArray: React.Dispatch<React.SetStateAction<any[]>>, 
+    locationIndex: number, 
+    photo: any,
+    photoType: string
+  ) => {
+    const newArray = [...photoArray];
+    newArray[locationIndex] = photo;
+    setPhotoArray(newArray);
+    
+    // Save to AsyncStorage immediately
+    if (trip?.id) {
+      await savePhotosToStorage(trip.id, newArray, photoType);
+    }
+  };
+
+  const clearLocationPhoto = async (
+    photoArray: any[], 
+    setPhotoArray: React.Dispatch<React.SetStateAction<any[]>>, 
+    locationIndex: number,
+    photoType: string
+  ) => {
+    const newArray = [...photoArray];
+    newArray[locationIndex] = null;
+    setPhotoArray(newArray);
+    
+    // Save to AsyncStorage immediately
+    if (trip?.id) {
+      await savePhotosToStorage(trip.id, newArray, photoType);
+    }
+  };
+
+  // AsyncStorage functions for photo persistence
+  const getStorageKey = (tripId: number, photoType: string) => {
+    return `trip_${tripId}_${photoType}_photos`;
+  };
+
+  const savePhotosToStorage = async (tripId: number, photos: any[], photoType: string) => {
+    try {
+      const key = getStorageKey(tripId, photoType);
+      await AsyncStorage.setItem(key, JSON.stringify(photos));
+      console.log(`Saved ${photoType} photos for trip ${tripId}:`, photos.length);
+    } catch (error) {
+      console.error(`Error saving ${photoType} photos:`, error);
+    }
+  };
+
+  const loadPhotosFromStorage = async (tripId: number, photoType: string) => {
+    try {
+      const key = getStorageKey(tripId, photoType);
+      const saved = await AsyncStorage.getItem(key);
+      if (saved) {
+        const photos = JSON.parse(saved);
+        console.log(`Loaded ${photoType} photos for trip ${tripId}:`, photos.length);
+        return photos;
+      }
+    } catch (error) {
+      console.error(`Error loading ${photoType} photos:`, error);
+    }
+    return [];
+  };
+
+  const clearAllPhotosFromStorage = async (tripId: number) => {
+    try {
+      const photoTypes = ['pressure_bar', 'temperature', 'stan_awal', 'stan_akhir'];
+      for (const type of photoTypes) {
+        const key = getStorageKey(tripId, type);
+        await AsyncStorage.removeItem(key);
+      }
+      console.log(`Cleared all photos for trip ${tripId}`);
+    } catch (error) {
+      console.error('Error clearing photos from storage:', error);
+    }
+  };
+
   // Helper functions for multiple customer locations
   const getAllCustomerLocations = () => {
     if (!trip) return [];
@@ -449,6 +928,12 @@ const TripDetailScreen = () => {
           ? `Lokasi "${completedLocation?.location || `Lokasi ${currentCustomerLocationIndex + 1}`}" selesai. Selanjutnya menuju "${nextLocation?.location || `Lokasi ${currentCustomerLocationIndex + 2}`}".`
           : `Semua lokasi selesai! Tugas "${trip.do_number}" siap diselesaikan.`
       );
+      
+      // If this was the last location, clear photos from storage
+      if (!response.data.data?.has_more_locations && trip?.id) {
+        await clearAllPhotosFromStorage(trip.id);
+        console.log("Cleared all photos - trip completed");
+      }
     } catch (err: any) {
       console.error('Error in handleNextLocation:', err);
       Alert.alert(
@@ -832,6 +1317,66 @@ const TripDetailScreen = () => {
       }
     } finally {
       setSubmittingBudgetRequest(false);
+    }
+  };
+
+  const handleSaveDocumentation = async () => {
+    if (!trip) return;
+
+    try {
+      console.log("Saving documentation for location:", currentLocationIndex);
+      
+      // Collect photos for the current location
+      const currentPressureBarPhoto = getLocationPhoto(pressureBarPhotos, currentLocationIndex);
+      const currentTemperaturePhoto = getLocationPhoto(temperaturePhotos, currentLocationIndex);
+      const currentStanAwalPhoto = getLocationPhoto(stanAwalPhotos, currentLocationIndex);
+      const currentStanAkhirPhoto = getLocationPhoto(stanAkhirPhotos, currentLocationIndex);
+
+      const documentationData = {
+        pressureBarPhotos: currentPressureBarPhoto ? [currentPressureBarPhoto] : [],
+        temperaturePhotos: currentTemperaturePhoto ? [currentTemperaturePhoto] : [],
+        stanAwalPhotos: currentStanAwalPhoto ? [currentStanAwalPhoto] : [],
+        stanAkhirPhotos: currentStanAkhirPhoto ? [currentStanAkhirPhoto] : [],
+      };
+
+      // Check if there are any photos to upload
+      const hasPhotos = documentationData.pressureBarPhotos.length > 0 ||
+                       documentationData.temperaturePhotos.length > 0 ||
+                       documentationData.stanAwalPhotos.length > 0 ||
+                       documentationData.stanAkhirPhotos.length > 0;
+
+      if (!hasPhotos) {
+        Alert.alert("Info", "Tidak ada foto dokumentasi untuk diupload.", [{ text: "OK" }]);
+        setShowLocationDocModal(false);
+        return;
+      }
+
+      console.log("Documentation data to upload:", {
+        currentLocationIndex,
+        pressureBarCount: documentationData.pressureBarPhotos.length,
+        temperatureCount: documentationData.temperaturePhotos.length,
+        stanAwalCount: documentationData.stanAwalPhotos.length,
+        stanAkhirCount: documentationData.stanAkhirPhotos.length,
+      });
+
+      // Upload documentation photos
+      await uploadDocumentationPhotos(trip.id, currentLocationIndex, documentationData);
+      
+      setShowLocationDocModal(false);
+      await fetchTripDetails(); // Refresh data to show updated documentation
+
+      Alert.alert(
+        "Berhasil!",
+        "Dokumentasi berhasil diupload ke server.",
+        [{ text: "OK" }]
+      );
+      
+    } catch (error: any) {
+      console.error("Documentation upload error:", error);
+      Alert.alert(
+        "Error",
+        error.response?.data?.message || "Gagal mengupload dokumentasi"
+      );
     }
   };
 
@@ -2150,35 +2695,146 @@ const TripDetailScreen = () => {
             {/* Documentation Fields */}
             <View style={styles.docFormSection}>
               <Text style={styles.docSectionTitle}>📊 Pressure Bar</Text>
-              <TextInput
-                style={styles.docTextInput}
-                placeholder="Masukkan nilai pressure bar"
-                keyboardType="numeric"
-              />
+              {getLocationPhoto(pressureBarPhotos, currentLocationIndex) ? (
+                <View style={styles.photoPreviewContainer}>
+                  <Image
+                    source={{ uri: getLocationPhoto(pressureBarPhotos, currentLocationIndex).uri }}
+                    style={styles.previewImage}
+                  />
+                  <View style={styles.photoActions}>
+                    <TouchableOpacity
+                      style={styles.retakeButton}
+                      onPress={() => clearLocationPhoto(pressureBarPhotos, setPressureBarPhotos, currentLocationIndex, 'pressure_bar')}
+                    >
+                      <FontAwesome5 name="trash" size={16} color="#fff" />
+                      <Text style={styles.retakeButtonText}>Hapus</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.changePhotoButton}
+                      onPress={handlePressureBarPhoto}
+                    >
+                      <FontAwesome5 name="camera" size={16} color="#fff" />
+                      <Text style={styles.changePhotoButtonText}>Ganti</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity 
+                  style={styles.docPhotoButton}
+                  onPress={handlePressureBarPhoto}
+                >
+                  <FontAwesome5 name="camera" size={20} color="#3b82f6" />
+                  <Text style={styles.docPhotoButtonText}>Ambil Foto Pressure Bar</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             <View style={styles.docFormSection}>
               <Text style={styles.docSectionTitle}>🌡️ Foto Temperature</Text>
-              <TouchableOpacity style={styles.docPhotoButton}>
-                <FontAwesome5 name="camera" size={20} color="#3b82f6" />
-                <Text style={styles.docPhotoButtonText}>Ambil Foto Temperature</Text>
-              </TouchableOpacity>
+              {getLocationPhoto(temperaturePhotos, currentLocationIndex) ? (
+                <View style={styles.photoPreviewContainer}>
+                  <Image
+                    source={{ uri: getLocationPhoto(temperaturePhotos, currentLocationIndex).uri }}
+                    style={styles.previewImage}
+                  />
+                  <View style={styles.photoActions}>
+                    <TouchableOpacity
+                      style={styles.retakeButton}
+                      onPress={() => clearLocationPhoto(temperaturePhotos, setTemperaturePhotos, currentLocationIndex, 'temperature')}
+                    >
+                      <FontAwesome5 name="trash" size={16} color="#fff" />
+                      <Text style={styles.retakeButtonText}>Hapus</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.changePhotoButton}
+                      onPress={handleTemperaturePhoto}
+                    >
+                      <FontAwesome5 name="camera" size={16} color="#fff" />
+                      <Text style={styles.changePhotoButtonText}>Ganti</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity 
+                  style={styles.docPhotoButton}
+                  onPress={handleTemperaturePhoto}
+                >
+                  <FontAwesome5 name="camera" size={20} color="#3b82f6" />
+                  <Text style={styles.docPhotoButtonText}>Ambil Foto Temperature</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             <View style={styles.docFormSection}>
               <Text style={styles.docSectionTitle}>▶️ Foto Stan Awal</Text>
-              <TouchableOpacity style={styles.docPhotoButton}>
-                <FontAwesome5 name="camera" size={20} color="#3b82f6" />
-                <Text style={styles.docPhotoButtonText}>Ambil Foto Stan Awal</Text>
-              </TouchableOpacity>
+              {getLocationPhoto(stanAwalPhotos, currentLocationIndex) ? (
+                <View style={styles.photoPreviewContainer}>
+                  <Image
+                    source={{ uri: getLocationPhoto(stanAwalPhotos, currentLocationIndex).uri }}
+                    style={styles.previewImage}
+                  />
+                  <View style={styles.photoActions}>
+                    <TouchableOpacity
+                      style={styles.retakeButton}
+                      onPress={() => clearLocationPhoto(stanAwalPhotos, setStanAwalPhotos, currentLocationIndex, 'stan_awal')}
+                    >
+                      <FontAwesome5 name="trash" size={16} color="#fff" />
+                      <Text style={styles.retakeButtonText}>Hapus</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.changePhotoButton}
+                      onPress={handleStanAwalPhoto}
+                    >
+                      <FontAwesome5 name="camera" size={16} color="#fff" />
+                      <Text style={styles.changePhotoButtonText}>Ganti</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity 
+                  style={styles.docPhotoButton}
+                  onPress={handleStanAwalPhoto}
+                >
+                  <FontAwesome5 name="camera" size={20} color="#3b82f6" />
+                  <Text style={styles.docPhotoButtonText}>Ambil Foto Stan Awal</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             <View style={styles.docFormSection}>
               <Text style={styles.docSectionTitle}>⏹️ Foto Stan Akhir</Text>
-              <TouchableOpacity style={styles.docPhotoButton}>
-                <FontAwesome5 name="camera" size={20} color="#3b82f6" />
-                <Text style={styles.docPhotoButtonText}>Ambil Foto Stan Akhir</Text>
-              </TouchableOpacity>
+              {getLocationPhoto(stanAkhirPhotos, currentLocationIndex) ? (
+                <View style={styles.photoPreviewContainer}>
+                  <Image
+                    source={{ uri: getLocationPhoto(stanAkhirPhotos, currentLocationIndex).uri }}
+                    style={styles.previewImage}
+                  />
+                  <View style={styles.photoActions}>
+                    <TouchableOpacity
+                      style={styles.retakeButton}
+                      onPress={() => clearLocationPhoto(stanAkhirPhotos, setStanAkhirPhotos, currentLocationIndex, 'stan_akhir')}
+                    >
+                      <FontAwesome5 name="trash" size={16} color="#fff" />
+                      <Text style={styles.retakeButtonText}>Hapus</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.changePhotoButton}
+                      onPress={handleStanAkhirPhoto}
+                    >
+                      <FontAwesome5 name="camera" size={16} color="#fff" />
+                      <Text style={styles.changePhotoButtonText}>Ganti</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity 
+                  style={styles.docPhotoButton}
+                  onPress={handleStanAkhirPhoto}
+                >
+                  <FontAwesome5 name="camera" size={20} color="#3b82f6" />
+                  <Text style={styles.docPhotoButtonText}>Ambil Foto Stan Akhir</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Action Buttons */}
@@ -2192,11 +2848,7 @@ const TripDetailScreen = () => {
 
               <TouchableOpacity
                 style={styles.submitButton}
-                onPress={() => {
-                  // Handle documentation save
-                  setShowLocationDocModal(false);
-                  Alert.alert("Berhasil!", "Dokumentasi berhasil disimpan.", [{ text: "OK" }]);
-                }}
+                onPress={handleSaveDocumentation}
               >
                 <Text style={styles.submitButtonText}>Simpan Dokumentasi</Text>
               </TouchableOpacity>
@@ -3366,6 +4018,56 @@ const styles = StyleSheet.create({
     color: '#3b82f6',
     marginLeft: 10,
     fontWeight: '500',
+  },
+  photoPreviewContainer: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+    marginBottom: 12,
+    overflow: 'hidden',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  previewImage: {
+    width: '100%',
+    height: 120,
+    resizeMode: 'cover',
+  },
+  photoActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    padding: 10,
+    gap: 8,
+  },
+  retakeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e74c3c',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  retakeButtonText: {
+    color: '#fff',
+    marginLeft: 6,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  changePhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3b82f6',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  changePhotoButtonText: {
+    color: '#fff',
+    marginLeft: 6,
+    fontSize: 14,
+    fontWeight: '600',
   },
 
   // Modal Overlay Styles (reused from NotaUploadModal)

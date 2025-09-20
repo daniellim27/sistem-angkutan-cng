@@ -1113,3 +1113,151 @@ const updateStatus = async (orderId, driverId, newStatus, timestampField) => {
     throw error;
   }
 };
+
+/**
+ * @desc    Upload documentation photos (pressure bar, temperature, stan awal, stan akhir)
+ * @route   POST /api/delivery-orders/:id/upload-documentation
+ * @access  Private (Driver only)
+ */
+exports.uploadDocumentationPhotos = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { location_index } = req.body;
+    const driverId = req.user.id;
+
+    console.log("📋 Documentation upload request:", {
+      id,
+      location_index,
+      driverId,
+      files: req.files
+    });
+
+    // Validate location index
+    if (location_index === undefined || location_index === null) {
+      return res.status(400).json({
+        message: "Location index is required"
+      });
+    }
+
+    const locationIndex = parseInt(location_index);
+
+    // Find the delivery order
+    const order = await DeliveryOrder.findByPk(id);
+    if (!order) {
+      return res.status(404).json({
+        message: "Delivery Order tidak ditemukan",
+      });
+    }
+
+    // Verify driver ownership
+    if (order.driver_id !== driverId) {
+      return res.status(403).json({
+        message: "Anda tidak memiliki akses untuk delivery order ini",
+      });
+    }
+
+    // Process uploaded files
+    const documentationPhotos = {
+      pressure_bar: [],
+      temperature: [],
+      stan_awal: [],
+      stan_akhir: []
+    };
+
+    // Helper function to process files for each type
+    const processFiles = (fileType) => {
+      const files = req.files[fileType] || [];
+      return files.map(file => {
+        const fileUrl = `/uploads/surat_jalan_photos/${file.filename}`;
+        console.log(`📸 ${fileType} photo uploaded:`, fileUrl);
+        return fileUrl;
+      });
+    };
+
+    // Process each type of documentation photo
+    documentationPhotos.pressure_bar = processFiles('pressure_bar');
+    documentationPhotos.temperature = processFiles('temperature');
+    documentationPhotos.stan_awal = processFiles('stan_awal');
+    documentationPhotos.stan_akhir = processFiles('stan_akhir');
+
+    console.log("📋 Processed documentation photos:", documentationPhotos);
+
+    // Update location documentation
+    const currentLocationDocs = order.location_documentation || [];
+    
+    // Find existing documentation for this location or create new
+    const existingDocIndex = currentLocationDocs.findIndex(doc => doc.location_index === locationIndex);
+    
+    if (existingDocIndex >= 0) {
+      // Update existing location documentation
+      const existingDoc = currentLocationDocs[existingDocIndex];
+      currentLocationDocs[existingDocIndex] = {
+        ...existingDoc,
+        pressure_bar_photos: [
+          ...(existingDoc.pressure_bar_photos || []),
+          ...documentationPhotos.pressure_bar
+        ],
+        temperature_photos: [
+          ...(existingDoc.temperature_photos || []),
+          ...documentationPhotos.temperature
+        ],
+        stan_awal_photos: [
+          ...(existingDoc.stan_awal_photos || []),
+          ...documentationPhotos.stan_awal
+        ],
+        stan_akhir_photos: [
+          ...(existingDoc.stan_akhir_photos || []),
+          ...documentationPhotos.stan_akhir
+        ],
+        documentation_uploaded_at: new Date().toISOString()
+      };
+      console.log(`📋 Updated existing location doc for index ${locationIndex}`);
+    } else {
+      // Create new location documentation
+      const newDoc = {
+        location_index: locationIndex,
+        location_name: `Location ${locationIndex + 1}`, // Default name
+        pressure_bar_photos: documentationPhotos.pressure_bar,
+        temperature_photos: documentationPhotos.temperature,
+        stan_awal_photos: documentationPhotos.stan_awal,
+        stan_akhir_photos: documentationPhotos.stan_akhir,
+        documentation_uploaded_at: new Date().toISOString(),
+        completed: false
+      };
+      currentLocationDocs.push(newDoc);
+      console.log(`📋 Created new location doc for index ${locationIndex}`);
+    }
+
+    console.log(`📋 Final location docs to save:`, JSON.stringify(currentLocationDocs, null, 2));
+
+    // Update location_documentation using raw SQL to ensure proper JSONB handling
+    const updateQuery = `
+      UPDATE delivery_orders 
+      SET location_documentation = :locationDocs
+      WHERE id = :orderId
+    `;
+    
+    const { sequelize } = require('../models');
+    await sequelize.query(updateQuery, {
+      replacements: {
+        locationDocs: JSON.stringify(currentLocationDocs),
+        orderId: id
+      },
+      type: sequelize.QueryTypes.UPDATE
+    });
+
+    console.log(`📋 Documentation photos uploaded successfully for location ${locationIndex}`);
+
+    res.status(200).json({
+      message: "Documentation photos uploaded successfully",
+      data: {
+        location_index: locationIndex,
+        uploaded_photos: documentationPhotos
+      }
+    });
+
+  } catch (error) {
+    console.error("Error uploading documentation photos:", error);
+    next(error);
+  }
+};

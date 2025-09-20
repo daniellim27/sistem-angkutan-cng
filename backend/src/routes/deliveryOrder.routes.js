@@ -167,6 +167,19 @@ router.post(
   doController.uploadNotaPhoto
 );
 
+// Upload documentation photos endpoint (pressure bar, temperature, stan awal, stan akhir)
+router.post(
+  "/:id/upload-documentation",
+  checkRole(["driver"]),
+  suratJalanUpload.fields([
+    { name: "pressure_bar", maxCount: 1 },
+    { name: "temperature", maxCount: 1 },
+    { name: "stan_awal", maxCount: 1 },
+    { name: "stan_akhir", maxCount: 1 }
+  ]),
+  doController.uploadDocumentationPhotos
+);
+
 // Complete location endpoint (for sequential location completion)
 router.post(
   "/:id/complete-location",

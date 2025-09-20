@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import apiClient from '../api/axiosConfig';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000';
+console.log('🔍 BACKEND_URL:', BACKEND_URL);
 
 interface DriverExpense {
   id: number;
@@ -53,6 +54,11 @@ interface DeliveryOrder {
     uploaded_at: string;
     completed: boolean;
     completed_at?: string;
+    // New documentation fields
+    pressure_bar_photos?: string[];
+    temperature_photos?: string[];
+    stan_awal_photos?: string[];
+    stan_akhir_photos?: string[];
   }>;
   // Added financial and expense data
   expenses?: DriverExpense[];
@@ -155,6 +161,7 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
       console.log('Parsed order data:', orderData);
       console.log('Expenses in data:', orderData?.expenses);
       console.log('Budget requests in data:', orderData?.budgetRequests);
+      console.log('🔍 Location documentation:', JSON.stringify(orderData?.location_documentation, null, 2));
       
       setDeliveryOrder(orderData);
     } catch (err: any) {
@@ -456,7 +463,7 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
                         
                         <div className="mb-3">
                           <img
-                            src={`${BACKEND_URL}/${photoUrl}`}
+                            src={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
                             alt={`Surat Jalan ${index + 1}`}
                             className="w-full h-32 object-cover rounded-md border border-gray-200"
                             onError={(e) => {
@@ -467,7 +474,7 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
                         
                         <div className="text-center">
                           <a
-                            href={`${BACKEND_URL}/${photoUrl}`}
+                            href={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
@@ -517,7 +524,7 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
                         
                         <div className="mb-3">
                           <img
-                            src={`${BACKEND_URL}/${photoUrl}`}
+                            src={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
                             alt={`Nota ${index + 1}`}
                             className="w-full h-32 object-cover rounded-md border border-gray-200"
                             onError={(e) => {
@@ -528,7 +535,7 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
                         
                         <div className="text-center">
                           <a
-                            href={`${BACKEND_URL}/${photoUrl}`}
+                            href={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium"
@@ -576,95 +583,221 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
           </div>
         )}
 
-        {/* Per-Location Documentation */}
+        {/* Per-Location Delivery Documentation */}
         {deliveryOrder.location_documentation && deliveryOrder.location_documentation.length > 0 && (
           <div className="bg-white p-6 rounded-lg shadow border-t-4 border-purple-500">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">📍 Per-Location Documentation</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">📍 Dokumentasi Pengiriman per Lokasi</h2>
             
-            {deliveryOrder.location_documentation.map((locationDoc, index) => (
-              <div key={index} className="mb-6 last:mb-0">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-medium text-gray-800 flex items-center">
-                    <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-sm font-medium mr-3">
-                      Lokasi {locationDoc.location_index + 1}
-                    </span>
-                    {locationDoc.location_name}
-                  </h3>
-                  <div className="flex items-center space-x-2">
-                    {locationDoc.completed && (
-                      <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm font-medium flex items-center">
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        Completed
+            {deliveryOrder.location_documentation.map((locationDoc, index) => {
+              // DEBUG: Log the actual location documentation data
+              console.log(`🔍 Location ${index} documentation:`, JSON.stringify(locationDoc, null, 2));
+              
+              // Define the documentation fields to display
+              const documentationFields = [
+                { 
+                  key: 'pressure_bar_photos', 
+                  label: 'Pressure Bar Photos', 
+                  icon: '📊', 
+                  type: 'photo',
+                  color: 'blue'
+                },
+                { 
+                  key: 'temperature_photos', 
+                  label: 'Temperature Photos', 
+                  icon: '🌡️', 
+                  type: 'photo',
+                  color: 'red'
+                },
+                { 
+                  key: 'stan_awal_photos', 
+                  label: 'Stan Awal Photos', 
+                  icon: '▶️', 
+                  type: 'photo',
+                  color: 'green'
+                },
+                { 
+                  key: 'stan_akhir_photos', 
+                  label: 'Stan Akhir Photos', 
+                  icon: '⏹️', 
+                  type: 'photo',
+                  color: 'orange'
+                },
+              ];
+
+              // Calculate completion status
+              const completedFields = documentationFields.filter(field => {
+                return (locationDoc as any)[field.key] && (locationDoc as any)[field.key].length > 0;
+              });
+              
+              const completionPercentage = Math.round((completedFields.length / documentationFields.length) * 100);
+
+              return (
+                <div key={index} className="mb-8 last:mb-0 border border-gray-200 rounded-lg p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-medium text-gray-800 flex items-center">
+                      <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium mr-3">
+                        Lokasi {locationDoc.location_index + 1}
                       </span>
-                    )}
-                    <span className="text-xs text-gray-500">
-                      Uploaded: {new Date(locationDoc.uploaded_at).toLocaleString()}
-                    </span>
+                      {locationDoc.location_name}
+                    </h3>
+                    <div className="flex items-center space-x-3">
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        completionPercentage === 100 
+                          ? 'bg-green-100 text-green-800' 
+                          : completionPercentage > 0 
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {completedFields.length}/{documentationFields.length} lengkap ({completionPercentage}%)
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        Diperbarui: {new Date(locationDoc.uploaded_at).toLocaleString('id-ID')}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                
-                {locationDoc.photos && locationDoc.photos.length > 0 && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {locationDoc.photos.map((photoUrl, photoIndex) => (
-                      <div key={photoIndex} className="relative group">
-                        <div className="bg-gray-50 border-2 border-dashed border-purple-200 rounded-lg p-4 hover:border-purple-300 transition-colors">
-                          <div className="flex items-center justify-center space-x-2 mb-3">
-                            <svg className="w-8 h-8 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            <span className="text-lg font-medium text-gray-700">
-                              Photo {photoIndex + 1}
-                            </span>
+
+                  {/* Documentation Fields Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {documentationFields.map((field) => {
+                      const isCompleted = (locationDoc as any)[field.key] && (locationDoc as any)[field.key].length > 0;
+                      
+                      const colorClasses: { [key: string]: string } = {
+                        blue: 'border-blue-200 bg-blue-50',
+                        red: 'border-red-200 bg-red-50',
+                        green: 'border-green-200 bg-green-50',
+                        orange: 'border-orange-200 bg-orange-50'
+                      };
+
+                      return (
+                        <div key={field.key} className={`border-2 rounded-lg p-4 ${
+                          isCompleted 
+                            ? colorClasses[field.color] + ' border-opacity-50' 
+                            : 'border-gray-200 bg-gray-50'
+                        }`}>
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="font-medium text-gray-800 flex items-center">
+                              <span className="mr-2">{field.icon}</span>
+                              {field.label}
+                            </h4>
+                            {isCompleted ? (
+                              <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium flex items-center">
+                                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Tersedia
+                              </span>
+                            ) : (
+                              <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs font-medium">
+                                Belum diisi
+                              </span>
+                            )}
                           </div>
-                          
-                          <div className="mb-3">
+
+                          {/* Photo field display */}
+                          <div>
+                            {(locationDoc as any)[field.key] && (locationDoc as any)[field.key].length > 0 ? (
+                              <div className="grid grid-cols-2 gap-2">
+                                {(locationDoc as any)[field.key].map((photoUrl: string, photoIndex: number) => {
+                                  const cleanPhotoUrl = photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl;
+                                  const fullImageUrl = `${BACKEND_URL}/${cleanPhotoUrl}`;
+                                  console.log(`🔍 Image URL for ${field.label}:`, fullImageUrl);
+                                  return (
+                                  <div key={photoIndex} className="relative">
+                                    <img
+                                      src={fullImageUrl}
+                                      alt={`${field.label} ${photoIndex + 1}`}
+                                      className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                                      onError={(e) => {
+                                        const target = e.target as HTMLImageElement;
+                                        target.style.display = 'none';
+                                        const parent = target.parentElement;
+                                        if (parent) {
+                                          parent.innerHTML = `
+                                            <div class="flex items-center justify-center h-24 bg-gray-200 rounded-lg">
+                                              <span class="text-gray-500 text-xs">Gambar tidak tersedia</span>
+                                            </div>
+                                          `;
+                                        }
+                                      }}
+                                    />
+                                    <a
+                                      href={`${BACKEND_URL}/${cleanPhotoUrl}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-50 transition-all duration-200 rounded-lg"
+                                    >
+                                      <svg className="w-6 h-6 text-white opacity-0 hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                      </svg>
+                                    </a>
+                                  </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="text-center py-6 bg-white border-2 border-dashed border-gray-300 rounded-lg">
+                                <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                <p className="text-gray-500 text-sm">Foto belum diupload</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Legacy photos section (for backward compatibility) */}
+                  {locationDoc.photos && locationDoc.photos.length > 0 && (
+                    <div className="mt-6 pt-6 border-t border-gray-200">
+                      <h5 className="text-md font-medium text-gray-700 mb-3 flex items-center">
+                        📷 Foto Lainnya (Legacy)
+                        <span className="ml-2 bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">
+                          {locationDoc.photos.length} foto
+                        </span>
+                      </h5>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {locationDoc.photos.map((photoUrl, photoIndex) => (
+                          <div key={photoIndex} className="relative">
                             <img
-                              src={`${BACKEND_URL}/${photoUrl}`}
-                              alt={`Location ${locationDoc.location_name} - Photo ${photoIndex + 1}`}
-                              className="w-full h-48 object-cover rounded-lg"
+                              src={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
+                              alt={`Legacy photo ${photoIndex + 1}`}
+                              className="w-full h-20 object-cover rounded-lg border border-gray-200"
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
                                 target.style.display = 'none';
                                 const parent = target.parentElement;
                                 if (parent) {
                                   parent.innerHTML = `
-                                    <div class="flex items-center justify-center h-48 bg-gray-200 rounded-lg">
-                                      <span class="text-gray-500">Image not available</span>
+                                    <div class="flex items-center justify-center h-20 bg-gray-200 rounded-lg">
+                                      <span class="text-gray-500 text-xs">N/A</span>
                                     </div>
                                   `;
                                 }
                               }}
                             />
+                            <a
+                              href={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-50 transition-all duration-200 rounded-lg"
+                            >
+                              <svg className="w-4 h-4 text-white opacity-0 hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                              </svg>
+                            </a>
                           </div>
-                          
-                          <a
-                            href={`${BACKEND_URL}/${photoUrl}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
-                          >
-                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                            View Full Size
-                          </a>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                )}
-                
-                {(!locationDoc.photos || locationDoc.photos.length === 0) && (
-                  <div className="text-center py-4 bg-gray-50 rounded-lg">
-                    <p className="text-gray-500">No photos uploaded for this location yet</p>
-                  </div>
-                )}
-              </div>
-            ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
