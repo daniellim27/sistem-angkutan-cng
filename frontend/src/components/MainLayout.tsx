@@ -176,6 +176,23 @@ const MainLayout = () => {
               </Link>
             </li>
 
+            <li className="mb-4">
+              <Link
+                to="/live-tracking"
+                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
+                  isActiveLink("/live-tracking")
+                    ? "bg-gray-700 border-l-4 border-blue-500"
+                    : ""
+                }`}
+                title="Live GPS Tracking"
+              >
+                <span className="text-xl mr-3">🗺️</span>
+                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
+                  Live GPS
+                </span>
+              </Link>
+            </li>
+
             {/* Operations Section */}
             <DropdownNavSection
               title="Operations"
@@ -218,12 +235,6 @@ const MainLayout = () => {
                   excludePaths: ["/vehicles/tires"]
                 },
                 {
-                  to: "/live-tracking",
-                  title: "Live GPS Tracking",
-                  icon: "🗺️",
-                  label: "Live GPS Tracking"
-                },
-                {
                   to: "/vehicles/tires",
                   title: "Tire Management",
                   icon: "🛞",
@@ -262,13 +273,16 @@ const MainLayout = () => {
                   to: "/infrastructure",
                   title: "Infrastructure Inventory",
                   icon: "🏗️",
-                  label: "Infrastructure Inventory"
-                },
-                {
-                  to: "/vehicles/tires/removed",
-                  title: "Used Tires",
-                  icon: "🔄",
-                  label: "Used Tires"
+                  label: "Infrastructure Inventory",
+                  hasSubItems: true,
+                  subItems: [
+                    {
+                      to: "/vehicles/tires/removed",
+                      title: "Used Tires",
+                      icon: "🔄",
+                      label: "Used Tires"
+                    }
+                  ]
                 }
               ]}
               sidebarMinimized={sidebarMinimized}
