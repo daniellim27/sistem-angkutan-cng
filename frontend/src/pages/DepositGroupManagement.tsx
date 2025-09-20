@@ -35,23 +35,10 @@ interface DepositGroup {
   updated_at: string;
 }
 
-interface PurchaseOrder {
-  id: number;
-  po_number: string;
-  customer_name: string;
-  item_name: string;
-  total_quantity: number;
-  unit: string;
-  unit_price: string;
-  total_amount: string;
-  status: string;
-  deposit_group_id?: number;
-  created_at: string;
-}
+// Removed PurchaseOrder interface - system no longer relies on purchase orders
 
 interface DepositGroupWithMembers extends DepositGroup {
   delivery_orders: DeliveryOrder[];
-  purchase_orders?: PurchaseOrder[]; // Keep for compatibility
   total_deposits: number;
   total_balance: number;
   do_count: number;
@@ -66,8 +53,9 @@ const DepositGroupManagement = () => {
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<DepositGroupWithMembers | null>(null);
   const [editingGroup, setEditingGroup] = useState<DepositGroup | null>(null);
-  const [allPurchaseOrders, setAllPurchaseOrders] = useState<PurchaseOrder[]>([]);
-  const [loadingPOs, setLoadingPOs] = useState(false);
+  // Removed PO dependencies - system no longer relies on purchase orders
+  // const [allPurchaseOrders, setAllPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  // const [loadingPOs, setLoadingPOs] = useState(false);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [loadingDriversVehicles, setLoadingDriversVehicles] = useState(false);
@@ -80,7 +68,7 @@ const DepositGroupManagement = () => {
     unit: 'kubik' // Fixed to kubik (m³)
   });
 
-  // Form data for creating DOs
+  // Form data for creating DOs - match delivery orders page structure
   const [doFormData, setDOFormData] = useState({
     customer_name: '',
     item_name: '',
@@ -93,15 +81,24 @@ const DepositGroupManagement = () => {
     vehicle_id: '',
     trip_allowance: '0',
     gaji: '0',
-    do_name: ''
+    do_name: '',
+    paid_amount: '0',
+    // Gas filling fields - match delivery orders page
+    gas_volume_m3: '',
+    spbg_location: '',
+    calculation_method: 'jisdor' as 'jisdor' | 'fixed',
+    jisdor_rate: '',
+    gas_filling_cost: ''
   });
+
+  // State for multiple unload locations - match delivery orders page
+  const [unloadLocations, setUnloadLocations] = useState<string[]>(['']);
 
   // Unit is always kubik (m³) for deposit groups
 
   useEffect(() => {
     const initializeData = async () => {
-      const purchaseOrders = await fetchAllPurchaseOrders();
-      await fetchGroups(purchaseOrders); // Pass POs directly to avoid state timing issues
+      await fetchGroups(); // No longer need PO data
       await fetchDriversAndVehicles();
     };
     initializeData();
@@ -123,53 +120,27 @@ const DepositGroupManagement = () => {
     }
   };
 
-  const fetchAllPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
-    try {
-      setLoadingPOs(true);
-      console.log('🔍 Debug - Fetching purchase orders...');
-      const response = await apiClient.get('/purchase-orders?page=1&limit=20');
-      console.log('🔍 Debug - Raw API response:', response);
-      console.log('🔍 Debug - response.data:', response.data);
-      const allPos = response.data?.data || response.data || [];
-      console.log('🔍 Debug - Extracted POs:', allPos);
-      setAllPurchaseOrders(allPos);
-      return allPos;
-    } catch (err) {
-      console.error('Failed to fetch purchase orders:', err);
-      setAllPurchaseOrders([]);
-      return [];
-    } finally {
-      setLoadingPOs(false);
-    }
-  };
+  // Removed fetchAllPurchaseOrders - system no longer relies on purchase orders
 
-  const fetchGroups = async (purchaseOrders?: PurchaseOrder[]) => {
+  const fetchGroups = async () => {
     try {
       setLoading(true);
       const response = await apiClient.get('/deposit-groups');
       // The API returns data directly, not wrapped in a 'data' property
       const groupsData = response.data || [];
       
-      // Use passed POs or fall back to state (keeping for compatibility)
-      const posToUse = purchaseOrders || allPurchaseOrders;
-      
-      // Calculate balance - now based on DO amounts instead of PO amounts
-      console.log('🔍 Debug - allPurchaseOrders length:', posToUse.length);
       console.log('🔍 Debug - groupsData:', groupsData.map((g: DepositGroup) => ({ id: g.id, name: g.group_name })));
       
       const transformedGroups = groupsData.map((group: DepositGroup) => {
-        // For now, keep PO references for compatibility but note they represent DOs
-        // The backend should return delivery orders associated with the group
-        const groupPos = posToUse.filter((po: PurchaseOrder) => po.deposit_group_id === group.id);
-        const totalPOAmount = groupPos.reduce((sum, po) => sum + parseFloat(po.total_amount), 0);
+        // Calculate balance based on DO amounts (no longer use PO data)
         const depositedAmount = parseFloat(group.deposited_amount);
-        const calculatedBalance = depositedAmount - totalPOAmount;
-        
         const deliveryOrders = group.delivery_orders || [];
+        const totalDOAmount = deliveryOrders.reduce((sum, do_item) => sum + parseFloat(do_item.total_amount), 0);
+        const calculatedBalance = depositedAmount - totalDOAmount;
+        
         return {
           ...group,
           delivery_orders: deliveryOrders, // Use DOs from backend response
-          purchase_orders: groupPos, // Keep for compatibility
           total_deposits: depositedAmount,
           total_balance: calculatedBalance,
           do_count: deliveryOrders.length
@@ -270,21 +241,35 @@ const DepositGroupManagement = () => {
 
     try {
       const payload = {
-        ...doFormData,
-        minimal_load_quantity: parseFloat(doFormData.minimal_load_quantity),
+        customer_name: doFormData.customer_name,
+        item_name: doFormData.item_name,
+        unit: 'kubik', // Force kubik for DOs
         unit_price: parseFloat(doFormData.unit_price),
+        minimal_load_quantity: parseFloat(doFormData.minimal_load_quantity),
+        driver_id: parseInt(doFormData.driver_id),
+        vehicle_id: parseInt(doFormData.vehicle_id),
+        load_location: doFormData.load_location,
+        unload_location: doFormData.unload_location,
+        additional_unload_locations: unloadLocations.slice(1).filter(loc => loc.trim() !== ''), // Include only additional locations
         trip_allowance: parseFloat(doFormData.trip_allowance),
         gaji: parseFloat(doFormData.gaji),
+        do_name: doFormData.do_name,
         deposit_group_id: selectedGroup.id,
-        unit: 'kubik' // Force kubik for DOs
+        // Include gas filling data - match delivery orders page
+        gas_volume_m3: doFormData.gas_volume_m3 ? parseFloat(doFormData.gas_volume_m3) : null,
+        spbg_location: doFormData.spbg_location || null,
+        calculation_method: doFormData.calculation_method,
+        jisdor_rate: doFormData.jisdor_rate ? parseFloat(doFormData.jisdor_rate) : null,
+        gas_filling_cost: doFormData.gas_filling_cost ? parseFloat(doFormData.gas_filling_cost) : null
       };
 
-      await apiClient.post('/web/delivery-orders', payload);
+      // Use the same endpoint as delivery orders page
+      await apiClient.post('/delivery-orders', payload);
       setShowDOModal(false);
       resetDOForm();
-      // Refresh groups after creating DO
-      const updatedPOs = await fetchAllPurchaseOrders();
-      fetchGroups(updatedPOs);
+      resetUnloadLocations();
+      // Refresh groups after creating DO (no longer need PO data)
+      fetchGroups();
     } catch (err) {
       setError('Failed to create delivery order.');
       console.error(err);
@@ -304,8 +289,41 @@ const DepositGroupManagement = () => {
       vehicle_id: '',
       trip_allowance: '0',
       gaji: '0',
-      do_name: ''
+      do_name: '',
+      paid_amount: '0',
+      // Gas filling fields - match delivery orders page
+      gas_volume_m3: '',
+      spbg_location: '',
+      calculation_method: 'jisdor' as 'jisdor' | 'fixed',
+      jisdor_rate: '',
+      gas_filling_cost: ''
     });
+  };
+
+  const resetUnloadLocations = () => {
+    setUnloadLocations(['']);
+  };
+
+  // Functions to handle unload locations
+  const addUnloadLocation = () => {
+    setUnloadLocations([...unloadLocations, '']);
+  };
+
+  const updateUnloadLocation = (index: number, value: string) => {
+    const updated = [...unloadLocations];
+    updated[index] = value;
+    setUnloadLocations(updated);
+    // Update main unload location if it's the first one
+    if (index === 0) {
+      setDOFormData(prev => ({ ...prev, unload_location: value }));
+    }
+  };
+
+  const removeUnloadLocation = (index: number) => {
+    if (unloadLocations.length > 1 && index > 0) {
+      const updated = unloadLocations.filter((_, i) => i !== index);
+      setUnloadLocations(updated);
+    }
   };
 
   const closeModal = () => {
@@ -316,6 +334,7 @@ const DepositGroupManagement = () => {
     setSelectedGroup(null);
     resetForm();
     resetDOForm();
+    resetUnloadLocations();
   };
 
   const formatCurrency = (amount: number) => {
@@ -748,17 +767,114 @@ const DepositGroupManagement = () => {
                     />
                   </div>
 
-                  {/* Unload Location */}
+                  {/* Unload Locations */}
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Unload Locations
+                    </label>
+                    {unloadLocations.map((location, index) => (
+                      <div key={index} className="flex items-center space-x-2 mb-2">
+                        <input
+                          type="text"
+                          value={location}
+                          onChange={(e) => updateUnloadLocation(index, e.target.value)}
+                          placeholder={`Enter unload location ${index + 1}`}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                        />
+                        {index > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => removeUnloadLocation(index)}
+                            className="px-2 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={addUnloadLocation}
+                      className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                    >
+                      Add Unload Location
+                    </button>
+                  </div>
+
+                  {/* Gas Volume */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Unload Location
+                      Gas Volume (m³)
+                    </label>
+                    <input
+                      type="number"
+                      value={doFormData.gas_volume_m3}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, gas_volume_m3: e.target.value }))}
+                      placeholder="Enter gas volume"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+
+                  {/* SPBG Location */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      SPBG Location
                     </label>
                     <input
                       type="text"
-                      value={doFormData.unload_location}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, unload_location: e.target.value }))}
-                      placeholder="Enter unload location"
+                      value={doFormData.spbg_location}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, spbg_location: e.target.value }))}
+                      placeholder="Enter SPBG location"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+
+                  {/* Calculation Method */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Calculation Method
+                    </label>
+                    <select
+                      value={doFormData.calculation_method}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, calculation_method: e.target.value as 'jisdor' | 'fixed' }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    >
+                      <option value="jisdor">JISDOR</option>
+                      <option value="fixed">Fixed</option>
+                    </select>
+                  </div>
+
+                  {/* JISDOR Rate */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      JISDOR Rate
+                    </label>
+                    <input
+                      type="number"
+                      value={doFormData.jisdor_rate}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, jisdor_rate: e.target.value }))}
+                      placeholder="Enter JISDOR rate"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+
+                  {/* Gas Filling Cost */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Gas Filling Cost (IDR)
+                    </label>
+                    <input
+                      type="number"
+                      value={doFormData.gas_filling_cost}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, gas_filling_cost: e.target.value }))}
+                      placeholder="Enter gas filling cost"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      min="0"
+                      step="0.01"
                     />
                   </div>
 
@@ -816,7 +932,7 @@ const DepositGroupManagement = () => {
                 </button>
               </div>
 
-              {loadingPOs ? (
+              {loading ? (
                 <div className="text-center py-8">
                   <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                   <p className="mt-2 text-gray-500">Loading delivery orders...</p>
@@ -887,7 +1003,7 @@ const DepositGroupManagement = () => {
                 </div>
               )}
 
-              {!loadingPOs && selectedGroup.delivery_orders.length === 0 && (
+              {!loading && selectedGroup.delivery_orders.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
                   <p>No delivery orders in this group yet.</p>
                 </div>

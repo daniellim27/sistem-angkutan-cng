@@ -158,14 +158,18 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Konfirmasi Muatan</Text>
-          <TouchableOpacity onPress={onClose} disabled={isLoading}>
-            <FontAwesome5 name="times" size={24} color="#666" />
+          <TouchableOpacity 
+            style={styles.closeButton}
+            onPress={onClose} 
+            disabled={isLoading}
+          >
+            <FontAwesome5 name="times" size={20} color="#6b7280" />
           </TouchableOpacity>
         </View>
         
         <ScrollView style={styles.content}>
           <View style={styles.infoSection}>
-            <FontAwesome5 name="info-circle" size={20} color="#3498db" />
+            <FontAwesome5 name="info-circle" size={20} color="#3b82f6" />
             <Text style={styles.infoText}>
               Masukkan volume muatan aktual yang sudah dimuat ke kendaraan. 
               Foto surat jalan dapat diambil sekarang atau nanti di halaman detail perjalanan.
@@ -234,7 +238,7 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
                 onPress={handleImagePicker}
                 disabled={isLoading}
               >
-                <FontAwesome5 name="camera" size={24} color="#3498db" />
+                <FontAwesome5 name="camera" size={24} color="#3b82f6" />
                 <Text style={styles.photoButtonText}>
                   Ambil Foto Surat Jalan
                 </Text>
@@ -277,120 +281,207 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
   );
 };
 
+const webStyles = Platform.OS === 'web' ? {
+  container: {
+    maxWidth: 600,
+    maxHeight: '90vh' as any,
+    alignSelf: 'center' as any,
+    marginVertical: '5vh' as any,
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.25,
+    shadowRadius: 25,
+    elevation: 20,
+  },
+  header: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  content: {
+    maxHeight: 'calc(90vh - 200px)' as any,
+  },
+  actions: {
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+  }
+} : {};
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { 
+    flex: 1, 
+    backgroundColor: "#ffffff",
+    ...webStyles.container,
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 20,
+    paddingHorizontal: 32,
+    paddingVertical: 24,
     borderBottomWidth: 1,
-    borderBottomColor: "#eee",
+    borderBottomColor: "#e5e7eb",
+    backgroundColor: "#ffffff",
+    ...webStyles.header,
   },
-  headerTitle: { fontSize: 20, fontWeight: "bold", color: "#333" },
-  content: { flex: 1, padding: 20 },
+  headerTitle: { 
+    fontSize: 24, 
+    fontWeight: "700", 
+    color: "#111827",
+    letterSpacing: -0.5,
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: "transparent",
+  },
+  content: { 
+    flex: 1, 
+    paddingHorizontal: 32,
+    paddingVertical: 24,
+    ...webStyles.content,
+  },
   infoSection: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: "#e3f2fd",
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 20,
+    backgroundColor: "#eff6ff",
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 32,
+    borderWidth: 1,
+    borderColor: "#dbeafe",
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
   },
   infoText: {
     flex: 1,
-    marginLeft: 10,
-    fontSize: 14,
-    color: "#1976d2",
-    lineHeight: 20,
-  },
-  quantitySection: { marginBottom: 20 },
-  label: { fontSize: 16, fontWeight: "600", color: "#333", marginBottom: 8 },
-  quantityInfo: {
-    backgroundColor: "#fff3cd",
-    padding: 10,
-    borderRadius: 6,
-    marginBottom: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: "#ffc107",
-  },
-  minimalText: { fontSize: 14, color: "#856404", fontWeight: "500" },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    fontSize: 18,
-    backgroundColor: "#fff",
-    textAlign: "center",
-    fontWeight: "bold",
-    minHeight: 50,
-  },
-  unitText: {
-    fontSize: 16,
-    color: "#666",
-    textAlign: "center",
-    marginTop: 5,
+    marginLeft: 12,
+    fontSize: 15,
+    color: "#1e40af",
+    lineHeight: 22,
     fontWeight: "500",
   },
-  photoSection: { marginBottom: 20 },
-  photoButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "#3498db",
-    borderRadius: 12,
-    paddingVertical: 20,
-    backgroundColor: "#ebf5fb",
-    elevation: 2,
+  quantitySection: { marginBottom: 32 },
+  label: { 
+    fontSize: 18, 
+    fontWeight: "700", 
+    color: "#111827", 
+    marginBottom: 12,
+    letterSpacing: -0.3,
+  },
+  quantityInfo: {
+    backgroundColor: "#fef3c7",
+    padding: 16,
+    borderRadius: 10,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: "#f59e0b",
+    borderWidth: 1,
+    borderColor: "#fde68a",
+    elevation: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.05,
     shadowRadius: 2,
   },
-  photoButtonText: {
-    fontSize: 16,
-    color: "#3498db",
-    marginLeft: 10,
+  minimalText: { 
+    fontSize: 15, 
+    color: "#92400e", 
     fontWeight: "600",
   },
-  photoPreviewContainer: {
-    marginBottom: 15,
-  },
-  photoCard: {
-    backgroundColor: "#f8f9fa",
-    borderRadius: 10,
-    marginBottom: 12,
-    overflow: "hidden",
-    elevation: 2,
+  input: {
+    borderWidth: 2,
+    borderColor: "#d1d5db",
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    fontSize: 20,
+    backgroundColor: "#ffffff",
+    textAlign: "center",
+    fontWeight: "700",
+    minHeight: 56,
+    color: "#111827",
+    elevation: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
   },
+  unitText: {
+    fontSize: 18,
+    color: "#6b7280",
+    textAlign: "center",
+    marginTop: 8,
+    fontWeight: "600",
+  },
+  photoSection: { marginBottom: 32 },
+  photoButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#3b82f6",
+    borderRadius: 16,
+    paddingVertical: 24,
+    backgroundColor: "#f8fafc",
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  photoButtonText: {
+    fontSize: 16,
+    color: "#3b82f6",
+    marginLeft: 12,
+    fontWeight: "600",
+  },
+  photoPreviewContainer: {
+    marginBottom: 20,
+  },
+  photoCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    marginBottom: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+  },
   previewImage: {
     width: "100%",
-    height: 120,
+    height: 160,
     resizeMode: "cover",
   },
   photoActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    padding: 10,
+    padding: 16,
+    backgroundColor: "#f9fafb",
   },
   retakeButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#e74c3c",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
+    backgroundColor: "#ef4444",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
   },
   retakeButtonText: {
-    color: "#fff",
-    marginLeft: 6,
+    color: "#ffffff",
+    marginLeft: 8,
     fontSize: 14,
     fontWeight: "600",
   },
@@ -398,43 +489,75 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#27ae60",
-    paddingVertical: 10,
-    borderRadius: 10,
-    marginTop: 8,
+    backgroundColor: "#10b981",
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 12,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
   },
   addMoreText: {
-    color: "#fff",
-    marginLeft: 8,
-    fontSize: 14,
+    color: "#ffffff",
+    marginLeft: 10,
+    fontSize: 15,
     fontWeight: "600",
   },
   actions: {
     flexDirection: "row",
-    padding: 20,
-    paddingTop: 10,
+    paddingHorizontal: 32,
+    paddingVertical: 24,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
+    backgroundColor: "#f9fafb",
+    gap: 16,
+    ...webStyles.actions,
   },
   cancelButton: {
     flex: 1,
-    paddingVertical: 15,
-    marginRight: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#ddd",
+    paddingVertical: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#d1d5db",
     alignItems: "center",
-    backgroundColor: "#f8f9fa",
+    backgroundColor: "#ffffff",
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
-  cancelButtonText: { fontSize: 16, color: "#666", fontWeight: "600" },
+  cancelButtonText: { 
+    fontSize: 16, 
+    color: "#6b7280", 
+    fontWeight: "600",
+  },
   confirmButton: {
     flex: 1,
-    paddingVertical: 15,
-    marginLeft: 10,
-    borderRadius: 8,
-    backgroundColor: "#27ae60",
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: "#3b82f6",
     alignItems: "center",
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
   },
-  confirmButtonText: { fontSize: 16, color: "#fff", fontWeight: "600" },
-  disabledButton: { backgroundColor: "#ccc" },
+  confirmButtonText: { 
+    fontSize: 16, 
+    color: "#ffffff", 
+    fontWeight: "700",
+    letterSpacing: -0.2,
+  },
+  disabledButton: { 
+    backgroundColor: "#9ca3af",
+    elevation: 1,
+    shadowOpacity: 0.05,
+  },
 });
 
 export default LoadConfirmationModal;
