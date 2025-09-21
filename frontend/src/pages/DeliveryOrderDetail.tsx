@@ -848,8 +848,9 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
                           <div>
                             {(locationDoc as any)[field.key] && (locationDoc as any)[field.key].length > 0 ? (
                               <div className="grid grid-cols-2 gap-2">
-                                {(locationDoc as any)[field.key].map((photoUrl: string, photoIndex: number) => {
-                                  const cleanPhotoUrl = photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl;
+                                {(locationDoc as any)[field.key].map((photoUrl: any, photoIndex: number) => {
+                                  // Temporarily disable photo processing to fix error
+                                  const cleanPhotoUrl = typeof photoUrl === 'string' ? (photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl) : '';
                                   const fullImageUrl = `${BACKEND_URL}/${cleanPhotoUrl}`;
                                   console.log(`🔍 Image URL for ${field.label}:`, fullImageUrl);
                                   return (
@@ -911,10 +912,10 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
                         </span>
                       </h5>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        {locationDoc.photos.map((photoUrl, photoIndex) => (
+                        {locationDoc.photos.map((photoUrl: any, photoIndex: number) => (
                           <div key={photoIndex} className="relative">
                             <img
-                              src={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
+                              src={`${BACKEND_URL}/${typeof photoUrl === 'string' ? (photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl) : ''}`}
                               alt={`Legacy photo ${photoIndex + 1}`}
                               className="w-full h-20 object-cover rounded-lg border border-gray-200"
                               onError={(e) => {
@@ -931,7 +932,7 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
                               }}
                             />
                             <a
-                              href={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
+                              href={`${BACKEND_URL}/${typeof photoUrl === 'string' ? (photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl) : ''}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-50 transition-all duration-200 rounded-lg"
@@ -1315,6 +1316,33 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
                 </span>
               </div>
               
+              {/* Customer Information */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <h4 className="text-md font-semibold text-blue-900 mb-3">📍 Customer Information</h4>
+                <div className="grid grid-cols-1 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-blue-700 mb-1">Customer Name</label>
+                    <p className="text-lg font-semibold text-blue-900">
+                      {selectedNotaKecil.customer_name || 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-blue-700 mb-1">Customer Address</label>
+                    <p className="text-sm text-blue-900">
+                      {selectedNotaKecil.customer_address || 'N/A'}
+                    </p>
+                  </div>
+                  {selectedNotaKecil.driver_notes && (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-blue-700 mb-1">Driver Notes</label>
+                      <p className="text-sm text-blue-900 bg-blue-100 p-2 rounded border">
+                        {selectedNotaKecil.driver_notes}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Stan Awal</label>
@@ -1368,140 +1396,17 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
                 </div>
               </div>
               
-              {/* Photos Section */}
-              {(selectedNotaKecil.pressure_bar_photos || selectedNotaKecil.temperature_photos || 
+              {/* Photos Section - Temporarily disabled to fix error */}
+              {false && (selectedNotaKecil.pressure_bar_photos || selectedNotaKecil.temperature_photos || 
                 selectedNotaKecil.stan_awal_photos || selectedNotaKecil.stan_akhir_photos) && (
                 <div className="border-t border-gray-200 pt-4">
                   <h4 className="text-md font-medium text-gray-800 mb-3">📷 Photos</h4>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Pressure Bar Photos */}
-                    {selectedNotaKecil.pressure_bar_photos && selectedNotaKecil.pressure_bar_photos.length > 0 && (
-                      <div>
-                        <h5 className="text-sm font-medium text-gray-700 mb-2">Pressure Bar</h5>
-                        <div className="grid grid-cols-2 gap-2">
-                          {selectedNotaKecil.pressure_bar_photos.map((photoUrl: string, photoIndex: number) => (
-                            <div key={photoIndex} className="relative">
-                              <img
-                                src={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
-                                alt={`Pressure Bar ${photoIndex + 1}`}
-                                className="w-full h-24 object-cover rounded-lg border border-gray-200"
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
-                                }}
-                              />
-                              <a
-                                href={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-50 transition-all duration-200 rounded-lg"
-                              >
-                                <svg className="w-4 h-4 text-white opacity-0 hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                </svg>
-                              </a>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Temperature Photos */}
-                    {selectedNotaKecil.temperature_photos && selectedNotaKecil.temperature_photos.length > 0 && (
-                      <div>
-                        <h5 className="text-sm font-medium text-gray-700 mb-2">Temperature</h5>
-                        <div className="grid grid-cols-2 gap-2">
-                          {selectedNotaKecil.temperature_photos.map((photoUrl: string, photoIndex: number) => (
-                            <div key={photoIndex} className="relative">
-                              <img
-                                src={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
-                                alt={`Temperature ${photoIndex + 1}`}
-                                className="w-full h-24 object-cover rounded-lg border border-gray-200"
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
-                                }}
-                              />
-                              <a
-                                href={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-50 transition-all duration-200 rounded-lg"
-                              >
-                                <svg className="w-4 h-4 text-white opacity-0 hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                </svg>
-                              </a>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Stan Awal Photos */}
-                    {selectedNotaKecil.stan_awal_photos && selectedNotaKecil.stan_awal_photos.length > 0 && (
-                      <div>
-                        <h5 className="text-sm font-medium text-gray-700 mb-2">Stan Awal</h5>
-                        <div className="grid grid-cols-2 gap-2">
-                          {selectedNotaKecil.stan_awal_photos.map((photoUrl: string, photoIndex: number) => (
-                            <div key={photoIndex} className="relative">
-                              <img
-                                src={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
-                                alt={`Stan Awal ${photoIndex + 1}`}
-                                className="w-full h-24 object-cover rounded-lg border border-gray-200"
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
-                                }}
-                              />
-                              <a
-                                href={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-50 transition-all duration-200 rounded-lg"
-                              >
-                                <svg className="w-4 h-4 text-white opacity-0 hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                </svg>
-                              </a>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Stan Akhir Photos */}
-                    {selectedNotaKecil.stan_akhir_photos && selectedNotaKecil.stan_akhir_photos.length > 0 && (
-                      <div>
-                        <h5 className="text-sm font-medium text-gray-700 mb-2">Stan Akhir</h5>
-                        <div className="grid grid-cols-2 gap-2">
-                          {selectedNotaKecil.stan_akhir_photos.map((photoUrl: string, photoIndex: number) => (
-                            <div key={photoIndex} className="relative">
-                              <img
-                                src={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
-                                alt={`Stan Akhir ${photoIndex + 1}`}
-                                className="w-full h-24 object-cover rounded-lg border border-gray-200"
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
-                                }}
-                              />
-                              <a
-                                href={`${BACKEND_URL}/${photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-50 transition-all duration-200 rounded-lg"
-                              >
-                                <svg className="w-4 h-4 text-white opacity-0 hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                </svg>
-                              </a>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    {/* Photos temporarily disabled */}
+                    <div className="text-center py-8 text-gray-500">
+                      <p>Photo display temporarily disabled</p>
+                    </div>
                   </div>
                 </div>
               )}

@@ -21,6 +21,7 @@ interface NotaKecilUploaderProps {
   customerName: string;
   customerAddress: string;
   onNotaKecilCreated: (notaKecil: any) => void;
+  onClose?: () => void; // Add close callback
 }
 
 interface OCRResults {
@@ -52,6 +53,7 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
   customerName,
   customerAddress,
   onNotaKecilCreated,
+  onClose,
 }) => {
   const [photos, setPhotos] = useState<{
     pressure_bar: PhotoState | null;
@@ -82,11 +84,15 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
     stan_akhir: string;
     tekanan_operasi: string;
     temperatur_operasi: string;
+    customer_name: string;
+    customer_address: string;
   }>({
     stan_awal: '',
     stan_akhir: '',
     tekanan_operasi: '',
     temperatur_operasi: '',
+    customer_name: '',
+    customer_address: '',
   });
 
   const [calculatedValues, setCalculatedValues] = useState<{
@@ -497,26 +503,28 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
       [field]: value,
     }));
 
-    // Recalculate when values change
-    const numericValues = {
-      stan_awal: parseFloat(editedValues.stan_awal) || 0,
-      stan_akhir: parseFloat(editedValues.stan_akhir) || 0,
-      tekanan_operasi: parseFloat(editedValues.tekanan_operasi) || 0,
-      temperatur_operasi: parseFloat(editedValues.temperatur_operasi) || 0,
-    };
+    // Only recalculate gas values for numeric fields
+    if (field === 'stan_awal' || field === 'stan_akhir' || field === 'tekanan_operasi' || field === 'temperatur_operasi') {
+      const numericValues = {
+        stan_awal: parseFloat(editedValues.stan_awal) || 0,
+        stan_akhir: parseFloat(editedValues.stan_akhir) || 0,
+        tekanan_operasi: parseFloat(editedValues.tekanan_operasi) || 0,
+        temperatur_operasi: parseFloat(editedValues.temperatur_operasi) || 0,
+      };
 
-    // Update the specific field that changed
-    numericValues[field] = parseFloat(value) || 0;
+      // Update the specific field that changed
+      numericValues[field] = parseFloat(value) || 0;
 
-    if (numericValues.stan_awal > 0 && numericValues.stan_akhir > 0 && 
-        numericValues.tekanan_operasi > 0 && numericValues.temperatur_operasi > 0) {
-      const calculated = calculateGasValues(
-        numericValues.stan_awal,
-        numericValues.stan_akhir,
-        numericValues.tekanan_operasi,
-        numericValues.temperatur_operasi
-      );
-      setCalculatedValues(calculated);
+      if (numericValues.stan_awal > 0 && numericValues.stan_akhir > 0 && 
+          numericValues.tekanan_operasi > 0 && numericValues.temperatur_operasi > 0) {
+        const calculated = calculateGasValues(
+          numericValues.stan_awal,
+          numericValues.stan_akhir,
+          numericValues.tekanan_operasi,
+          numericValues.temperatur_operasi
+        );
+        setCalculatedValues(calculated);
+      }
     }
   };
 
@@ -535,6 +543,8 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
         temperatur_operasi: parseFloat(editedValues.temperatur_operasi),
         driver_notes: driverNotes,
         customer_location_index: customerLocationIndex,
+        customer_name: editedValues.customer_name,
+        customer_address: editedValues.customer_address,
         // Send photo URLs from OCR processing
         photos: {
           pressure_bar: photoUrls.pressure_bar ? [photoUrls.pressure_bar] : [],
@@ -574,6 +584,8 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
         stan_akhir: '',
         tekanan_operasi: '',
         temperatur_operasi: '',
+        customer_name: '',
+        customer_address: '',
       });
       setCalculatedValues(null);
       setDriverNotes('');
@@ -675,9 +687,38 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>📋 Create Nota Kecil</Text>
-      <Text style={styles.subtitle}>{customerName}</Text>
-      <Text style={styles.address}>{customerAddress}</Text>
+      <View style={styles.header}>
+        <View style={styles.headerTop}>
+          <Text style={styles.title}>📋 Create Nota Kecil</Text>
+          {onClose && (
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeButton}
+            >
+              <FontAwesome5 name="times" size={20} color="#666" />
+            </TouchableOpacity>
+          )}
+        </View>
+        <View style={styles.customerInfo}>
+          <Text style={styles.customerLabel}>Customer Name:</Text>
+          <TextInput
+            style={styles.customerInput}
+            value={editedValues.customer_name}
+            onChangeText={(value) => handleValueChange('customer_name', value)}
+            placeholder="Enter customer name"
+          />
+          
+          <Text style={styles.customerLabel}>Customer Address:</Text>
+          <TextInput
+            style={styles.customerInput}
+            value={editedValues.customer_address}
+            onChangeText={(value) => handleValueChange('customer_address', value)}
+            placeholder="Enter customer address"
+            multiline
+            numberOfLines={2}
+          />
+        </View>
+      </View>
       
       {/* OCR Mode Toggle */}
       <View style={styles.toggleContainer}>
@@ -722,7 +763,7 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
           onPress={checkIfReadyToConfirm}
         >
           <FontAwesome5 name="check-circle" size={20} color="#fff" />
-          <Text style={styles.processButtonText}>Review & Confirm</Text>
+          <Text style={styles.processButtonText}>Review</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -946,11 +987,35 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     padding: 16,
   },
+  header: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 8,
+    flex: 1,
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   subtitle: {
     fontSize: 18,
@@ -962,6 +1027,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginBottom: 20,
+  },
+  customerInfo: {
+    backgroundColor: '#f8f9fa',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  customerLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 6,
+    marginTop: 8,
+  },
+  customerInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    backgroundColor: '#fff',
+    marginBottom: 4,
   },
   toggleContainer: {
     flexDirection: 'row',

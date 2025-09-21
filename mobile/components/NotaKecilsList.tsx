@@ -10,10 +10,13 @@ import {
   Image,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { getCustomerNotaKecils } from '../src/services/api';
+import { getNotaKecils } from '../src/services/api';
 
 interface NotaKecil {
   id: string;
+  customer_name: string;
+  customer_address: string;
+  customer_location_index: number;
   stan_awal: number;
   stan_akhir: number;
   tekanan_operasi: number;
@@ -33,9 +36,10 @@ interface NotaKecil {
 
 interface NotaKecilsListProps {
   deliveryOrderId: string;
-  customerLocationIndex: number;
+  customerLocationIndex: number; // Keep for backward compatibility but not used for API
   customerName: string;
   onNotaKecilAdded?: (notaKecil: NotaKecil) => void;
+  onClose?: () => void; // Add close callback
 }
 
 const NotaKecilsList: React.FC<NotaKecilsListProps> = ({
@@ -43,6 +47,7 @@ const NotaKecilsList: React.FC<NotaKecilsListProps> = ({
   customerLocationIndex,
   customerName,
   onNotaKecilAdded,
+  onClose,
 }) => {
   const [notaKecils, setNotaKecils] = useState<NotaKecil[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,8 +65,8 @@ const NotaKecilsList: React.FC<NotaKecilsListProps> = ({
       
       // Try to call the real API first
       try {
-        const response = await getCustomerNotaKecils(deliveryOrderId, customerLocationIndex);
-        setNotaKecils(response.data);
+        const response = await getNotaKecils(deliveryOrderId);
+        setNotaKecils(response.data.data || []);
       } catch (apiError) {
         console.log('API not available, using simulated data...');
         
@@ -69,6 +74,9 @@ const NotaKecilsList: React.FC<NotaKecilsListProps> = ({
         const simulatedNotaKecils: NotaKecil[] = [
           {
             id: '1',
+            customer_name: 'PT. Energi Mandiri',
+            customer_address: 'Jl. Raya Industri No. 15, Jakarta Utara',
+            customer_location_index: 0,
             stan_awal: 1279.07,
             stan_akhir: 1413.03,
             tekanan_operasi: 1.70,
@@ -83,6 +91,9 @@ const NotaKecilsList: React.FC<NotaKecilsListProps> = ({
           },
           {
             id: '2',
+            customer_name: 'CV. Gas Sejahtera',
+            customer_address: 'Jl. Perdagangan No. 42, Jakarta Timur',
+            customer_location_index: 1,
             stan_awal: 1413.03,
             stan_akhir: 1580.50,
             tekanan_operasi: 1.85,
@@ -98,9 +109,10 @@ const NotaKecilsList: React.FC<NotaKecilsListProps> = ({
         
         setNotaKecils(simulatedNotaKecils);
       }
-    } catch (error) {
+      } catch (error) {
       console.error('Error loading nota kecils:', error);
       Alert.alert('Error', 'Failed to load nota kecils');
+      setNotaKecils([]); // Ensure we always have an array
     } finally {
       setLoading(false);
     }
@@ -185,6 +197,11 @@ const NotaKecilsList: React.FC<NotaKecilsListProps> = ({
         <Text style={styles.timestamp}>
           {formatDate(notaKecil.created_at)} - {formatTime(notaKecil.created_at)}
         </Text>
+
+        <View style={styles.customerInfo}>
+          <Text style={styles.customerName}>{notaKecil.customer_name}</Text>
+          <Text style={styles.customerLocation}>Location #{notaKecil.customer_location_index}</Text>
+        </View>
 
         <View style={styles.valuesGrid}>
           <View style={styles.valueRow}>
@@ -283,12 +300,22 @@ const NotaKecilsList: React.FC<NotaKecilsListProps> = ({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>📋 Nota Kecils</Text>
-        <Text style={styles.subtitle}>{customerName}</Text>
-        <Text style={styles.count}>{notaKecils.length} nota kecils</Text>
+        <View style={styles.headerTop}>
+          <Text style={styles.title}>📋 All Nota Kecils</Text>
+          {onClose && (
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeButton}
+            >
+              <FontAwesome5 name="times" size={20} color="#666" />
+            </TouchableOpacity>
+          )}
+        </View>
+        <Text style={styles.subtitle}>Delivery Order #{deliveryOrderId}</Text>
+        <Text style={styles.count}>{notaKecils?.length || 0} nota kecils</Text>
       </View>
 
-      {notaKecils.length === 0 ? (
+      {!notaKecils || notaKecils.length === 0 ? (
         <View style={styles.emptyContainer}>
           <FontAwesome5 name="receipt" size={48} color="#d1d5db" />
           <Text style={styles.emptyText}>No nota kecils yet</Text>
@@ -343,11 +370,24 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e9ecef',
   },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 4,
+    flex: 1,
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   subtitle: {
     fontSize: 16,
@@ -429,6 +469,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginBottom: 12,
+  },
+  customerInfo: {
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  customerName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  customerLocation: {
+    fontSize: 12,
+    color: '#666',
   },
   valuesGrid: {
     marginBottom: 16,

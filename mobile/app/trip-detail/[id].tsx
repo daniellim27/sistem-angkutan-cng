@@ -30,6 +30,7 @@ import {
   completeLocation,
   uploadSuratJalanPhoto,
   uploadDocumentationPhotos,
+  getNotaKecils,
 } from "../../src/services/api";
 import { FontAwesome5 } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -195,6 +196,23 @@ const TripDetailScreen = () => {
     loadAllPhotos();
   }, [trip?.id]);
 
+  const fetchNotaKecils = useCallback(async (doId: string) => {
+    try {
+      console.log(`Fetching nota kecils for DO: ${doId}`);
+      const response = await getNotaKecils(doId);
+      console.log("Nota Kecils Response:", response);
+      
+      if (mountedRef.current) {
+        setNotaKecils(response.data.data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching nota kecils:", error);
+      if (mountedRef.current) {
+        setNotaKecils([]);
+      }
+    }
+  }, []);
+
   const fetchTripDetails = useCallback(async () => {
     if (!id || isLoadingRef.current) {
       console.log("Skipping fetch - already loading or no ID");
@@ -216,20 +234,28 @@ const TripDetailScreen = () => {
         console.log("Setting trip data:", tripData);
         console.log("Trip ID:", tripData?.id);
         setTrip(tripData);
+        
+        // Fetch nota kecils for this delivery order
+        if (id) {
+          await fetchNotaKecils(id);
+        }
         console.log(`Trip loaded - ID: ${tripData?.id}, Status: ${tripData?.status}`);
         
         // Fetch budget requests for this delivery order
-        try {
-          const budgetResponse = await getBudgetRequests(id);
-          if (mountedRef.current) {
-            setBudgetRequests(budgetResponse.data.budgetRequests || []);
-          }
-        } catch (budgetError) {
-          console.log("No budget requests found or error fetching:", budgetError);
-          if (mountedRef.current) {
-            setBudgetRequests([]);
-          }
-        }
+        // TODO: Implement getBudgetRequests API function
+        // try {
+        //   if (id) {
+        //     const budgetResponse = await getBudgetRequests(id);
+        //     if (mountedRef.current) {
+        //       setBudgetRequests(budgetResponse.data.budgetRequests || []);
+        //     }
+        //   }
+        // } catch (budgetError) {
+        //   console.log("No budget requests found or error fetching:", budgetError);
+        //   if (mountedRef.current) {
+        //     setBudgetRequests([]);
+        //   }
+        // }
       }
     } catch (error: any) {
       if (mountedRef.current) {
@@ -1543,9 +1569,16 @@ const TripDetailScreen = () => {
   };
 
   // Nota Kecil handler functions
-  const handleNotaKecilCreated = (notaKecil: any) => {
+  const handleNotaKecilCreated = async (notaKecil: any) => {
+    // Add to local state immediately for better UX
     setNotaKecils(prev => [notaKecil, ...prev]);
     setShowNotaKecilModal(false);
+    
+    // Refresh the full list from server to ensure consistency
+    if (id) {
+      await fetchNotaKecils(id);
+    }
+    
     Alert.alert('Success', 'Nota Kecil created successfully!');
   };
 
@@ -1553,7 +1586,11 @@ const TripDetailScreen = () => {
     setShowNotaKecilModal(true);
   };
 
-  const handleViewNotaKecils = () => {
+  const handleViewNotaKecils = async () => {
+    // Refresh nota kecils before showing the modal
+    if (id) {
+      await fetchNotaKecils(id);
+    }
     setShowNotaKecilListModal(true);
   };
 
@@ -1936,98 +1973,36 @@ const TripDetailScreen = () => {
           </View>
         )}
 
-        {/* DELIVERY DOCUMENTATION BY LOCATION SECTION */}
+        {/* NOTA KECIL SECTION */}
         {trip.status !== "assigned" && trip.status !== "otw_to_load_location" && trip.status !== "at_load_location" && (
           <View style={styles.detailCard}>
-            <Text style={styles.cardTitle}>📋 Dokumentasi Pengiriman per Lokasi</Text>
+            <Text style={styles.cardTitle}>📋 Nota Kecil per Lokasi</Text>
             
             {getAllCustomerLocations().map((location, index) => {
-              // Get location documentation for this specific location
-              const locationDocs = trip.location_documentation || [];
-              const locationDoc = locationDocs.find(doc => doc.location_index === index);
-              
-              // Define the required documentation fields
-              const documentationFields = [
-                { key: 'pressure_bar', label: 'Pressure Bar', icon: 'tachometer-alt', type: 'text' },
-                { key: 'foto_temperature', label: 'Foto Temperature', icon: 'thermometer-half', type: 'photo' },
-                { key: 'foto_stan_awal', label: 'Foto Stan Awal', icon: 'play-circle', type: 'photo' },
-                { key: 'foto_stan_akhir', label: 'Foto Stan Akhir', icon: 'stop-circle', type: 'photo' },
-              ];
-              
-              // Calculate completion status
-              const completedFields = documentationFields.filter(field => {
-                if (field.type === 'text') {
-                  return locationDoc && locationDoc[field.key];
-                } else {
-                  return locationDoc && locationDoc[field.key] && locationDoc[field.key].length > 0;
-                }
-              });
-              
-              const completionPercentage = Math.round((completedFields.length / documentationFields.length) * 100);
-              
               return (
                 <View key={index} style={styles.locationDocItem}>
-                  <View style={styles.locationDocHeader}>
-                    <View style={styles.locationDocInfo}>
-                      <Text style={styles.locationDocTitle}>
-                        📍 {location.location}
-                      </Text>
-                      <Text style={styles.locationDocStatus}>
-                        {completedFields.length}/{documentationFields.length} dokumentasi lengkap ({completionPercentage}%)
-                      </Text>
-                    </View>
-                    
-                    {!isTripCompleted && (
-                      <View style={styles.locationActionButtons}>
-                        {/* Lengkapi Button (renamed from Nota Kecil) */}
-                        <TouchableOpacity
-                          style={styles.notaKecilButton}
-                          onPress={handleCreateNotaKecil}
-                        >
-                          <FontAwesome5 name="receipt" size={16} color="#fff" />
-                          <Text style={styles.notaKecilButtonText}>Lengkapi</Text>
-                        </TouchableOpacity>
+                  {!isTripCompleted && (
+                    <View style={styles.locationActionButtons}>
+                      {/* Lengkapi Button */}
+                      <TouchableOpacity
+                        style={styles.notaKecilButton}
+                        onPress={handleCreateNotaKecil}
+                      >
+                        <FontAwesome5 name="receipt" size={16} color="#fff" />
+                        <Text style={styles.notaKecilButtonText}>Create Nota Kecil</Text>
+                      </TouchableOpacity>
 
-                        {notaKecils.length > 0 && (
-                          <TouchableOpacity
-                            style={styles.viewNotaKecilsButton}
-                            onPress={handleViewNotaKecils}
-                          >
-                            <FontAwesome5 name="list" size={16} color="#3b82f6" />
-                            <Text style={styles.viewNotaKecilsButtonText}>View ({notaKecils.length})</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    )}
-                  </View>
-                  
-                  {/* Show documentation status */}
-                  <View style={styles.documentationGrid}>
-                    {documentationFields.map((field) => {
-                      const isCompleted = field.type === 'text' 
-                        ? (locationDoc && locationDoc[field.key])
-                        : (locationDoc && locationDoc[field.key] && locationDoc[field.key].length > 0);
-                      
-                      return (
-                        <View key={field.key} style={styles.docFieldItem}>
-                          <FontAwesome5 
-                            name={field.icon} 
-                            size={16} 
-                            color={isCompleted ? "#27ae60" : "#ccc"} 
-                          />
-                          <Text style={[
-                            styles.docFieldText,
-                            isCompleted ? styles.docFieldCompleted : styles.docFieldIncomplete
-                          ]}>
-                            {field.label}
-                          </Text>
-                          {isCompleted && (
-                            <FontAwesome5 name="check" size={12} color="#27ae60" />
-                          )}
-                        </View>
-                      );
-                    })}
-                  </View>
+                      {notaKecils.length > 0 && (
+                        <TouchableOpacity
+                          style={styles.viewNotaKecilsButton}
+                          onPress={handleViewNotaKecils}
+                        >
+                          <FontAwesome5 name="list" size={16} color="#3b82f6" />
+                          <Text style={styles.viewNotaKecilsButtonText}>View ({notaKecils.length})</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
                 </View>
               );
             })}
@@ -2898,6 +2873,7 @@ const TripDetailScreen = () => {
           customerName={getAllCustomerLocations()[currentLocationIndex]?.location || 'Customer'}
           customerAddress={getAllCustomerLocations()[currentLocationIndex]?.location || ''}
           onNotaKecilCreated={handleNotaKecilCreated}
+          onClose={() => setShowNotaKecilModal(false)}
         />
       </Modal>
 
@@ -2913,6 +2889,7 @@ const TripDetailScreen = () => {
           customerLocationIndex={currentLocationIndex}
           customerName={getAllCustomerLocations()[currentLocationIndex]?.location || 'Customer'}
           onNotaKecilAdded={handleNotaKecilCreated}
+          onClose={() => setShowNotaKecilListModal(false)}
         />
       </Modal>
     </>

@@ -1629,6 +1629,9 @@ exports.confirmNotaKecil = async (req, res, next) => {
       tekanan_operasi, 
       temperatur_operasi, 
       driver_notes,
+      customer_location_index,
+      customer_name,
+      customer_address,
       photos,
       ocr_results 
     } = req.body;
@@ -1682,9 +1685,9 @@ exports.confirmNotaKecil = async (req, res, next) => {
     
     const notaKecil = await NotaKecil.create({
       delivery_order_id: id,
-      customer_location_index: req.body.customer_location_index || 0,
-      customer_name: deliveryOrder.customer_name,
-      customer_address: deliveryOrder.unload_location,
+      customer_location_index: customer_location_index || 0,
+      customer_name: customer_name,
+      customer_address: customer_address,
       stan_awal: parseFloat(stan_awal),
       stan_akhir: parseFloat(stan_akhir),
       tekanan_operasi: parseFloat(tekanan_operasi),
