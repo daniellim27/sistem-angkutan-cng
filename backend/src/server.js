@@ -59,6 +59,7 @@ const vehicleRoutes = require("./routes/vehicle.routes");
 const driverRoutes = require("./routes/driver.routes");
 const ocrRoutes = require("./routes/ocr.routes");
 const webOcrRoutes = require("./routes/web/ocr.routes");
+const notaBesarRoutes = require("./routes/notaBesar.routes");
 
 // === Import Exchange Rate Routes ===
 const webExchangeRateRoutes = require("./routes/web/exchangeRates.routes");
@@ -179,6 +180,7 @@ initializeDatabase().then(() => {
   app.use("/api/budget-requests", instantBudgetRequestRoutes);
   app.use("/api/drivers", driverRoutes);
   app.use("/api/ocr", ocrRoutes);
+  app.use("/api", notaBesarRoutes);
 
   // Static uploads
   app.use("/uploads", express.static(path.join(__dirname, "../uploads")));

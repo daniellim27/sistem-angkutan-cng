@@ -1,151 +1,203 @@
 /**
  * Billing Calculation Service
- * Implements gas volume calculation using the client's specified formula
+ * Implements the billing formula for gas volume calculation
+ * 
+ * Formula: V = Vt x ((1.01325 + p) / 1.01325) x (300 / (273 + t)) x k
+ * 
+ * Where:
+ * - V = Volume Gas (m³) - Final calculated volume for billing
+ * - Vt = Volume from Meter (m³) - stan_akhir - stan_awal
+ * - p = Gas Pressure (Bar) - tekanan_operasi
+ * - t = Gas Temperature (°C) - temperatur_operasi
+ * - k = Super Compressibility Factor
  */
 
 class BillingCalculationService {
   constructor() {
-    // Constants for the calculation
-    this.STANDARD_PRESSURE = 1.01325; // Standard atmospheric pressure in bar
-    this.STANDARD_TEMPERATURE = 300; // Standard temperature in Kelvin (27°C)
-    this.ZERO_CELSIUS_KELVIN = 273; // Conversion from Celsius to Kelvin
+    // Standard atmospheric pressure in bar
+    this.STANDARD_PRESSURE = 1.01325;
+    
+    // Standard temperature in Kelvin (27°C = 300K)
+    this.STANDARD_TEMPERATURE = 300;
+    
+    // Base temperature in Kelvin (0°C = 273K)
+    this.BASE_TEMPERATURE = 273;
+    
+    // Default gas price per m³ (can be overridden)
+    this.DEFAULT_GAS_PRICE_PER_M3 = 15000; // IDR 15,000 per m³
   }
 
   /**
-   * Calculate final billable gas volume using the client's formula
-   * V = Vt × ((1.01325 + p) / 1.01325) × (300 / (273 + t)) × k
-   * 
-   * @param {Object} ocrData - Extracted OCR data
-   * @returns {Object} Calculation result
+   * Calculate the final billable volume using the billing formula
+   * @param {Object} notaKecil - The nota kecil data
+   * @param {number} notaKecil.Vt - Volume from meter (stan_akhir - stan_awal)
+   * @param {number} notaKecil.tekanan_operasi - Gas pressure in Bar
+   * @param {number} notaKecil.temperatur_operasi - Gas temperature in °C
+   * @returns {Object} Calculation result with volume and details
    */
-  calculateGasVolume(ocrData) {
+  calculateVolume(notaKecil) {
     try {
-      // Validate required data
-      const validation = this.validateOCRData(ocrData);
-      if (!validation.isValid) {
-        throw new Error(`Invalid OCR data: ${validation.errors.join(', ')}`);
-      }
+      // Extract and validate input data
+      const Vt = parseFloat(notaKecil.Vt || 0);
+      const p = parseFloat(notaKecil.tekanan_operasi || 0);
+      const t = parseFloat(notaKecil.temperatur_operasi || 0);
 
-      // Extract values
-      const vt = ocrData.stan_akhir - ocrData.stan_awal; // Meter reading difference
-      const p = ocrData.tekanan_operasi; // Gas pressure in Bar
-      const t = ocrData.temperatur_operasi; // Gas temperature in Celsius
+      // Validate inputs
+      if (Vt <= 0) {
+        throw new Error('Volume from meter (Vt) must be greater than 0');
+      }
+      if (p < 0) {
+        throw new Error('Gas pressure cannot be negative');
+      }
+      if (t < -273) {
+        throw new Error('Gas temperature cannot be below absolute zero');
+      }
 
       // Calculate super compressibility factor (k)
       const k = this.calculateSuperCompressibilityFactor(p);
 
-      // Apply the formula
+      // Apply the billing formula
+      // V = Vt x ((1.01325 + p) / 1.01325) x (300 / (273 + t)) x k
       const pressureFactor = (this.STANDARD_PRESSURE + p) / this.STANDARD_PRESSURE;
-      const temperatureFactor = this.STANDARD_TEMPERATURE / (this.ZERO_CELSIUS_KELVIN + t);
+      const temperatureFactor = this.STANDARD_TEMPERATURE / (this.BASE_TEMPERATURE + t);
       
-      const finalVolume = vt * pressureFactor * temperatureFactor * k;
+      const V = Vt * pressureFactor * temperatureFactor * k;
 
       return {
         success: true,
-        calculation_data: {
-          vt: vt, // Volume from meter (m³)
-          p: p, // Gas pressure (Bar)
-          t: t, // Gas temperature (°C)
-          k: k, // Super compressibility factor
-          pressure_factor: pressureFactor,
-          temperature_factor: temperatureFactor,
-          final_volume: finalVolume
-        },
-        result: {
-          calculated_volume_m3: parseFloat(finalVolume.toFixed(3)),
-          meter_difference: vt,
-          pressure_bar: p,
-          temperature_celsius: t,
-          compressibility_factor: k,
-          calculation_method: 'ocr_formula',
-          calculated_at: new Date()
-        },
-        formula_used: 'V = Vt × ((1.01325 + p) / 1.01325) × (300 / (273 + t)) × k'
+        volume: parseFloat(V.toFixed(3)),
+        details: {
+          Vt: Vt,
+          pressure: p,
+          temperature: t,
+          pressureFactor: parseFloat(pressureFactor.toFixed(6)),
+          temperatureFactor: parseFloat(temperatureFactor.toFixed(6)),
+          superCompressibilityFactor: parseFloat(k.toFixed(6)),
+          formula: `V = ${Vt} × ${pressureFactor.toFixed(6)} × ${temperatureFactor.toFixed(6)} × ${k.toFixed(6)} = ${V.toFixed(3)}`
+        }
       };
-
     } catch (error) {
       return {
         success: false,
         error: error.message,
-        calculation_data: null,
-        result: null
+        volume: 0,
+        details: null
       };
     }
   }
 
   /**
-   * Calculate super compressibility factor (k)
-   * Based on pressure:
-   * - If p < 4 bar: k = 1 + (0.0002 * p)
-   * - If p >= 4 bar: k = [FPV]² (per A.G.A Report NX-19)
-   * 
-   * @param {Number} pressure - Gas pressure in Bar
-   * @returns {Number} Super compressibility factor
+   * Calculate super compressibility factor (k) based on pressure
+   * @param {number} p - Gas pressure in Bar
+   * @returns {number} Super compressibility factor
    */
-  calculateSuperCompressibilityFactor(pressure) {
-    if (pressure < 4) {
-      // For pressure < 4 bar: k = 1 + (0.0002 * p)
-      return 1 + (0.0002 * pressure);
+  calculateSuperCompressibilityFactor(p) {
+    if (p < 4) {
+      // For p < 4 bar: k = 1 + (0.0002 * p)
+      return 1 + (0.0002 * p);
     } else {
-      // For pressure >= 4 bar: k = [FPV]²
-      // FPV (Fugacity Pressure Volume) calculation
-      // This is a simplified version - in practice, you might need more complex A.G.A calculations
-      const fpv = this.calculateFPV(pressure);
-      return Math.pow(fpv, 2);
+      // For p >= 4 bar: k = [FPV]² (per A.G.A Report NX-19)
+      // This is a simplified implementation - in production, you'd use the full FPV calculation
+      return this.calculateFPV(p);
     }
   }
 
   /**
-   * Calculate FPV (Fugacity Pressure Volume) for A.G.A Report NX-19
-   * This is a simplified implementation
-   * 
-   * @param {Number} pressure - Gas pressure in Bar
-   * @returns {Number} FPV value
+   * Calculate FPV (Fugacity Pressure Volume) factor for high pressure
+   * This is a simplified implementation - in production, use the full A.G.A Report NX-19 formula
+   * @param {number} p - Gas pressure in Bar
+   * @returns {number} FPV factor
    */
-  calculateFPV(pressure) {
-    // Simplified FPV calculation
-    // In a real implementation, this would use the full A.G.A Report NX-19 methodology
-    // For now, using a reasonable approximation
-    return 1 + (pressure * 0.001);
+  calculateFPV(p) {
+    // Simplified FPV calculation for demonstration
+    // In production, implement the full A.G.A Report NX-19 formula
+    const baseFPV = 1 + (0.0001 * p) + (0.00001 * p * p);
+    return baseFPV * baseFPV; // FPV²
   }
 
   /**
-   * Validate OCR data for calculation
-   * @param {Object} ocrData - OCR extracted data
+   * Calculate total price for a volume
+   * @param {number} volume - Volume in m³
+   * @param {number} pricePerM3 - Price per m³ (optional, uses default if not provided)
+   * @returns {number} Total price
+   */
+  calculatePrice(volume, pricePerM3 = null) {
+    const gasPrice = pricePerM3 || this.DEFAULT_GAS_PRICE_PER_M3;
+    return parseFloat((volume * gasPrice).toFixed(2));
+  }
+
+  /**
+   * Process multiple nota kecils and calculate total volume and price
+   * @param {Array} notaKecils - Array of nota kecil objects
+   * @param {number} gasPricePerM3 - Gas price per m³ (optional)
+   * @returns {Object} Processing result with totals and individual calculations
+   */
+  processMultipleNotaKecils(notaKecils, gasPricePerM3 = null) {
+    const results = {
+      success: true,
+      totalVolume: 0,
+      totalPrice: 0,
+      gasPricePerM3: gasPricePerM3 || this.DEFAULT_GAS_PRICE_PER_M3,
+      items: [],
+      errors: []
+    };
+
+    for (let i = 0; i < notaKecils.length; i++) {
+      const notaKecil = notaKecils[i];
+      const calculation = this.calculateVolume(notaKecil);
+
+      if (calculation.success) {
+        const price = this.calculatePrice(calculation.volume, gasPricePerM3);
+        
+        results.totalVolume += calculation.volume;
+        results.totalPrice += price;
+        
+        results.items.push({
+          notaKecilId: notaKecil.id,
+          customerName: notaKecil.customer_name,
+          customerLocationIndex: notaKecil.customer_location_index,
+          volume: calculation.volume,
+          price: price,
+          details: calculation.details
+        });
+      } else {
+        results.errors.push({
+          notaKecilId: notaKecil.id,
+          customerName: notaKecil.customer_name,
+          error: calculation.error
+        });
+      }
+    }
+
+    // Round totals
+    results.totalVolume = parseFloat(results.totalVolume.toFixed(3));
+    results.totalPrice = parseFloat(results.totalPrice.toFixed(2));
+
+    return results;
+  }
+
+  /**
+   * Validate nota kecil data for billing calculation
+   * @param {Object} notaKecil - The nota kecil data to validate
    * @returns {Object} Validation result
    */
-  validateOCRData(ocrData) {
+  validateNotaKecil(notaKecil) {
     const errors = [];
-    
-    // Check required fields
-    if (!ocrData.stan_awal || ocrData.stan_awal <= 0) {
-      errors.push('stan_awal must be a positive number');
+
+    if (!notaKecil.Vt || parseFloat(notaKecil.Vt) <= 0) {
+      errors.push('Volume from meter (Vt) is required and must be greater than 0');
     }
-    
-    if (!ocrData.stan_akhir || ocrData.stan_akhir <= 0) {
-      errors.push('stan_akhir must be a positive number');
+
+    if (!notaKecil.tekanan_operasi || parseFloat(notaKecil.tekanan_operasi) < 0) {
+      errors.push('Gas pressure is required and cannot be negative');
     }
-    
-    if (!ocrData.tekanan_operasi || ocrData.tekanan_operasi <= 0) {
-      errors.push('tekanan_operasi must be a positive number');
+
+    if (!notaKecil.temperatur_operasi || parseFloat(notaKecil.temperatur_operasi) < -273) {
+      errors.push('Gas temperature is required and cannot be below absolute zero');
     }
-    
-    if (!ocrData.temperatur_operasi || ocrData.temperatur_operasi <= 0) {
-      errors.push('temperatur_operasi must be a positive number');
-    }
-    
-    // Check logical constraints
-    if (ocrData.stan_akhir && ocrData.stan_awal && ocrData.stan_akhir <= ocrData.stan_awal) {
-      errors.push('stan_akhir must be greater than stan_awal');
-    }
-    
-    // Check reasonable ranges
-    if (ocrData.tekanan_operasi && (ocrData.tekanan_operasi < 0.1 || ocrData.tekanan_operasi > 100)) {
-      errors.push('tekanan_operasi should be between 0.1 and 100 bar');
-    }
-    
-    if (ocrData.temperatur_operasi && (ocrData.temperatur_operasi < -50 || ocrData.temperatur_operasi > 100)) {
-      errors.push('temperatur_operasi should be between -50°C and 100°C');
+
+    if (!notaKecil.customer_name) {
+      errors.push('Customer name is required');
     }
 
     return {
@@ -155,106 +207,23 @@ class BillingCalculationService {
   }
 
   /**
-   * Calculate billing amount based on volume and unit price
-   * @param {Number} volume - Calculated volume in m³
-   * @param {Number} unitPrice - Price per m³
-   * @returns {Object} Billing calculation
+   * Get default gas price per m³
+   * @returns {number} Default gas price
    */
-  calculateBillingAmount(volume, unitPrice) {
-    if (!volume || volume <= 0) {
-      return {
-        success: false,
-        error: 'Invalid volume for billing calculation'
-      };
-    }
-
-    if (!unitPrice || unitPrice <= 0) {
-      return {
-        success: false,
-        error: 'Invalid unit price for billing calculation'
-      };
-    }
-
-    const totalAmount = volume * unitPrice;
-
-    return {
-      success: true,
-      result: {
-        volume_m3: volume,
-        unit_price: unitPrice,
-        total_amount: parseFloat(totalAmount.toFixed(2)),
-        calculated_at: new Date()
-      }
-    };
+  getDefaultGasPrice() {
+    return this.DEFAULT_GAS_PRICE_PER_M3;
   }
 
   /**
-   * Process complete billing calculation from OCR data
-   * @param {Object} ocrData - OCR extracted data
-   * @param {Number} unitPrice - Price per m³ (optional, from OCR if not provided)
-   * @returns {Object} Complete billing calculation
+   * Set gas price per m³
+   * @param {number} price - New gas price per m³
    */
-  processCompleteBilling(ocrData, unitPrice = null) {
-    try {
-      // Calculate gas volume
-      const volumeCalculation = this.calculateGasVolume(ocrData);
-      
-      if (!volumeCalculation.success) {
-        return volumeCalculation;
-      }
-
-      // Use provided unit price or extract from OCR data
-      const finalUnitPrice = unitPrice || ocrData.harga_satuan;
-      
-      if (!finalUnitPrice) {
-        return {
-          success: false,
-          error: 'Unit price is required for billing calculation'
-        };
-      }
-
-      // Calculate billing amount
-      const billingCalculation = this.calculateBillingAmount(
-        volumeCalculation.result.calculated_volume_m3,
-        finalUnitPrice
-      );
-
-      if (!billingCalculation.success) {
-        return billingCalculation;
-      }
-
-      return {
-        success: true,
-        volume_calculation: volumeCalculation,
-        billing_calculation: billingCalculation,
-        summary: {
-          final_volume_m3: volumeCalculation.result.calculated_volume_m3,
-          unit_price: finalUnitPrice,
-          total_amount: billingCalculation.result.total_amount,
-          calculation_method: 'ocr_automated',
-          processed_at: new Date()
-        }
-      };
-
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
+  setGasPrice(price) {
+    if (price <= 0) {
+      throw new Error('Gas price must be greater than 0');
     }
-  }
-
-  /**
-   * Get calculation history for a delivery order
-   * @param {Number} deliveryOrderId - Delivery order ID
-   * @returns {Array} Calculation history
-   */
-  async getCalculationHistory(deliveryOrderId) {
-    // This would typically query the database for calculation history
-    // Implementation depends on your database structure
-    return [];
+    this.DEFAULT_GAS_PRICE_PER_M3 = price;
   }
 }
 
 module.exports = new BillingCalculationService();
-

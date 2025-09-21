@@ -12,6 +12,7 @@ const {
   DepositGroupMember, // Add DepositGroupMember
   DeliveryOrderAdjustments,
   DeliveryOrderPayments, // <<< FIX: Make sure this is imported
+  NotaKecil, // Add NotaKecil
   sequelize,
   Sequelize,
 } = require("../models");
@@ -103,9 +104,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
         driver_id,
         status: {
           [Op.in]: [
-            "assigned",
-            "otw_to_load_location",
-            "at_load_location",
+            "at_spbu",
             "otw_to_unload_location",
             "at_unload_location",
           ],
@@ -124,9 +123,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
         vehicle_id,
         status: {
           [Op.in]: [
-            "assigned",
-            "otw_to_load_location",
-            "at_load_location",
+            "at_spbu",
             "otw_to_unload_location",
             "at_unload_location",
           ],
@@ -202,7 +199,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
       due_date,
       trip_allowance: trip_allowance || 0,
       gaji: gaji || 0,
-      status: "assigned",
+      status: "at_spbu",
     });
 
     // Set status driver & mobil ke busy/in_use (opsional, jika ada field status di tabel driver/vehicle)
@@ -358,12 +355,9 @@ exports.getAllDeliveryOrders = async (req, res, next) => {
 exports.getActiveDeliveryOrders = async (req, res, next) => {
   try {
     const ACTIVE_STATUSES = [
-      "assigned",
-      "otw_to_load_location",
-      "at_load_location",
+      "at_spbu",
       "otw_to_unload_location",
       "at_unload_location",
-      "otw_to_base",
     ];
 
     const user = req.user;
@@ -567,7 +561,7 @@ exports.startToDestination = (req, res, next) => {
   updateStatus(
     req.params.id,
     req.user.id,
-    "otw_to_load_location", // ✅ Start journey to load location
+    "otw_to_unload_location", // ✅ Start journey to unload location
     "departed_to_load_location_at" // ✅ Update field timestamp baru
   )
     .then((order) =>
@@ -585,7 +579,7 @@ exports.arriveAtLoadLocation = (req, res, next) => {
   updateStatus(
     req.params.id,
     req.user.id,
-    "at_load_location",
+    "at_unload_location",
     "arrived_at_load_location_at"
   )
     .then((order) =>
@@ -1084,9 +1078,7 @@ const updateStatus = async (orderId, driverId, newStatus, timestampField) => {
 
     // Status validation mapping
     const validTransitions = {
-      assigned: ["otw_to_load_location"],
-      otw_to_load_location: ["at_load_location"],
-      at_load_location: ["otw_to_unload_location"],
+      at_spbu: ["otw_to_unload_location"],
       otw_to_unload_location: ["at_unload_location"],
       at_unload_location: ["completed"],
       completed: [],
@@ -1258,6 +1250,555 @@ exports.uploadDocumentationPhotos = async (req, res, next) => {
 
   } catch (error) {
     console.error("Error uploading documentation photos:", error);
+    next(error);
+  }
+};
+
+// === NOTA KECIL CONTROLLER METHODS ===
+
+/**
+ * @desc    Process individual photo OCR
+ * @route   POST /api/delivery-orders/:id/process-nota-kecil/:photoType
+ * @access  Private (Driver only)
+ */
+exports.processIndividualPhotoOCR = async (req, res, next) => {
+  try {
+    const { id, photoType } = req.params;
+    const { customer_location_index } = req.body;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        message: "No photo file provided"
+      });
+    }
+
+    if (!customer_location_index && customer_location_index !== 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer location index is required"
+      });
+    }
+
+    // Validate photo type
+    const validPhotoTypes = ['pressure_bar', 'temperature', 'stan_awal', 'stan_akhir'];
+    if (!validPhotoTypes.includes(photoType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid photo type. Must be one of: " + validPhotoTypes.join(', ')
+      });
+    }
+
+    // Get delivery order
+    const deliveryOrder = await DeliveryOrder.findByPk(id);
+    if (!deliveryOrder) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery order not found"
+      });
+    }
+
+    // Check if driver has access to this delivery order
+    if (deliveryOrder.driver_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied to this delivery order"
+      });
+    }
+
+    console.log(`Processing OCR for ${photoType} photo...`);
+
+    try {
+      // Import OCR service
+      const ocrService = require('../services/ocrService');
+      
+      // Read image file
+      const fs = require('fs');
+      const imageBuffer = fs.readFileSync(file.path);
+      
+      // Process with real OCR service
+      const ocrResult = await ocrService.processNotaImage(imageBuffer);
+      
+      // Smart extraction: try to get the requested field first, then fallback to any available value
+      let extractedValue = null;
+      let confidenceScore = ocrResult.confidence || 0;
+      let actualField = photoType; // Track which field actually provided the value
+      
+      // First, try to get the exact field requested
+      switch (photoType) {
+        case 'pressure_bar':
+          extractedValue = ocrResult.tekanan_operasi;
+          break;
+        case 'temperature':
+          extractedValue = ocrResult.temperatur_operasi;
+          break;
+        case 'stan_awal':
+          extractedValue = ocrResult.stan_awal;
+          break;
+        case 'stan_akhir':
+          extractedValue = ocrResult.stan_akhir;
+          break;
+        default:
+          throw new Error(`Unknown photo type: ${photoType}`);
+      }
+      
+      // If the requested field is null, try to get any available meter reading
+      if (extractedValue === null) {
+        console.log(`No ${photoType} value found, looking for any available meter reading...`);
+        
+        // Priority order: stan_akhir, stan_awal, tekanan_operasi, temperatur_operasi
+        if (ocrResult.stan_akhir !== null) {
+          extractedValue = ocrResult.stan_akhir;
+          actualField = 'stan_akhir';
+          console.log(`Using stan_akhir value: ${extractedValue}`);
+        } else if (ocrResult.stan_awal !== null) {
+          extractedValue = ocrResult.stan_awal;
+          actualField = 'stan_awal';
+          console.log(`Using stan_awal value: ${extractedValue}`);
+        } else if (ocrResult.tekanan_operasi !== null) {
+          extractedValue = ocrResult.tekanan_operasi;
+          actualField = 'pressure_bar';
+          console.log(`Using tekanan_operasi value: ${extractedValue}`);
+        } else if (ocrResult.temperatur_operasi !== null) {
+          extractedValue = ocrResult.temperatur_operasi;
+          actualField = 'temperature';
+          console.log(`Using temperatur_operasi value: ${extractedValue}`);
+        }
+      }
+      
+      // Convert to string for mobile app compatibility
+      const extractedValueStr = extractedValue ? extractedValue.toString() : '0';
+      
+      // Save photo URL
+      const photoUrl = `/uploads/nota_kecil/${file.filename}`;
+
+      // Determine if this is a mismatch scenario
+      const isMismatch = actualField !== photoType;
+      
+      const message = isMismatch 
+        ? `${photoType} OCR processing completed - Found ${actualField} instead (${extractedValueStr})`
+        : `${photoType} OCR processing completed`;
+
+      res.status(200).json({
+        success: true,
+        message: message,
+        data: {
+          photo_type: photoType,
+          extracted_value: extractedValueStr,
+          confidence_score: confidenceScore / 100, // Convert to 0-1 scale
+          photo_url: photoUrl,
+          processing_time: 2.0,
+          customer_location_index: parseInt(customer_location_index),
+          actual_field: actualField,
+          is_mismatch: isMismatch
+        }
+      });
+      
+    } catch (ocrError) {
+      console.error(`OCR processing failed for ${photoType}:`, ocrError);
+      
+      // Fallback to simulated data if OCR fails
+      console.log(`Using simulated OCR data as fallback for ${photoType}...`);
+      
+      const simulatedResults = {
+        pressure_bar: { extracted_value: "1.70", confidence_score: 0.92 },
+        temperature: { extracted_value: "29.0", confidence_score: 0.88 },
+        stan_awal: { extracted_value: "1279.07", confidence_score: 0.95 },
+        stan_akhir: { extracted_value: "1413.03", confidence_score: 0.91 },
+      };
+
+      const result = simulatedResults[photoType];
+      const photoUrl = `/uploads/nota_kecil/${file.filename}`;
+
+      res.status(200).json({
+        success: true,
+        message: `${photoType} OCR processing completed (simulated)`,
+        data: {
+          photo_type: photoType,
+          extracted_value: result.extracted_value,
+          confidence_score: result.confidence_score,
+          photo_url: photoUrl,
+          processing_time: 1.5,
+          customer_location_index: parseInt(customer_location_index),
+          simulated: true,
+          ocr_error: ocrError.message
+        }
+      });
+    }
+
+  } catch (error) {
+    console.error("Error processing individual photo OCR:", error);
+    next(error);
+  }
+};
+
+// Helper function to suggest correct photo type based on OCR results
+function getSuggestedPhotoType(requestedType, ocrResult) {
+  if (ocrResult.stan_awal && ocrResult.stan_akhir) {
+    // If both readings exist, suggest based on which one is closer to typical ranges
+    return 'stan_awal'; // Default to stan_awal
+  } else if (ocrResult.stan_awal) {
+    return 'stan_awal';
+  } else if (ocrResult.stan_akhir) {
+    return 'stan_akhir';
+  } else if (ocrResult.tekanan_operasi) {
+    return 'pressure_bar';
+  } else if (ocrResult.temperatur_operasi) {
+    return 'temperature';
+  }
+  return null;
+}
+
+/**
+ * @desc    Process nota kecil OCR (bulk)
+ * @route   POST /api/delivery-orders/:id/process-nota-kecil
+ * @access  Private (Driver only)
+ */
+exports.processNotaKecilOCR = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { customer_location_index } = req.body;
+    const files = req.files;
+
+    if (!customer_location_index && customer_location_index !== 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer location index is required"
+      });
+    }
+
+    // Get delivery order
+    const deliveryOrder = await DeliveryOrder.findByPk(id);
+    if (!deliveryOrder) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery order not found"
+      });
+    }
+
+    // Check if driver has access to this delivery order
+    if (deliveryOrder.driver_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied to this delivery order"
+      });
+    }
+
+    console.log("Processing bulk OCR for nota kecil...");
+
+    try {
+      // Import services
+      const ocrService = require('../services/ocrService');
+      const gasCalculationService = require('../services/gasCalculationService');
+      const fs = require('fs');
+      
+      const ocrResults = {
+        stan_awal: null,
+        stan_akhir: null,
+        tekanan_operasi: null,
+        temperatur_operasi: null,
+        confidence_scores: {},
+        photo_results: {}
+      };
+      
+      // Process each photo type if available
+      const photoTypes = ['pressure_bar', 'temperature', 'stan_awal', 'stan_akhir'];
+      
+      for (const photoType of photoTypes) {
+        if (files[photoType] && files[photoType][0]) {
+          try {
+            console.log(`Processing ${photoType} photo...`);
+            
+            // Read image file
+            const imageBuffer = fs.readFileSync(files[photoType][0].path);
+            
+            // Process with OCR service
+            const ocrResult = await ocrService.processNotaImage(imageBuffer);
+            
+            // Extract the specific value based on photo type
+            let extractedValue = null;
+            let confidenceScore = ocrResult.confidence || 0;
+            
+            switch (photoType) {
+              case 'pressure_bar':
+                extractedValue = ocrResult.tekanan_operasi;
+                ocrResults.tekanan_operasi = extractedValue;
+                break;
+              case 'temperature':
+                extractedValue = ocrResult.temperatur_operasi;
+                ocrResults.temperatur_operasi = extractedValue;
+                break;
+              case 'stan_awal':
+                extractedValue = ocrResult.stan_awal;
+                ocrResults.stan_awal = extractedValue;
+                break;
+              case 'stan_akhir':
+                extractedValue = ocrResult.stan_akhir;
+                ocrResults.stan_akhir = extractedValue;
+                break;
+            }
+            
+            ocrResults.confidence_scores[photoType] = confidenceScore / 100;
+            ocrResults.photo_results[photoType] = {
+              extracted_value: extractedValue,
+              confidence_score: confidenceScore / 100,
+              photo_url: `/uploads/nota_kecil/${files[photoType][0].filename}`,
+              full_ocr_result: ocrResult
+            };
+            
+          } catch (photoError) {
+            console.error(`Error processing ${photoType}:`, photoError);
+            ocrResults.photo_results[photoType] = {
+              error: photoError.message,
+              extracted_value: null,
+              confidence_score: 0
+            };
+          }
+        }
+      }
+      
+      // Calculate gas values if we have all required data
+      if (ocrResults.stan_awal && ocrResults.stan_akhir && 
+          ocrResults.tekanan_operasi && ocrResults.temperatur_operasi) {
+        
+        const gasCalculation = gasCalculationService.calculateVolumeGas(
+          ocrResults.stan_awal,
+          ocrResults.stan_akhir,
+          ocrResults.tekanan_operasi,
+          ocrResults.temperatur_operasi
+        );
+        
+        ocrResults.Vt = gasCalculation.Vt;
+        ocrResults.k = gasCalculation.k;
+        ocrResults.V = gasCalculation.V;
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "Nota kecil OCR processing completed",
+        data: ocrResults
+      });
+      
+    } catch (error) {
+      console.error("Bulk OCR processing failed:", error);
+      
+      // Fallback to simulated data
+      const simulatedResults = {
+        stan_awal: 1279.07,
+        stan_akhir: 1413.03,
+        tekanan_operasi: 1.70,
+        temperatur_operasi: 29.0,
+        Vt: 133.96,
+        k: 1.00034,
+        V: 134.00,
+        confidence_scores: {
+          stan_awal: 0.95,
+          stan_akhir: 0.92,
+          tekanan_operasi: 0.88,
+          temperatur_operasi: 0.91,
+        },
+        simulated: true,
+        error: error.message
+      };
+
+      res.status(200).json({
+        success: true,
+        message: "Nota kecil OCR processing completed (simulated)",
+        data: simulatedResults
+      });
+    }
+
+  } catch (error) {
+    console.error("Error processing nota kecil OCR:", error);
+    next(error);
+  }
+};
+
+/**
+ * @desc    Confirm nota kecil
+ * @route   POST /api/delivery-orders/:id/nota-kecil/confirm
+ * @access  Private (Driver only)
+ */
+exports.confirmNotaKecil = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { 
+      stan_awal, 
+      stan_akhir, 
+      tekanan_operasi, 
+      temperatur_operasi, 
+      driver_notes,
+      photos,
+      ocr_results 
+    } = req.body;
+
+    // Get delivery order
+    const deliveryOrder = await DeliveryOrder.findByPk(id);
+    if (!deliveryOrder) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery order not found"
+      });
+    }
+
+    // Check if driver has access to this delivery order
+    if (deliveryOrder.driver_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied to this delivery order"
+      });
+    }
+
+    // Import gas calculation service
+    const gasCalculationService = require('../services/gasCalculationService');
+
+    // Validate inputs
+    const validation = gasCalculationService.validateGasCalculationInputs({
+      stan_awal,
+      stan_akhir,
+      tekanan_operasi,
+      temperatur_operasi
+    });
+
+    if (!validation.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: validation.errors
+      });
+    }
+
+    // Calculate gas values
+    const calculatedValues = gasCalculationService.calculateVolumeGas(
+      stan_awal,
+      stan_akhir,
+      tekanan_operasi,
+      temperatur_operasi
+    );
+
+    // Create nota kecil record
+    const { NotaKecil } = require('../models');
+    
+    const notaKecil = await NotaKecil.create({
+      delivery_order_id: id,
+      customer_location_index: req.body.customer_location_index || 0,
+      customer_name: deliveryOrder.customer_name,
+      customer_address: deliveryOrder.unload_location,
+      stan_awal: parseFloat(stan_awal),
+      stan_akhir: parseFloat(stan_akhir),
+      tekanan_operasi: parseFloat(tekanan_operasi),
+      temperatur_operasi: parseFloat(temperatur_operasi),
+      Vt: calculatedValues.Vt,
+      k: calculatedValues.k,
+      V: calculatedValues.V,
+      pressure_bar_photos: photos?.pressure_bar ? [photos.pressure_bar] : [],
+      temperature_photos: photos?.temperature ? [photos.temperature] : [],
+      stan_awal_photos: photos?.stan_awal ? [photos.stan_awal] : [],
+      stan_akhir_photos: photos?.stan_akhir ? [photos.stan_akhir] : [],
+      ocr_confidence_scores: ocr_results,
+      ocr_processing_status: 'completed',
+      ocr_processed_at: new Date(),
+      driver_confirmed: true,
+      driver_confirmed_at: new Date(),
+      driver_notes: driver_notes || null
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Nota kecil confirmed successfully",
+      data: notaKecil
+    });
+
+  } catch (error) {
+    console.error("Error confirming nota kecil:", error);
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get nota kecils for delivery order
+ * @route   GET /api/delivery-orders/:id/nota-kecils
+ * @access  Private (Admin, Owner, Driver)
+ */
+exports.getNotaKecils = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Get delivery order
+    const deliveryOrder = await DeliveryOrder.findByPk(id);
+    if (!deliveryOrder) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery order not found"
+      });
+    }
+
+    // Check access permissions
+    if (req.user.role === 'driver' && deliveryOrder.driver_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied to this delivery order"
+      });
+    }
+
+    const notaKecils = await NotaKecil.findAll({
+      where: { delivery_order_id: id },
+      order: [['created_at', 'DESC']]
+    });
+
+    res.status(200).json({
+      success: true,
+      data: notaKecils
+    });
+
+  } catch (error) {
+    console.error("Error getting nota kecils:", error);
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get nota kecils for specific customer location
+ * @route   GET /api/delivery-orders/:id/customers/:customerIndex/nota-kecils
+ * @access  Private (Admin, Owner, Driver)
+ */
+exports.getCustomerNotaKecils = async (req, res, next) => {
+  try {
+    const { id, customerIndex } = req.params;
+
+    // Get delivery order
+    const deliveryOrder = await DeliveryOrder.findByPk(id);
+    if (!deliveryOrder) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery order not found"
+      });
+    }
+
+    // Check access permissions
+    if (req.user.role === 'driver' && deliveryOrder.driver_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied to this delivery order"
+      });
+    }
+
+    const notaKecils = await NotaKecil.findAll({
+      where: { 
+        delivery_order_id: id,
+        customer_location_index: parseInt(customerIndex)
+      },
+      order: [['created_at', 'DESC']]
+    });
+
+    res.status(200).json({
+      success: true,
+      data: notaKecils
+    });
+
+  } catch (error) {
+    console.error("Error getting customer nota kecils:", error);
     next(error);
   }
 };

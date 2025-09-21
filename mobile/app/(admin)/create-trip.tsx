@@ -79,8 +79,8 @@ export default function CreateTrip() {
         apiClient.get("/vehicles?status=available"),
       ]);
       setMasterData({
-        drivers: driversRes.data,
-        vehicles: vehiclesRes.data,
+        drivers: Array.isArray(driversRes.data.data) ? driversRes.data.data : (Array.isArray(driversRes.data) ? driversRes.data : []),
+        vehicles: Array.isArray(vehiclesRes.data.data) ? vehiclesRes.data.data : (Array.isArray(vehiclesRes.data) ? vehiclesRes.data : []),
       });
     } catch (err) {
       console.error("Error fetching master data:", err);

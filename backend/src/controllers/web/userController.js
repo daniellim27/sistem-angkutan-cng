@@ -122,12 +122,9 @@ exports.getAvailableDrivers = async (req, res, next) => {
       where: {
         status: {
           [Op.in]: [
-            "assigned",
-            "otw_to_load_location", 
-            "at_load_location",
+            "at_spbu",
             "otw_to_unload_location",
-            "at_unload_location",
-            "otw_to_base"
+            "at_unload_location"
           ]
         }
       },
@@ -138,7 +135,7 @@ exports.getAvailableDrivers = async (req, res, next) => {
     const activeBigDeliveries = await BigDeliveryOrder.findAll({
       where: {
         status: {
-          [Op.in]: ["assigned", "in_progress"]
+          [Op.in]: ["at_spbu", "in_progress"]
         }
       },
       attributes: ["driver_id"],

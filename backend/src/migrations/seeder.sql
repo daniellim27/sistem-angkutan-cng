@@ -9,6 +9,13 @@ INSERT INTO users (username, password_hash, role) VALUES
 INSERT INTO admin_profiles (user_id, full_name, phone, email) VALUES
 ((SELECT id FROM users WHERE username = 'admin'), 'System Administrator', '081234567890', 'admin@company.com');
 
+-- Driver User (Essential for mobile app testing)
+INSERT INTO users (username, password_hash, role) VALUES
+('jack_driver', 'jack123', 'driver');
+
+INSERT INTO driver_profiles (user_id, full_name, phone, address, id_card_number, sim_number, sim_expiry_date, license_type, status) VALUES
+((SELECT id FROM users WHERE username = 'jack_driver'), 'Jack Driver', '+628123456789', 'Jl. Driver No. 123, Jakarta', 'ID123456789', 'SIM123456789', '2026-12-31', 'B2', 'available');
+
 -- Stock Categories (Essential for business operations)
 INSERT INTO stock_categories (category_name, description) VALUES    
 ('Oli & Pelumas', 'Oli mesin, oli transmisi, dan pelumas lainnya'),

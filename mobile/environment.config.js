@@ -4,7 +4,7 @@
 
 export const ENV_CONFIG = {
   // Default API URL for local development (note the /api suffix)
-  API_URL: 'http://localhost:3000/api',
+  API_URL: 'http://192.168.1.202:3000/api',
   
   // For development with Expo Go on physical device, use your computer's IP:
   // API_URL: 'http://192.168.1.100:3000/api',

@@ -1,4 +1,4 @@
-// Safe comprehensive test script to run all test data scripts without conflicts
+// Comprehensive test script to run all test data scripts including delivery orders
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
@@ -16,18 +16,18 @@ const { exec } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
 
-const runAllTestDataSafe = async () => {
+const runAllTestDataWithDeliveryOrders = async () => {
   try {
-    console.log("🚀 Starting SAFE comprehensive test data insertion...");
+    console.log("🚀 Starting comprehensive test data insertion for all modules including delivery orders...");
     console.log("=" * 80);
 
-    // 1. Clean ALL existing test data first
-    console.log("\n🧹 Step 1: Cleaning ALL existing test data...");
+    // 1. Clean existing test data first
+    console.log("\n🧹 Step 1: Cleaning existing test data...");
     try {
       await execAsync('node backend/tests/cleanup_all_test_data.js');
       console.log("✅ All test data cleaned successfully");
     } catch (error) {
-      console.log("⚠️ Cleanup failed, but continuing...");
+      console.log("⚠️ Cleanup script not found or failed, continuing...");
     }
 
     // 2. Run basic test data (Module 2 - SPBG & CNG)
@@ -70,27 +70,23 @@ const runAllTestDataSafe = async () => {
       throw error;
     }
 
-    // 6. Verify no conflicts (final check only)
-    console.log("\n🔍 Step 6: Final verification...");
+    // 6. Verify no conflicts
+    console.log("\n🔍 Step 6: Verifying no conflicts...");
     await verifyNoConflicts();
 
-    console.log("\n🎉 ALL TEST DATA INSERTED SUCCESSFULLY WITHOUT CONFLICTS!");
+    console.log("\n🎉 All test data inserted successfully without conflicts!");
     console.log("=" * 80);
     console.log("📋 Summary of inserted test data:");
-    console.log("   ✅ Module 2: SPBG & CNG transactions with filtering test data");
-    console.log("   ✅ Vehicle Expense: Vehicle-specific transactions with tempo functionality");
-    console.log("   ✅ Cash Coordinator: Coordinator-specific transactions and categories");
-    console.log("   ✅ Infrastructure: Inventory management test data");
-    console.log("   ✅ Deposit Groups: SPBG deposit management test data");
-    console.log("   ✅ Purchase Orders: SPBG-related purchase orders");
-    console.log("   ✅ Delivery Orders: Comprehensive delivery orders for mobile testing");
+    console.log("   - Module 2: SPBG & CNG transactions with filtering test data");
+    console.log("   - Vehicle Expense: Vehicle-specific transactions with tempo functionality");
+    console.log("   - Cash Coordinator: Coordinator-specific transactions and categories");
+    console.log("   - Infrastructure: Inventory management test data");
+    console.log("   - Deposit Groups: SPBG deposit management test data");
+    console.log("   - Purchase Orders: SPBG-related purchase orders");
+    console.log("   - Delivery Orders: Comprehensive delivery orders for mobile testing");
     console.log("     • 8 delivery orders with various statuses");
     console.log("     • 5 test drivers with profiles");
     console.log("     • Multiple payment statuses and locations");
-    console.log("\n💡 All scripts now use unique prefixes:");
-    console.log("   - MOD2-* for Module 2 test data");
-    console.log("   - VEH-* for Vehicle Expense test data");
-    console.log("   - COORD-* for Cash Coordinator test data");
 
   } catch (error) {
     console.error("💥 Error during test data insertion:", error);
@@ -136,6 +132,23 @@ const verifyNoConflicts = async () => {
     }
     console.log("✅ No duplicate vehicle license plates found");
 
+    // Check for duplicate delivery order numbers
+    const duplicateDOs = await db.pool.query(`
+      SELECT do_number, COUNT(*) as count 
+      FROM delivery_orders 
+      GROUP BY do_number 
+      HAVING COUNT(*) > 1
+    `);
+    
+    if (duplicateDOs.rows.length > 0) {
+      console.error("❌ Found duplicate delivery order numbers:");
+      duplicateDOs.rows.forEach(row => {
+        console.error(`   - ${row.do_number}: ${row.count} occurrences`);
+      });
+      throw new Error("Duplicate delivery order numbers found");
+    }
+    console.log("✅ No duplicate delivery order numbers found");
+
     // Check for duplicate category names
     const duplicateCategories = await db.pool.query(`
       SELECT category_name, COUNT(*) as count 
@@ -159,6 +172,8 @@ const verifyNoConflicts = async () => {
     const totalCategories = await db.pool.query('SELECT COUNT(*) as total FROM cash_categories');
     const totalDepositGroups = await db.pool.query('SELECT COUNT(*) as total FROM deposit_groups');
     const totalPurchaseOrders = await db.pool.query('SELECT COUNT(*) as total FROM purchase_orders');
+    const totalDeliveryOrders = await db.pool.query('SELECT COUNT(*) as total FROM delivery_orders');
+    const totalDrivers = await db.pool.query('SELECT COUNT(*) as total FROM users WHERE role = \'driver\'');
 
     console.log("\n📊 Final Data Summary:");
     console.log(`   - Total Transactions: ${totalTransactions.rows[0].total}`);
@@ -166,6 +181,8 @@ const verifyNoConflicts = async () => {
     console.log(`   - Total Categories: ${totalCategories.rows[0].total}`);
     console.log(`   - Total Deposit Groups: ${totalDepositGroups.rows[0].total}`);
     console.log(`   - Total Purchase Orders: ${totalPurchaseOrders.rows[0].total}`);
+    console.log(`   - Total Delivery Orders: ${totalDeliveryOrders.rows[0].total}`);
+    console.log(`   - Total Drivers: ${totalDrivers.rows[0].total}`);
 
   } catch (error) {
     console.error("❌ Verification failed:", error.message);
@@ -176,7 +193,7 @@ const verifyNoConflicts = async () => {
 };
 
 // Run the comprehensive test
-runAllTestDataSafe()
+runAllTestDataWithDeliveryOrders()
   .then(() => {
     console.log("🎉 All test data scripts completed successfully!");
     process.exit(0);

@@ -46,7 +46,12 @@ class MigrationRunner {
       '20250914_add_sim_expiry_date.js',
       '20250914_add_kir_expiry_date.js',
       '20250115_add_planned_route_distance.js',
-      '20250117_add_nota_photo_url_to_delivery_orders.js'
+      '20250117_add_nota_photo_url_to_delivery_orders.js',
+      '20250121_add_location_documentation.js',
+      '20250921_add_missing_timestamp_columns.js',
+      '20250121_create_nota_kecils_table.js',
+      '20250121_create_nota_besars_table.js',
+      '20250121_create_nota_besar_items_table.js'
     ];
   }
 

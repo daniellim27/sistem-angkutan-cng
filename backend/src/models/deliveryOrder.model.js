@@ -230,17 +230,14 @@ module.exports = (sequelize) => {
       // === STATUS ===
       status: {
         type: DataTypes.ENUM(
-          "assigned",
-          "otw_to_load_location",
-          "at_load_location",
+          "at_spbu",
           "otw_to_unload_location",
           "at_unload_location",
-          "otw_to_base",
           "completed",
           "cancelled"
         ),
         allowNull: false,
-        defaultValue: "assigned",
+        defaultValue: "at_spbu",
       },
 
       // === TIMESTAMPS ===
@@ -338,12 +335,9 @@ module.exports = (sequelize) => {
   // === INSTANCE METHODS ===
   DeliveryOrder.prototype.getStatusText = function () {
     const statusMap = {
-      assigned: "Ditugaskan",
-      otw_to_load_location: "Menuju SPBU",
-      at_load_location: "Di SPBU",
+      at_spbu: "Di SPBU",
       otw_to_unload_location: "Menuju Lokasi Bongkar",
       at_unload_location: "Di Lokasi Bongkar",
-      otw_to_base: "Perjalanan Pulang",
       completed: "Selesai",
       cancelled: "Dibatalkan",
     };
@@ -351,7 +345,7 @@ module.exports = (sequelize) => {
   };
 
   DeliveryOrder.prototype.canConfirmLoad = function () {
-    return this.status === "at_load_location";
+    return this.status === "at_unload_location";
   };
 
   DeliveryOrder.prototype.hasActualLoadData = function () {

@@ -94,7 +94,7 @@ exports.getAllBigDeliveryOrders = async (req, res, next) => {
     // Calculate summary stats
     const stats = {
       total: count,
-      assigned: enhancedBigDOs.filter((b) => b.status === "assigned").length,
+      assigned: enhancedBigDOs.filter((b) => b.status === "at_spbu").length,
       in_progress: enhancedBigDOs.filter((b) => b.status === "in_progress")
         .length,
       completed: enhancedBigDOs.filter((b) => b.status === "completed").length,
@@ -133,7 +133,7 @@ exports.getAvailableDeliveryOrders = async (req, res, next) => {
   try {
     const availableDOs = await DeliveryOrder.findAll({
       where: {
-        status: "assigned",
+        status: "at_spbu",
         // Exclude DOs that are already main DOs in other Big DOs
         id: {
           [Op.notIn]: sequelize.literal(
@@ -216,11 +216,11 @@ exports.createBigDeliveryOrder = async (req, res, next) => {
       });
     }
 
-    if (mainDO.status !== "assigned") {
+    if (mainDO.status !== "at_spbu") {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        message: "Main Delivery Order must be in assigned status",
+        message: "Main Delivery Order must be in at_spbu status",
       });
     }
 
@@ -267,7 +267,7 @@ exports.createBigDeliveryOrder = async (req, res, next) => {
           (parseFloat(mainDO.gaji) || 0) + (parseFloat(total_gaji) || 0),
         total_ongkosan:
           (parseFloat(mainDO.ongkosan) || 0) + tambahanTotalAmount,
-        status: "assigned",
+        status: "at_spbu",
         notes,
         created_by: req.user.id,
       },
@@ -498,7 +498,7 @@ exports.updateBigDeliveryOrderStatus = async (req, res, next) => {
     }
 
     // Validate status transition
-    const validStatuses = ["assigned", "in_progress", "completed", "cancelled"];
+    const validStatuses = ["at_spbu", "in_progress", "completed", "cancelled"];
     if (!validStatuses.includes(status)) {
       await transaction.rollback();
       return res.status(400).json({
@@ -633,11 +633,11 @@ exports.addTambahanToBigDO = async (req, res, next) => {
       });
     }
 
-    if (bigDO.status !== "assigned") {
+    if (bigDO.status !== "at_spbu") {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        message: "Cannot add tambahan to Big DO that is not in assigned status",
+        message: "Cannot add tambahan to Big DO that is not in at_spbu status",
       });
     }
 
@@ -718,11 +718,11 @@ exports.updateTambahan = async (req, res, next) => {
       });
     }
 
-    if (bigDO.status !== "assigned") {
+    if (bigDO.status !== "at_spbu") {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        message: "Cannot update tambahan when Big DO is not in assigned status",
+        message: "Cannot update tambahan when Big DO is not in at_spbu status",
       });
     }
 
@@ -808,7 +808,7 @@ exports.updateTambahanStatus = async (req, res, next) => {
     const { status, notes } = req.body;
 
     const validStatuses = [
-      "assigned",
+      "at_spbu",
       "picked_up",
       "in_transit",
       "delivered",
@@ -882,11 +882,11 @@ exports.deleteTambahan = async (req, res, next) => {
     const { id, tambahanId } = req.params;
 
     const bigDO = await BigDeliveryOrder.findByPk(id, { transaction });
-    if (!bigDO || bigDO.status !== "assigned") {
+    if (!bigDO || bigDO.status !== "at_spbu") {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        message: "Cannot delete tambahan when Big DO is not in assigned status",
+        message: "Cannot delete tambahan when Big DO is not in at_spbu status",
       });
     }
 

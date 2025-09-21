@@ -139,7 +139,7 @@ module.exports = (sequelize) => {
   };
 
   BigDoTambahan.prototype.canPickup = function () {
-    return this.status === "assigned";
+    return this.status === "at_spbu";
   };
 
   BigDoTambahan.prototype.canDeliver = function () {
@@ -147,7 +147,7 @@ module.exports = (sequelize) => {
   };
 
   BigDoTambahan.prototype.canCancel = function () {
-    return ["assigned", "picked_up", "in_transit"].includes(this.status);
+    return ["at_spbu", "picked_up", "in_transit"].includes(this.status);
   };
 
   BigDoTambahan.prototype.calculateTotalAmount = function () {

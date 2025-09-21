@@ -52,6 +52,9 @@ const upload = multer({
 // === SETUP MULTER UNTUK SURAT JALAN PHOTOS (DRIVER) ===
 const suratJalanPhotoDir = "uploads/surat_jalan_photos";
 
+// === SETUP MULTER UNTUK NOTA KECIL PHOTOS ===
+const notaKecilPhotoDir = "uploads/nota_kecil";
+
 const suratJalanPhotoStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     fs.mkdirSync(suratJalanPhotoDir, { recursive: true });
@@ -108,6 +111,63 @@ const suratJalanUpload = multer({
   storage: suratJalanPhotoStorage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB untuk foto
   fileFilter: suratJalanPhotoFilter,
+});
+
+// === MULTER UNTUK NOTA KECIL PHOTOS ===
+const notaKecilPhotoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    fs.mkdirSync(notaKecilPhotoDir, { recursive: true });
+    cb(null, notaKecilPhotoDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    
+    // Handle blob URLs and get proper file extension
+    let fileExtension = path.extname(file.originalname);
+    if (!fileExtension || file.originalname.includes('blob:')) {
+      // If no extension or blob URL, determine from MIME type
+      if (file.mimetype === 'image/jpeg') {
+        fileExtension = '.jpg';
+      } else if (file.mimetype === 'image/png') {
+        fileExtension = '.png';
+      } else {
+        fileExtension = '.jpg'; // default fallback
+      }
+    }
+    
+    cb(null, "nota-kecil-" + uniqueSuffix + fileExtension);
+  },
+});
+
+const notaKecilPhotoFilter = (req, file, cb) => {
+  const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+  
+  // Primary validation should be based on MIME type
+  if (allowedMimeTypes.includes(file.mimetype)) {
+    return cb(null, true);
+  }
+  
+  // Fallback: check file extension for cases where MIME type might be incorrect
+  const allowedExtensions = /jpeg|jpg|png/;
+  const extname = allowedExtensions.test(
+    path.extname(file.originalname).toLowerCase()
+  );
+  
+  if (extname) {
+    return cb(null, true);
+  }
+  
+  cb(
+    new Error(
+      "Error: Foto nota kecil hanya mendukung format JPEG, JPG, atau PNG."
+    )
+  );
+};
+
+const notaKecilUpload = multer({
+  storage: notaKecilPhotoStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB untuk foto
+  fileFilter: notaKecilPhotoFilter,
 });
 
 // All routes below are protected by the token verification middleware
@@ -185,6 +245,49 @@ router.post(
   "/:id/complete-location",
   checkRole(["driver"]),
   doController.completeLocation
+);
+
+// === NOTA KECIL ROUTES ===
+// Confirm nota kecil (MUST come before other nota-kecil routes to avoid conflicts)
+router.post(
+  "/:id/nota-kecil/confirm",
+  checkRole(["driver"]),
+  doController.confirmNotaKecil
+);
+
+// Individual photo OCR processing
+router.post(
+  "/:id/process-nota-kecil/:photoType",
+  checkRole(["driver"]),
+  notaKecilUpload.single("photo"),
+  doController.processIndividualPhotoOCR
+);
+
+// Process all photos for nota kecil (bulk)
+router.post(
+  "/:id/process-nota-kecil",
+  checkRole(["driver"]),
+  notaKecilUpload.fields([
+    { name: "pressure_bar", maxCount: 1 },
+    { name: "temperature", maxCount: 1 },
+    { name: "stan_awal", maxCount: 1 },
+    { name: "stan_akhir", maxCount: 1 }
+  ]),
+  doController.processNotaKecilOCR
+);
+
+// Get nota kecils for delivery order
+router.get(
+  "/:id/nota-kecils",
+  checkRole(["admin", "owner", "driver"]),
+  doController.getNotaKecils
+);
+
+// Get nota kecils for specific customer location
+router.get(
+  "/:id/customers/:customerIndex/nota-kecils",
+  checkRole(["admin", "owner", "driver"]),
+  doController.getCustomerNotaKecils
 );
 
 router.patch(

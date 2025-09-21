@@ -9,7 +9,7 @@ import Constants from 'expo-constants';
 // Try to get API URL from environment or app config
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 
                      Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL || 
-                     'http://localhost:3000/api';
+                     'http://192.168.1.202:3000/api';
 
 // Create a dedicated axios instance
 const apiClient = axios.create({
@@ -542,6 +542,169 @@ export const uploadDocumentationPhotos = async (doId, locationIndex, documentati
     });
   } catch (error) {
     console.error("Error in uploadDocumentationPhotos API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+// Nota Kecil API functions
+export const processNotaKecilOCR = async (doId, customerLocationIndex, photos) => {
+  try {
+    console.log("processNotaKecilOCR called with:", {
+      doId,
+      customerLocationIndex,
+      photos
+    });
+
+    const formData = new FormData();
+    
+    // Add customer location index
+    formData.append('customer_location_index', customerLocationIndex.toString());
+    
+    // Helper function to add photos to FormData
+    const addPhotosToFormData = async (photo, fieldName) => {
+      if (!photo || !photo.uri) return;
+      
+      const ext = photo.uri.split(".").pop() || "jpg";
+      console.log(`Adding ${fieldName} photo to FormData:`, {
+        uri: photo.uri,
+        fileName: photo.fileName || `${fieldName}_${customerLocationIndex}.${ext}`,
+        mimeType: photo.mimeType || "image/jpeg"
+      });
+
+      await appendFileToFormData(
+        formData,
+        photo.uri,
+        photo.fileName || `${fieldName}_${customerLocationIndex}.${ext}`,
+        photo.mimeType || "image/jpeg"
+      );
+    };
+
+    // Add each photo type to FormData
+    if (photos.pressure_bar) {
+      await addPhotosToFormData(photos.pressure_bar, 'pressure_bar');
+    }
+    if (photos.temperature) {
+      await addPhotosToFormData(photos.temperature, 'temperature');
+    }
+    if (photos.stan_awal) {
+      await addPhotosToFormData(photos.stan_awal, 'stan_awal');
+    }
+    if (photos.stan_akhir) {
+      await addPhotosToFormData(photos.stan_akhir, 'stan_akhir');
+    }
+
+    console.log("Sending FormData to OCR processing endpoint...");
+    
+    return await apiClient.post(`/delivery-orders/${doId}/process-nota-kecil`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      timeout: 90000, // 90 seconds for OCR processing
+    });
+  } catch (error) {
+    console.error("Error in processNotaKecilOCR API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+export const confirmNotaKecil = async (doId, confirmedValues) => {
+  try {
+    console.log("confirmNotaKecil called with:", {
+      doId,
+      confirmedValues
+    });
+
+    return await apiClient.post(`/delivery-orders/${doId}/nota-kecil/confirm`, {
+      ...confirmedValues
+    });
+  } catch (error) {
+    console.error("Error in confirmNotaKecil API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+export const getNotaKecils = async (doId) => {
+  try {
+    console.log("getNotaKecils called for DO:", doId);
+    
+    return await apiClient.get(`/delivery-orders/${doId}/nota-kecils`);
+  } catch (error) {
+    console.error("Error in getNotaKecils API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+export const getCustomerNotaKecils = async (doId, customerLocationIndex) => {
+  try {
+    console.log("getCustomerNotaKecils called:", {
+      doId,
+      customerLocationIndex
+    });
+    
+    return await apiClient.get(`/delivery-orders/${doId}/customers/${customerLocationIndex}/nota-kecils`);
+  } catch (error) {
+    console.error("Error in getCustomerNotaKecils API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+// Individual OCR processing for single photo
+export const processIndividualPhotoOCR = async (doId, photoType, customerLocationIndex, photo) => {
+  try {
+    console.log("processIndividualPhotoOCR called with:", {
+      doId,
+      photoType,
+      customerLocationIndex,
+      photo
+    });
+
+    const formData = new FormData();
+    
+    // Add customer location index
+    formData.append('customer_location_index', customerLocationIndex.toString());
+    
+    // Add the specific photo
+    const ext = photo.uri.split(".").pop() || "jpg";
+    await appendFileToFormData(
+      formData,
+      "photo",
+      {
+        uri: photo.uri,
+        fileName: photo.fileName || `${photoType}_${customerLocationIndex}.${ext}`,
+        mimeType: photo.mimeType || "image/jpeg"
+      }
+    );
+
+    console.log(`Sending ${photoType} photo to OCR processing endpoint...`);
+    
+    return await apiClient.post(`/delivery-orders/${doId}/process-nota-kecil/${photoType}`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      timeout: 60000, // 60 seconds for OCR processing
+    });
+  } catch (error) {
+    console.error("Error in processIndividualPhotoOCR API call:", {
       message: error.message,
       stack: error.stack,
       response: error.response?.data,

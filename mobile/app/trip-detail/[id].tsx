@@ -19,6 +19,8 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useFocusEffect, useRouter } from "expo-router";
 import LoadConfirmationModal from "../../components/LoadConfirmationModal";
+import NotaKecilUploader from "../../components/NotaKecilUploader";
+import NotaKecilsList from "../../components/NotaKecilsList";
 import {
   getDeliveryOrderDetails,
   createDriverExpense,
@@ -73,6 +75,14 @@ interface DeliveryOrderDetails {
   expenses: Expense[];
   status: string;
   created_at: string;
+  location_documentation?: Array<{
+    location_index: number;
+    location_name: string;
+    photos: string[];
+    uploaded_at: string;
+    completed: boolean;
+    [key: string]: any; // Allow dynamic properties for documentation fields
+  }>;
   financial_summary?: {
     trip_allowance: number;
     total_for_driver: number;
@@ -145,6 +155,11 @@ const TripDetailScreen = () => {
   const [temperaturePhotos, setTemperaturePhotos] = useState<any[]>([]);
   const [stanAwalPhotos, setStanAwalPhotos] = useState<any[]>([]);
   const [stanAkhirPhotos, setStanAkhirPhotos] = useState<any[]>([]);
+  
+  // Nota Kecil functionality
+  const [showNotaKecilModal, setShowNotaKecilModal] = useState(false);
+  const [showNotaKecilListModal, setShowNotaKecilListModal] = useState(false);
+  const [notaKecils, setNotaKecils] = useState<any[]>([]);
 
   const expenseTypes = [
     { label: "BBM/Solar", value: "bbm" },
@@ -1527,6 +1542,21 @@ const TripDetailScreen = () => {
     }
   };
 
+  // Nota Kecil handler functions
+  const handleNotaKecilCreated = (notaKecil: any) => {
+    setNotaKecils(prev => [notaKecil, ...prev]);
+    setShowNotaKecilModal(false);
+    Alert.alert('Success', 'Nota Kecil created successfully!');
+  };
+
+  const handleCreateNotaKecil = () => {
+    setShowNotaKecilModal(true);
+  };
+
+  const handleViewNotaKecils = () => {
+    setShowNotaKecilListModal(true);
+  };
+
   const getStatusActions = () => {
     if (!trip) return null;
 
@@ -1948,28 +1978,26 @@ const TripDetailScreen = () => {
                     </View>
                     
                     {!isTripCompleted && (
-                      <TouchableOpacity
-                        style={[
-                          styles.locationDocButton,
-                          completionPercentage === 100 ? styles.completeLocationButton : styles.incompleteLocationButton
-                        ]}
-                        onPress={() => {
-                          setCurrentLocationIndex(index);
-                          setShowLocationDocModal(true);
-                        }}
-                      >
-                        <FontAwesome5 
-                          name={completionPercentage === 100 ? "check-circle" : "edit"} 
-                          size={16} 
-                          color={completionPercentage === 100 ? "#27ae60" : "#fff"} 
-                        />
-                        <Text style={[
-                          styles.locationDocButtonText,
-                          completionPercentage === 100 ? styles.completeLocationButtonText : styles.incompleteLocationButtonText
-                        ]}>
-                          {completionPercentage === 100 ? "Lengkap" : "Lengkapi"}
-                        </Text>
-                      </TouchableOpacity>
+                      <View style={styles.locationActionButtons}>
+                        {/* Lengkapi Button (renamed from Nota Kecil) */}
+                        <TouchableOpacity
+                          style={styles.notaKecilButton}
+                          onPress={handleCreateNotaKecil}
+                        >
+                          <FontAwesome5 name="receipt" size={16} color="#fff" />
+                          <Text style={styles.notaKecilButtonText}>Lengkapi</Text>
+                        </TouchableOpacity>
+
+                        {notaKecils.length > 0 && (
+                          <TouchableOpacity
+                            style={styles.viewNotaKecilsButton}
+                            onPress={handleViewNotaKecils}
+                          >
+                            <FontAwesome5 name="list" size={16} color="#3b82f6" />
+                            <Text style={styles.viewNotaKecilsButtonText}>View ({notaKecils.length})</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     )}
                   </View>
                   
@@ -2856,6 +2884,37 @@ const TripDetailScreen = () => {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Nota Kecil Uploader Modal */}
+      <Modal
+        visible={showNotaKecilModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowNotaKecilModal(false)}
+      >
+        <NotaKecilUploader
+          deliveryOrderId={trip?.id?.toString() || ''}
+          customerLocationIndex={currentLocationIndex}
+          customerName={getAllCustomerLocations()[currentLocationIndex]?.location || 'Customer'}
+          customerAddress={getAllCustomerLocations()[currentLocationIndex]?.location || ''}
+          onNotaKecilCreated={handleNotaKecilCreated}
+        />
+      </Modal>
+
+      {/* Nota Kecils List Modal */}
+      <Modal
+        visible={showNotaKecilListModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowNotaKecilListModal(false)}
+      >
+        <NotaKecilsList
+          deliveryOrderId={trip?.id?.toString() || ''}
+          customerLocationIndex={currentLocationIndex}
+          customerName={getAllCustomerLocations()[currentLocationIndex]?.location || 'Customer'}
+          onNotaKecilAdded={handleNotaKecilCreated}
+        />
+      </Modal>
     </>
   );
 };
@@ -3165,13 +3224,11 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-
   statusContainer: {
     flexDirection: "row",
     alignItems: "center",
     marginTop: 8,
   },
-
   statusBadge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -3608,27 +3665,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 12,
   },
-  navButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#3b82f6',
-    minWidth: 120,
-    justifyContent: 'center',
-  },
   navButtonDisabled: {
     backgroundColor: '#f5f5f5',
     borderColor: '#ddd',
-  },
-  navButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#3b82f6',
-    marginHorizontal: 6,
   },
   navButtonTextDisabled: {
     color: '#ccc',
@@ -4167,6 +4206,43 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     backgroundColor: '#ccc',
+  },
+
+  // Nota Kecil Styles
+  locationActionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  notaKecilButton: {
+    backgroundColor: '#8b5cf6',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  notaKecilButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  viewNotaKecilsButton: {
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#3b82f6',
+  },
+  viewNotaKecilsButtonText: {
+    color: '#3b82f6',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 

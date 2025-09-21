@@ -53,6 +53,10 @@ const setupBudgetRequestModel = require("./budgetRequest.model");
 // NEW: OCR Result Model
 const setupOCRResultModel = require("./ocrResult.model");
 
+// NEW: Nota Kecil Model
+const setupNotaKecilModel = require("./notaKecil.model");
+const setupNotaBesarModel = require("./notaBesar.model");
+const setupNotaBesarItemModel = require("./notaBesarItem.model");
 
 // NEW: Infrastructure Inventory Models
 const setupInfrastructureCategoryModel = require("./infrastructureCategory.model");
@@ -136,6 +140,13 @@ db.BudgetRequest = setupBudgetRequestModel(sequelize);
 // OCR Result model
 db.OCRResult = setupOCRResultModel(sequelize);
 
+// Nota Kecil model
+db.NotaKecil = setupNotaKecilModel(sequelize);
+
+// Nota Besar models
+db.NotaBesar = setupNotaBesarModel(sequelize);
+db.NotaBesarItem = setupNotaBesarItemModel(sequelize);
+
 // Infrastructure Inventory models
 db.InfrastructureCategory = setupInfrastructureCategoryModel(sequelize);
 db.InfrastructureLocation = setupInfrastructureLocationModel(sequelize);
@@ -176,6 +187,9 @@ const {
   ExchangeRate,
   BudgetRequest,
   OCRResult,
+  NotaKecil,
+  NotaBesar,
+  NotaBesarItem,
   InfrastructureCategory,
   InfrastructureLocation,
   InfrastructureItem,
@@ -684,6 +698,58 @@ User.hasMany(OCRResult, {
 OCRResult.belongsTo(User, {
   foreignKey: "processed_by",
   as: "processedBy",
+});
+
+// === Nota Kecil Associations ===
+// DeliveryOrder to NotaKecil (One-to-Many)
+DeliveryOrder.hasMany(NotaKecil, {
+  foreignKey: "delivery_order_id",
+  as: "notaKecils",
+});
+NotaKecil.belongsTo(DeliveryOrder, {
+  foreignKey: "delivery_order_id",
+  as: "deliveryOrder",
+});
+
+// === Nota Besar Associations ===
+// DeliveryOrder to NotaBesar (One-to-Many)
+DeliveryOrder.hasMany(NotaBesar, {
+  foreignKey: "delivery_order_id",
+  as: "notaBesars",
+});
+NotaBesar.belongsTo(DeliveryOrder, {
+  foreignKey: "delivery_order_id",
+  as: "deliveryOrder",
+});
+
+// User to NotaBesar (One-to-Many) - created_by
+User.hasMany(NotaBesar, {
+  foreignKey: "created_by",
+  as: "createdNotaBesars",
+});
+NotaBesar.belongsTo(User, {
+  foreignKey: "created_by",
+  as: "creator",
+});
+
+// NotaBesar to NotaBesarItem (One-to-Many)
+NotaBesar.hasMany(NotaBesarItem, {
+  foreignKey: "nota_besar_id",
+  as: "items",
+});
+NotaBesarItem.belongsTo(NotaBesar, {
+  foreignKey: "nota_besar_id",
+  as: "notaBesar",
+});
+
+// NotaKecil to NotaBesarItem (One-to-Many)
+NotaKecil.hasMany(NotaBesarItem, {
+  foreignKey: "nota_kecil_id",
+  as: "notaBesarItems",
+});
+NotaBesarItem.belongsTo(NotaKecil, {
+  foreignKey: "nota_kecil_id",
+  as: "notaKecil",
 });
 
 module.exports = db;
