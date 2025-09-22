@@ -1045,11 +1045,13 @@ exports.completeDeliveryOrder = async (req, res, next) => {
       console.log(`🔄 Processing deposit group ${grp.id} for DO ${id}`);
       console.log(`📊 Reducing: ${qtyUsed} qty, Rp ${priceUsed.toLocaleString('id-ID')} amount`);
 
-      // Properly reduce both quantity and balance
+      // Properly reduce both quantity and balance, and update completed quantity
       const currentRemaining = parseFloat(grp.remaining_quantity) || 0;
       const currentBalance = parseFloat(grp.balance) || 0;
+      const currentCompleted = parseFloat(grp.completed_quantity) || 0;
       
       grp.remaining_quantity = Math.max(0, currentRemaining - qtyUsed);
+      grp.completed_quantity = currentCompleted + qtyUsed;
       grp.balance = Math.max(0, currentBalance - priceUsed);
 
       // Update group status based on remaining quantities

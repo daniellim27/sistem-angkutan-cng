@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import apiClient from '../api/axiosConfig';
+import { GasStationApi, GasStation } from '../api/gasStationApi';
 
 interface DeliveryOrder {
   id: number;
@@ -58,10 +59,11 @@ const DeliveryOrderCreatePage = () => {
   const [unloadLocations, setUnloadLocations] = useState<string[]>(['']);
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<(number | null)[]>([null]);
 
-  // Add state for drivers, vehicles, and customers
+  // Add state for drivers, vehicles, customers, and gas stations
   const [drivers, setDrivers] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [gasStations, setGasStations] = useState<GasStation[]>([]);
 
   useEffect(() => {
     fetchDriversVehiclesAndCustomers();
@@ -70,16 +72,18 @@ const DeliveryOrderCreatePage = () => {
   const fetchDriversVehiclesAndCustomers = async () => {
     try {
       setLoading(true);
-      const [driversRes, vehiclesRes, customersRes] = await Promise.all([
+      const [driversRes, vehiclesRes, customersRes, gasStationsRes] = await Promise.all([
         apiClient.get('/users?role=driver'),
         apiClient.get('/vehicles'),
-        apiClient.get('/customers/locations')
+        apiClient.get('/customers/locations'),
+        GasStationApi.getAllGasStations()
       ]);
       setDrivers(driversRes.data.data || driversRes.data || []);
       setVehicles(vehiclesRes.data.data || vehiclesRes.data || []);
       setCustomers(customersRes.data.data || customersRes.data || []);
+      setGasStations(gasStationsRes.data || []);
     } catch (err) {
-      setError('Failed to fetch drivers, vehicles, and customers.');
+      setError('Failed to fetch drivers, vehicles, customers, and gas stations.');
       console.error(err);
     } finally {
       setLoading(false);
@@ -416,15 +420,23 @@ const DeliveryOrderCreatePage = () => {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 SPBU Location *
               </label>
-              <input
-                type="text"
+              <select
                 name="load_location"
                 value={formData.load_location}
                 onChange={handleInputChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter SPBU (Gas Station) location"
                 required
-              />
+              >
+                <option value="">Select SPBU (Gas Station)</option>
+                {gasStations.map((station) => (
+                  <option key={station.id} value={station.name}>
+                    {station.name} - {station.address || 'No address'}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Select from registered SPBU locations
+              </p>
             </div>
 
             {/* Customer Locations (Unload Locations) */}

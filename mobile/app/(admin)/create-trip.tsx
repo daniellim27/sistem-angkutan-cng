@@ -11,7 +11,7 @@ import {
   Alert,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
-import apiClient from "../../src/services/api";
+import apiClient, { getAllGasStations } from "../../src/services/api";
 import MapSelector from "../../components/MapSelector"; // INI GAK ERROR, CUMAN VSCODE AJA YANG OON
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -27,6 +27,16 @@ interface Vehicle {
   license_plate: string;
   type: string;
 }
+
+interface GasStation {
+  id: number;
+  name: string;
+  address?: string;
+  latitude: number;
+  longitude: number;
+  station_type: string;
+  is_active: boolean;
+}
 // Removed PO interfaces - DOs are now standalone
 interface Coordinates {
   latitude: number;
@@ -40,7 +50,8 @@ export default function CreateTrip() {
   const [masterData, setMasterData] = useState<{
     drivers: Driver[];
     vehicles: Vehicle[];
-  }>({ drivers: [], vehicles: [] });
+    gasStations: GasStation[];
+  }>({ drivers: [], vehicles: [], gasStations: [] });
 
   const [form, setForm] = useState({
     do_number: "",
@@ -68,18 +79,20 @@ export default function CreateTrip() {
     "loading" | "unloading"
   >("loading");
 
-  // Fetch drivers and vehicles
+  // Fetch drivers, vehicles, and gas stations
   const fetchMasterData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [driversRes, vehiclesRes] = await Promise.all([
+      const [driversRes, vehiclesRes, gasStationsRes] = await Promise.all([
         apiClient.get("/users?role=driver&status=available"),
         apiClient.get("/vehicles?status=available"),
+        getAllGasStations(),
       ]);
       setMasterData({
         drivers: Array.isArray(driversRes.data.data) ? driversRes.data.data : (Array.isArray(driversRes.data) ? driversRes.data : []),
         vehicles: Array.isArray(vehiclesRes.data.data) ? vehiclesRes.data.data : (Array.isArray(vehiclesRes.data) ? vehiclesRes.data : []),
+        gasStations: Array.isArray(gasStationsRes.data) ? gasStationsRes.data : [],
       });
     } catch (err) {
       console.error("Error fetching master data:", err);
@@ -261,27 +274,49 @@ export default function CreateTrip() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>3. Lokasi Pengiriman</Text>
 
-          {/* LOKASI LOADING DENGAN MAP BUTTON */}
+          {/* LOKASI LOADING - SPBU SELECTION */}
           <View style={styles.locationInputContainer}>
-            <Text style={styles.label}>Lokasi Loading (Muat Barang) *</Text>
-            <View style={styles.locationInputRow}>
-              <TextInput
-                style={[styles.input, styles.locationInput]}
-                value={form.load_location}
-                onChangeText={(v) => handleChange("load_location", v)}
-                placeholder="Alamat lokasi loading"
-                multiline
-              />
-              <TouchableOpacity
-                style={styles.mapButton}
-                onPress={() => {
-                  setMapSelectorType("loading");
-                  setShowMapSelector(true);
-                }}
-              >
-                <FontAwesome5 name="map-marker-alt" size={20} color="#fff" />
-              </TouchableOpacity>
+            <Text style={styles.label}>SPBU Location (Gas Station) *</Text>
+            <View style={styles.select}>
+              {Platform.OS === "web" ? (
+                <select
+                  value={form.load_location}
+                  onChange={(e) => handleChange("load_location", e.target.value)}
+                >
+                  <option value="">Pilih SPBU</option>
+                  {masterData.gasStations.map((station) => (
+                    <option key={station.id} value={station.name}>
+                      {station.name} - {station.address || 'No address'}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <Picker
+                  selectedValue={form.load_location}
+                  onValueChange={(itemValue) => handleChange("load_location", itemValue)}
+                  style={{ width: "100%" }}
+                >
+                  <Picker.Item label="Pilih SPBU" value="" />
+                  {masterData.gasStations.map((station) => (
+                    <Picker.Item 
+                      key={station.id} 
+                      label={`${station.name} - ${station.address || 'No address'}`}
+                      value={station.name}
+                    />
+                  ))}
+                </Picker>
+              )}
             </View>
+            <TouchableOpacity
+              style={[styles.mapButton, { marginTop: 10 }]}
+              onPress={() => {
+                setMapSelectorType("loading");
+                setShowMapSelector(true);
+              }}
+            >
+              <FontAwesome5 name="map-marker-alt" size={16} color="#fff" />
+              <Text style={{ color: '#fff', marginLeft: 5 }}>Pilih dari Map</Text>
+            </TouchableOpacity>
             {form.load_latitude && form.load_longitude && (
               <Text style={styles.coordinateText}>
                 📍 {parseFloat(form.load_latitude).toFixed(6)},{" "}

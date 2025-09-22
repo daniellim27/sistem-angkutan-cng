@@ -72,124 +72,136 @@ const GasStationToolbar: React.FC<GasStationToolbarProps> = ({
   };
 
   useEffect(() => {
-    if (!map) return;
+    if (!map || !map.getContainer()) return;
 
-    // Initialize drawn items layer
-    if (!drawnItemsRef.current) {
-      drawnItemsRef.current = new L.FeatureGroup();
-      map.addLayer(drawnItemsRef.current);
-    }
+    try {
+      // Initialize drawn items layer
+      if (!drawnItemsRef.current) {
+        drawnItemsRef.current = new L.FeatureGroup();
+        map.addLayer(drawnItemsRef.current);
+      }
 
-    // Only create draw control if in edit mode
-    if (editMode && !drawControlRef.current) {
-      const drawControl = new L.Control.Draw({
-        position: 'topright',
-        draw: {
-          polyline: false,
-          polygon: false,
-          circle: false,
-          rectangle: false,
-          circlemarker: false,
-          marker: {
-            icon: createGasStationIcon()
-          }
-        },
-        edit: {
-          featureGroup: drawnItemsRef.current!,
-          remove: true
-        }
-      });
-
-      drawControlRef.current = drawControl;
-      map.addControl(drawControl);
-    } else if (!editMode && drawControlRef.current) {
-      // Remove draw control when not in edit mode
-      map.removeControl(drawControlRef.current);
-      drawControlRef.current = null;
-    }
-
-    // Handle draw events
-    const handleDrawCreated = (e: any) => {
-      const { layer } = e;
-      const { lat, lng } = layer.getLatLng();
-      
-      // Store the pending location and show form
-      setPendingLocation({ lat, lng });
-      setShowForm(true);
-    };
-
-    const handleDrawDeleted = async (e: any) => {
-      const layers = e.layers;
-      layers.eachLayer(async (layer: any) => {
-        const gasStationId = layer.gasStationId;
-        if (gasStationId) {
-          try {
-            await GasStationApi.deleteGasStation(gasStationId);
-            toast.success('Gas station deleted successfully');
-            
-            if (onMarkerDeleted) {
-              onMarkerDeleted(gasStationId);
+      // Only create draw control if in edit mode
+      if (editMode && !drawControlRef.current) {
+        const drawControl = new L.Control.Draw({
+          position: 'topright',
+          draw: {
+            polyline: false,
+            polygon: false,
+            circle: false,
+            rectangle: false,
+            circlemarker: false,
+            marker: {
+              icon: createGasStationIcon()
             }
-            
-            // Refresh gas stations list
-            await refreshGasStations();
-          } catch (error) {
-            console.error('Error deleting gas station:', error);
-            toast.error('Failed to delete gas station');
+          },
+          edit: {
+            featureGroup: drawnItemsRef.current!,
+            remove: true
           }
-        }
-      });
-    };
+        });
 
-    map.on(L.Draw.Event.CREATED, handleDrawCreated);
-    map.on(L.Draw.Event.DELETED, handleDrawDeleted);
-
-    return () => {
-      map.off(L.Draw.Event.CREATED, handleDrawCreated);
-      map.off(L.Draw.Event.DELETED, handleDrawDeleted);
-      
-      if (drawControlRef.current) {
+        drawControlRef.current = drawControl;
+        map.addControl(drawControl);
+      } else if (!editMode && drawControlRef.current) {
+        // Remove draw control when not in edit mode
         map.removeControl(drawControlRef.current);
         drawControlRef.current = null;
       }
-    };
+
+      // Handle draw events
+      const handleDrawCreated = (e: any) => {
+        const { layer } = e;
+        const { lat, lng } = layer.getLatLng();
+        
+        // Store the pending location and show form
+        setPendingLocation({ lat, lng });
+        setShowForm(true);
+      };
+
+      const handleDrawDeleted = async (e: any) => {
+        const layers = e.layers;
+        layers.eachLayer(async (layer: any) => {
+          const gasStationId = layer.gasStationId;
+          if (gasStationId) {
+            try {
+              await GasStationApi.deleteGasStation(gasStationId);
+              toast.success('Gas station deleted successfully');
+              
+              if (onMarkerDeleted) {
+                onMarkerDeleted(gasStationId);
+              }
+              
+              // Refresh gas stations list
+              await refreshGasStations();
+            } catch (error) {
+              console.error('Error deleting gas station:', error);
+              toast.error('Failed to delete gas station');
+            }
+          }
+        });
+      };
+
+      map.on(L.Draw.Event.CREATED, handleDrawCreated);
+      map.on(L.Draw.Event.DELETED, handleDrawDeleted);
+
+      return () => {
+        map.off(L.Draw.Event.CREATED, handleDrawCreated);
+        map.off(L.Draw.Event.DELETED, handleDrawDeleted);
+        
+        if (drawControlRef.current) {
+          try {
+            map.removeControl(drawControlRef.current);
+          } catch (error) {
+            console.warn('Error removing draw control:', error);
+          }
+          drawControlRef.current = null;
+        }
+      };
+    } catch (error) {
+      console.error('Error in GasStationToolbar useEffect:', error);
+    }
   }, [map, editMode]);
 
   // Add existing gas stations to the drawn items layer
   useEffect(() => {
-    if (!drawnItemsRef.current) return;
+    if (!drawnItemsRef.current || !map || !map.getContainer()) return;
 
-    // Clear existing markers
-    drawnItemsRef.current.clearLayers();
+    try {
+      // Clear existing markers
+      drawnItemsRef.current.clearLayers();
 
-    // Add gas station markers to the drawn items layer
-    gasStations.forEach(gasStation => {
-      const marker = L.marker([gasStation.latitude, gasStation.longitude], {
-        icon: createGasStationIcon()
-      });
+      // Add gas station markers to the drawn items layer
+      gasStations.forEach(gasStation => {
+        const marker = L.marker([gasStation.latitude, gasStation.longitude], {
+          icon: createGasStationIcon()
+        });
 
-      // Store gas station ID for deletion
-      (marker as any).gasStationId = gasStation.id;
+        // Store gas station ID for deletion
+        (marker as any).gasStationId = gasStation.id;
 
-      // Add popup with gas station info
-      marker.bindPopup(`
-        <div style="min-width: 200px;">
-          <h4 style="margin: 0 0 8px 0; color: #2563eb; font-weight: bold;">
-            ${gasStation.name}
-          </h4>
-          <div style="font-size: 12px; color: #666; line-height: 1.4;">
-            ${gasStation.address ? `<div><strong>Address:</strong> ${gasStation.address}</div>` : ''}
-            ${gasStation.phone ? `<div><strong>Phone:</strong> ${gasStation.phone}</div>` : ''}
-            ${gasStation.operating_hours ? `<div><strong>Hours:</strong> ${gasStation.operating_hours}</div>` : ''}
-            <div><strong>Type:</strong> ${gasStation.station_type}</div>
-            ${gasStation.notes ? `<div><strong>Notes:</strong> ${gasStation.notes}</div>` : ''}
+        // Add popup with gas station info
+        marker.bindPopup(`
+          <div style="min-width: 200px;">
+            <h4 style="margin: 0 0 8px 0; color: #2563eb; font-weight: bold;">
+              ${gasStation.name}
+            </h4>
+            <div style="font-size: 12px; color: #666; line-height: 1.4;">
+              ${gasStation.address ? `<div><strong>Address:</strong> ${gasStation.address}</div>` : ''}
+              ${gasStation.phone ? `<div><strong>Phone:</strong> ${gasStation.phone}</div>` : ''}
+              ${gasStation.operating_hours ? `<div><strong>Hours:</strong> ${gasStation.operating_hours}</div>` : ''}
+              <div><strong>Type:</strong> ${gasStation.station_type}</div>
+              ${gasStation.notes ? `<div><strong>Notes:</strong> ${gasStation.notes}</div>` : ''}
+            </div>
           </div>
-        </div>
-      `);
+        `);
 
-      drawnItemsRef.current!.addLayer(marker);
-    });
-  }, [gasStations]);
+        drawnItemsRef.current!.addLayer(marker);
+      });
+    } catch (error) {
+      console.error('Error adding gas station markers:', error);
+    }
+  }, [gasStations, map]);
 
   const refreshGasStations = async () => {
     try {

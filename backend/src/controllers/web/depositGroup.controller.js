@@ -67,7 +67,7 @@ module.exports = {
   // src/controllers/web/depositGroup.controller.js
   async createGroup(req, res) {
     try {
-       const { group_name, target_quantity, deposited_amount, unit, delivery_order_ids = [], purchase_order_id } = req.body;
+       const { spbg_location, deposited_amount, unit, delivery_order_ids = [], purchase_order_id } = req.body;
       
       // Force unit to always be 'kubik' for deposit groups
       const finalUnit = 'kubik';
@@ -75,14 +75,15 @@ module.exports = {
       // *** FIX STARTS HERE ***
       // The initial balance of the group should be the amount that was deposited.
       const balance = deposited_amount; 
-      const remaining_quantity = target_quantity; // Initial remaining = target
+      const remaining_quantity = 0; // Initial remaining = 0
+      const completed_quantity = 0; // Initial completed = 0
       
       const group = await DepositGroup.create({
-        group_name, 
+        spbg_location, 
         balance, // Use the deposited amount as the starting balance
-        target_quantity, 
         deposited_amount, 
         remaining_quantity, 
+        completed_quantity,
         unit: finalUnit, // Always kubik
         status: 'active'
       });
@@ -341,14 +342,14 @@ async getGroupDetails(req, res) {
   async updateGroup(req, res) {
     try {
       const { id } = req.params;
-      const { group_name, balance } = req.body;
+      const { spbg_location, balance } = req.body;
       
       const group = await DepositGroup.findByPk(id);
       if (!group) {
         return res.status(404).json({ error: "Group not found" });
       }
       
-      if (group_name) group.group_name = group_name;
+      if (spbg_location) group.spbg_location = spbg_location;
       if (balance !== undefined) group.balance = parseFloat(balance);
       
       await group.save();

@@ -1045,19 +1045,21 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
             />
           )}
 
-          {/* Gas Station Toolbar */}
-          <GasStationToolbar
-            gasStations={gasStations}
-            onGasStationsUpdate={setGasStations}
-            onMarkerAdded={(gasStation) => {
-              console.log('Gas station added:', gasStation);
-            }}
-            onMarkerDeleted={(gasStationId) => {
-              console.log('Gas station deleted:', gasStationId);
-            }}
-            editMode={true}
-            onEditModeChange={() => {}}
-          />
+          {/* Gas Station Toolbar - Only render when not loading */}
+          {!loading && (
+            <GasStationToolbar
+              gasStations={gasStations}
+              onGasStationsUpdate={setGasStations}
+              onMarkerAdded={(gasStation) => {
+                console.log('Gas station added:', gasStation);
+              }}
+              onMarkerDeleted={(gasStationId) => {
+                console.log('Gas station deleted:', gasStationId);
+              }}
+              editMode={true}
+              onEditModeChange={() => {}}
+            />
+          )}
         </MapContainer>
       </div>
 

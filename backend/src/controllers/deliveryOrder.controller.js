@@ -554,13 +554,13 @@ exports.startToDestination = (req, res, next) => {
     req.params.id,
     req.user.id,
     "otw_to_unload_location", // ✅ Start journey to unload location
-    "departed_to_load_location_at" // ✅ Update field timestamp baru
+    "departed_from_spbu_at" // ✅ Updated timestamp field for new workflow
   )
     .then((order) =>
       res.json({
-        message: "Status updated to OTW to SPBU Location",
+        message: "Status updated to OTW to Unload Location",
         order,
-        status_text: "Menuju SPBU",
+        status_text: "Menuju Lokasi Unload",
       })
     )
     .catch(next);
@@ -673,8 +673,9 @@ exports.completeDeliveryOrder = async (req, res, next) => {
         const unitPrice = parseFloat(order.unit_price);
         priceUsed = qtyUsed * unitPrice;
 
-        // Update group's balance and quantity
+        // Update group's balance, remaining quantity, and completed quantity
         grp.remaining_quantity = parseFloat(grp.remaining_quantity) - qtyUsed;
+        grp.completed_quantity = parseFloat(grp.completed_quantity || 0) + qtyUsed;
         grp.balance = parseFloat(grp.balance) - priceUsed;
         if (grp.remaining_quantity <= 0) grp.status = 'fulfilled';
         await grp.save({ transaction });
@@ -697,7 +698,7 @@ exports.completeDeliveryOrder = async (req, res, next) => {
             payment_amount: priceUsed,
             payment_type: 'transfer', // Use an allowed payment type
             payment_date: new Date(),
-            notes: `Auto-payment from Deposit Group: ${grp.group_name}`,
+            notes: `Auto-payment from Deposit Group: ${grp.spbg_location}`,
             received_by: req.user?.id,
             created_by: req.user?.id,
         }, { transaction });
@@ -1068,13 +1069,17 @@ const updateStatus = async (orderId, driverId, newStatus, timestampField) => {
       throw { status: 404, message: "Delivery Order tidak ditemukan." };
     }
 
-    // Status validation mapping
+    // Status validation mapping - Updated for simplified workflow
     const validTransitions = {
-      assigned: ["otw_to_load_location"],
+      at_spbu: ["otw_to_unload_location"],
       otw_to_unload_location: ["at_unload_location"],
       at_unload_location: ["completed"],
       completed: [],
       cancelled: [],
+      // Legacy support for old statuses that might still exist
+      assigned: ["otw_to_unload_location", "at_spbu"],
+      otw_to_load_location: ["otw_to_unload_location", "at_spbu"],
+      at_load_location: ["otw_to_unload_location", "at_spbu"],
     };
 
     const allowedTransitions = validTransitions[order.status] || [];

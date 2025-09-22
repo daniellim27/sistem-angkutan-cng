@@ -10,10 +10,10 @@ module.exports = (sequelize) => {
         primaryKey: true,
         autoIncrement: true,
       },
-      group_name: {
+      spbg_location: {
         type: DataTypes.STRING(255),
         allowNull: false,
-        comment: "Name of the deposit group",
+        comment: "SPBG location",
       },
       balance: {
         type: DataTypes.DECIMAL(15, 2),
@@ -21,11 +21,11 @@ module.exports = (sequelize) => {
         defaultValue: 0.0,
         comment: "Current balance of the group",
       },
-      target_quantity: {
+      completed_quantity: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0,
-        comment: "Target quantity for this deposit group",
+        comment: "Completed quantity (auto-updated on DO completion)",
       },
       deposited_amount: {
         type: DataTypes.DECIMAL(15, 2),

@@ -1,6 +1,7 @@
 // src/pages/DepositGroupManagement.tsx
 import React, { useState, useEffect } from 'react';
 import apiClient from '../api/axiosConfig';
+import { GasStationApi } from '../api/gasStationApi';
 
 interface DeliveryOrder {
   id: number;
@@ -17,11 +18,11 @@ interface DeliveryOrder {
 
 interface DepositGroup {
   id: number;
-  group_name: string;
+  spbg_location: string;
   balance: string;
-  target_quantity: string;
   deposited_amount: string;
   remaining_quantity: string;
+  completed_quantity: string;
   unit: string;
   status: string;
   total_selisih_amount: string;
@@ -48,6 +49,7 @@ interface Customer {
   display_name: string;
 }
 
+
 const DepositGroupManagement = () => {
   const [groups, setGroups] = useState<DepositGroupWithMembers[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,13 +64,13 @@ const DepositGroupManagement = () => {
   // const [loadingPOs, setLoadingPOs] = useState(false);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
+  const [gasStations, setGasStations] = useState<any[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loadingDriversVehicles, setLoadingDriversVehicles] = useState(false);
 
   // Form data for creating/editing groups
   const [formData, setFormData] = useState({
-    group_name: '',
-    target_quantity: '',
+    spbg_location: '',
     deposited_amount: '',
     unit: 'kubik' // Fixed to kubik (m³)
   });
@@ -78,9 +80,6 @@ const DepositGroupManagement = () => {
     unit: 'kubik', // DOs always use kubik
     unit_price: '',
     load_location: '',
-    unload_location: '',
-    customer_name: '',
-    customer_location: '',
     driver_id: '',
     vehicle_id: '',
     trip_allowance: '0',
@@ -94,8 +93,12 @@ const DepositGroupManagement = () => {
     gas_filling_cost: ''
   });
 
-  // State for multiple unload locations - match delivery orders page
-  const [unloadLocations, setUnloadLocations] = useState<string[]>(['']);
+  // State for SPBG location input method
+  const [spbgInputMethod, setSpbgInputMethod] = useState<'dropdown' | 'manual'>('dropdown');
+
+  // State for customer locations - with dropdown support like delivery orders
+  const [customerLocations, setCustomerLocations] = useState<string[]>(['']);
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<(number | null)[]>([null]);
 
   // Unit is always kubik (m³) for deposit groups
 
@@ -110,16 +113,18 @@ const DepositGroupManagement = () => {
   const fetchDriversAndVehicles = async () => {
     try {
       setLoadingDriversVehicles(true);
-      const [driversRes, vehiclesRes, customersRes] = await Promise.all([
+      const [driversRes, vehiclesRes, gasStationsRes, customersRes] = await Promise.all([
         apiClient.get('/users?role=driver'),
         apiClient.get('/vehicles'),
+        GasStationApi.getAllGasStations(),
         apiClient.get('/customers/locations')
       ]);
       setDrivers(driversRes.data.data || driversRes.data || []);
       setVehicles(vehiclesRes.data.data || vehiclesRes.data || []);
+      setGasStations(gasStationsRes.data || []);
       setCustomers(customersRes.data.data || customersRes.data || []);
     } catch (err) {
-      console.error('Failed to fetch drivers, vehicles, and customers:', err);
+      console.error('Failed to fetch drivers, vehicles, gas stations, and customers:', err);
     } finally {
       setLoadingDriversVehicles(false);
     }
@@ -134,7 +139,7 @@ const DepositGroupManagement = () => {
       // The API returns data directly, not wrapped in a 'data' property
       const groupsData = response.data || [];
       
-      console.log('🔍 Debug - groupsData:', groupsData.map((g: DepositGroup) => ({ id: g.id, name: g.group_name })));
+      console.log('🔍 Debug - groupsData:', groupsData.map((g: DepositGroup) => ({ id: g.id, name: g.spbg_location })));
       
       const transformedGroups = groupsData.map((group: DepositGroup) => {
         // Calculate balance based on DO amounts (no longer use PO data)
@@ -166,9 +171,7 @@ const DepositGroupManagement = () => {
     try {
       const payload = {
         ...formData,
-        target_quantity: parseFloat(formData.target_quantity),
         deposited_amount: parseFloat(formData.deposited_amount),
-        remaining_quantity: parseFloat(formData.target_quantity), // Initially same as target
         status: 'active'
       };
 
@@ -191,8 +194,7 @@ const DepositGroupManagement = () => {
   const handleEdit = (group: DepositGroup) => {
     setEditingGroup(group);
     setFormData({
-      group_name: group.group_name,
-      target_quantity: group.target_quantity,
+      spbg_location: group.spbg_location,
       deposited_amount: group.deposited_amount,
       unit: group.unit
     });
@@ -215,8 +217,7 @@ const DepositGroupManagement = () => {
 
   const resetForm = () => {
     setFormData({
-      group_name: '',
-      target_quantity: '',
+      spbg_location: '',
       deposited_amount: '',
       unit: 'kubik' // Always kubik (m³)
     });
@@ -251,10 +252,10 @@ const DepositGroupManagement = () => {
         driver_id: parseInt(doFormData.driver_id),
         vehicle_id: parseInt(doFormData.vehicle_id),
         load_location: doFormData.load_location,
-        unload_location: doFormData.unload_location,
-        customer_name: doFormData.customer_name,
-        customer_location: doFormData.customer_location,
-        additional_unload_locations: unloadLocations.slice(1).filter(loc => loc.trim() !== ''), // Include only additional locations
+        unload_location: customerLocations[0] || '', // First customer location as primary
+        customer_name: '', // Will be filled from the location
+        customer_location: customerLocations[0] || '', // First customer location
+        additional_unload_locations: customerLocations.slice(1).filter(loc => loc.trim() !== ''), // Additional locations
         trip_allowance: parseFloat(doFormData.trip_allowance),
         gaji: parseFloat(doFormData.gaji),
         do_name: doFormData.do_name,
@@ -270,7 +271,7 @@ const DepositGroupManagement = () => {
       await apiClient.post('/delivery-orders', payload);
       setShowDOModal(false);
       resetDOForm();
-      resetUnloadLocations();
+      resetCustomerLocations();
       // Refresh groups after creating DO (no longer need PO data)
       fetchGroups();
     } catch (err) {
@@ -284,9 +285,6 @@ const DepositGroupManagement = () => {
       unit: 'kubik',
       unit_price: '',
       load_location: '',
-      unload_location: '',
-      customer_name: '',
-      customer_location: '',
       driver_id: '',
       vehicle_id: '',
       trip_allowance: '0',
@@ -299,69 +297,72 @@ const DepositGroupManagement = () => {
       jisdor_rate: '',
       gas_filling_cost: ''
     });
+    setSpbgInputMethod('dropdown');
   };
 
-  const resetUnloadLocations = () => {
-    setUnloadLocations(['']);
+  const resetCustomerLocations = () => {
+    setCustomerLocations(['']);
+    setSelectedCustomerIds([null]);
   };
 
-  const handleCustomerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  // Functions to handle customer locations
+  const addCustomerLocation = () => {
+    setCustomerLocations([...customerLocations, '']);
+    setSelectedCustomerIds([...selectedCustomerIds, null]);
+  };
+
+  const updateCustomerLocation = (index: number, value: string) => {
+    const updated = [...customerLocations];
+    updated[index] = value;
+    setCustomerLocations(updated);
+  };
+
+  const removeCustomerLocation = (index: number) => {
+    if (customerLocations.length > 1 && index > 0) {
+      const updatedLocations = customerLocations.filter((_, i) => i !== index);
+      const updatedIds = selectedCustomerIds.filter((_, i) => i !== index);
+      setCustomerLocations(updatedLocations);
+      setSelectedCustomerIds(updatedIds);
+    }
+  };
+
+  const handleCustomerDropdownChange = (index: number, e: React.ChangeEvent<HTMLSelectElement>) => {
     const customerId = e.target.value;
     if (customerId) {
       const selectedCustomer = customers.find((c: Customer) => c.id.toString() === customerId);
       if (selectedCustomer) {
-        setDOFormData(prev => ({
-          ...prev,
-          customer_name: selectedCustomer.customer_name,
-          customer_location: selectedCustomer.location,
-          unload_location: selectedCustomer.location // Auto-populate unload location
-        }));
-        
-        // Update the first unload location in the array
-        setUnloadLocations(prev => {
-          const newLocations = [...prev];
-          newLocations[0] = selectedCustomer.location;
-          return newLocations;
-        });
+        // Update the location
+        const newLocations = [...customerLocations];
+        newLocations[index] = selectedCustomer.location;
+        setCustomerLocations(newLocations);
+
+        // Update selected customer IDs
+        const newIds = [...selectedCustomerIds];
+        newIds[index] = selectedCustomer.id;
+        setSelectedCustomerIds(newIds);
       }
     } else {
-      setDOFormData(prev => ({
-        ...prev,
-        customer_name: '',
-        customer_location: '',
-        unload_location: ''
-      }));
-      
-      // Clear the first unload location
-      setUnloadLocations(prev => {
-        const newLocations = [...prev];
-        newLocations[0] = '';
-        return newLocations;
-      });
+      // Clear the location
+      const newLocations = [...customerLocations];
+      newLocations[index] = '';
+      setCustomerLocations(newLocations);
+
+      const newIds = [...selectedCustomerIds];
+      newIds[index] = null;
+      setSelectedCustomerIds(newIds);
     }
   };
 
-  // Functions to handle unload locations
-  const addUnloadLocation = () => {
-    setUnloadLocations([...unloadLocations, '']);
+  // Get available customers for a specific dropdown (excluding already selected ones)
+  const getAvailableCustomers = (currentIndex: number) => {
+    return customers.filter((customer) => {
+      const isAlreadySelected = selectedCustomerIds.some((id, index) => 
+        index !== currentIndex && id === customer.id
+      );
+      return !isAlreadySelected;
+    });
   };
 
-  const updateUnloadLocation = (index: number, value: string) => {
-    const updated = [...unloadLocations];
-    updated[index] = value;
-    setUnloadLocations(updated);
-    // Update main unload location if it's the first one
-    if (index === 0) {
-      setDOFormData(prev => ({ ...prev, unload_location: value }));
-    }
-  };
-
-  const removeUnloadLocation = (index: number) => {
-    if (unloadLocations.length > 1 && index > 0) {
-      const updated = unloadLocations.filter((_, i) => i !== index);
-      setUnloadLocations(updated);
-    }
-  };
 
   const closeModal = () => {
     setShowCreateModal(false);
@@ -371,7 +372,7 @@ const DepositGroupManagement = () => {
     setSelectedGroup(null);
     resetForm();
     resetDOForm();
-    resetUnloadLocations();
+    resetCustomerLocations();
   };
 
   const formatCurrency = (amount: number) => {
@@ -400,12 +401,12 @@ const DepositGroupManagement = () => {
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Deposit Group Management</h1>
+        <h1 className="text-3xl font-bold text-gray-800">SPBG Management</h1>
         <button
           onClick={openCreateModal}
           className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
         >
-          + Create Deposit Group
+          + Create SPBG
         </button>
       </div>
 
@@ -428,15 +429,15 @@ const DepositGroupManagement = () => {
             </div>
 
             <div className="p-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">{group.group_name}</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">{group.spbg_location}</h3>
               
               {/* Group Information */}
               <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
                 <h4 className="text-sm font-medium text-gray-900 mb-2">Group Details</h4>
                 <div className="space-y-1 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-700 font-medium">Target:</span>
-                    <span className="text-gray-900">{group.target_quantity} {getUnitLabel(group.unit)}</span>
+                    <span className="text-gray-700 font-medium">Completed:</span>
+                    <span className="text-gray-900">{group.completed_quantity || '0'} {getUnitLabel(group.unit)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-700 font-medium">Remaining:</span>
@@ -524,13 +525,13 @@ const DepositGroupManagement = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No Deposit Groups</h3>
-          <p className="text-gray-500 mb-4">Start by creating your first deposit group.</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No SPBG</h3>
+          <p className="text-gray-500 mb-4">Start by creating your first SPBG.</p>
           <button
             onClick={openCreateModal}
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
           >
-            Create Group
+            Create SPBG
           </button>
         </div>
       )}
@@ -541,41 +542,28 @@ const DepositGroupManagement = () => {
           <div className="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">
-                {editingGroup ? 'Edit Deposit Group' : 'Create New Deposit Group'}
+                {editingGroup ? 'Edit SPBG' : 'Create New SPBG'}
               </h3>
               
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Group Name */}
+                {/* SPBG Location */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Group Name *
+                    SPBG Location *
                   </label>
                   <input
                     type="text"
-                    value={formData.group_name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, group_name: e.target.value }))}
-                    placeholder="Enter group name"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    value={formData.spbg_location}
+                    onChange={(e) => setFormData(prev => ({ ...prev, spbg_location: e.target.value }))}
+                    placeholder="Enter SPBG location name"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Enter the SPBG location name manually
+                  </p>
                 </div>
 
-                {/* Target Quantity */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Target Quantity *
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.target_quantity}
-                    onChange={(e) => setFormData(prev => ({ ...prev, target_quantity: e.target.value }))}
-                    placeholder="Enter target quantity"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    min="0"
-                    step="0.01"
-                    required
-                  />
-                </div>
 
                 {/* Unit (Fixed to m³) */}
                 <div>
@@ -619,7 +607,7 @@ const DepositGroupManagement = () => {
                     type="submit"
                     className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
                   >
-                    {editingGroup ? 'Update Group' : 'Create Group'}
+                    {editingGroup ? 'Update SPBG' : 'Create SPBG'}
                   </button>
                 </div>
               </form>
@@ -634,7 +622,7 @@ const DepositGroupManagement = () => {
           <div className="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Create Delivery Order in {selectedGroup.group_name}
+                  Create Delivery Order in {selectedGroup.spbg_location}
               </h3>
               
               <form onSubmit={handleDOSubmit} className="space-y-4">
@@ -745,75 +733,129 @@ const DepositGroupManagement = () => {
                     />
                   </div>
 
+
+                  {/* SPBG Location */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      SPBG Location *
+                    </label>
+                    
+                    {/* Input method selector */}
+                    <div className="flex gap-4 mb-2">
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          value="dropdown"
+                          checked={spbgInputMethod === 'dropdown'}
+                          onChange={(e) => setSpbgInputMethod(e.target.value as 'dropdown' | 'manual')}
+                          className="mr-2"
+                        />
+                        Select from list
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          value="manual"
+                          checked={spbgInputMethod === 'manual'}
+                          onChange={(e) => setSpbgInputMethod(e.target.value as 'dropdown' | 'manual')}
+                          className="mr-2"
+                        />
+                        Enter manually
+                      </label>
+                    </div>
+
+                    {/* Conditional input based on selected method */}
+                    {spbgInputMethod === 'dropdown' ? (
+                      <select
+                        value={doFormData.load_location}
+                        onChange={(e) => setDOFormData(prev => ({ ...prev, load_location: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      >
+                        <option value="">Select SPBG Location</option>
+                        {gasStations.map((station) => (
+                          <option key={station.id} value={station.name}>
+                            {station.name} - {station.address || 'No address'}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={doFormData.load_location}
+                        onChange={(e) => setDOFormData(prev => ({ ...prev, load_location: e.target.value }))}
+                        placeholder="Enter SPBG location manually"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
+                    )}
+                    
+                    <p className="text-xs text-gray-500 mt-1">
+                      {spbgInputMethod === 'dropdown' 
+                        ? 'Select from existing gas stations or switch to manual entry'
+                        : 'Enter the SPBG location name manually'
+                      }
+                    </p>
+                  </div>
+
                   {/* Customer Locations */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Customer Locations *
-                    </label>
-                    <select
-                      value={doFormData.customer_name ? customers.find((c: Customer) => c.customer_name === doFormData.customer_name)?.id || '' : ''}
-                      onChange={handleCustomerChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    >
-                      <option value="">Select Customer Location</option>
-                      {customers.map((customer: Customer) => (
-                        <option key={customer.id} value={customer.id}>
-                          {customer.display_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* SPBU Location */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      SPBU Location
-                    </label>
-                    <input
-                      type="text"
-                      value={doFormData.load_location}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, load_location: e.target.value }))}
-                      placeholder="Enter SPBU location"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                  </div>
-
-                  {/* Customer Locations (Unload Locations) */}
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Customer Locations *
                     </label>
-                    {unloadLocations.map((location, index) => (
-                      <div key={index} className="flex items-center space-x-2 mb-2">
-                        <input
-                          type="text"
-                          value={location}
-                          onChange={(e) => updateUnloadLocation(index, e.target.value)}
-                          placeholder={index === 0 ? "Primary customer location (auto-filled from dropdown above)" : `Additional customer location ${index + 1}`}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
-                          required={index === 0}
-                        />
-                        {index > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => removeUnloadLocation(index)}
-                            className="px-2 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={addUnloadLocation}
-                      className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                    >
-                      Add Customer Location
-                    </button>
+                    <div className="space-y-2">
+                      {customerLocations.map((location, index) => (
+                        <div key={index} className="flex gap-2">
+                          <div className="flex-1">
+                            <select
+                              value={selectedCustomerIds[index] || ''}
+                              onChange={(e) => handleCustomerDropdownChange(index, e)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              required={index === 0} // First location is required
+                            >
+                              <option value="">
+                                {index === 0 ? "Select Primary Customer Location" : `Select Additional Customer Location ${index + 1}`}
+                              </option>
+                              {getAvailableCustomers(index).map((customer: Customer) => (
+                                <option key={customer.id} value={customer.id}>
+                                  {customer.display_name}
+                                </option>
+                              ))}
+                            </select>
+                            {/* Hidden input to store the actual location text */}
+                            <input
+                              type="hidden"
+                              value={location}
+                              onChange={(e) => updateCustomerLocation(index, e.target.value)}
+                            />
+                          </div>
+                          {customerLocations.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeCustomerLocation(index)}
+                              className="px-3 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+                              title="Remove location"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={addCustomerLocation}
+                        className="inline-flex items-center px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                        Add Customer Location
+                      </button>
+                    </div>
                     <p className="text-xs text-gray-500 mt-1">
-                      First location is auto-filled when you select a customer above. Add additional customer locations as needed.
+                      Select customers from the dropdown. Each customer can only be selected once.
                     </p>
                   </div>
 
@@ -923,7 +965,7 @@ const DepositGroupManagement = () => {
             <div className="mt-3">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-medium text-gray-900">
-                  Delivery Orders in {selectedGroup.group_name}
+                  Delivery Orders in {selectedGroup.spbg_location}
                 </h3>
                 <button
                   onClick={closeModal}

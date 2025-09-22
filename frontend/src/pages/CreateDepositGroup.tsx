@@ -52,13 +52,13 @@ const CreateDepositGroup = () => {
       };
 
       await apiClient.post('/deposit-groups', payload);
-      alert('Deposit group created successfully!');
-      navigate('/deposit-groups'); // Navigate back to deposit groups list
+      alert('SPBG created successfully!');
+      navigate('/deposit-groups'); // Navigate back to SPBG management
     } catch (err: unknown) { // FIX: Add proper type for error
       console.error('Error creating deposit group:', err);
       
       // Type guard for error handling
-      let errorMessage = 'Failed to create deposit group';
+      let errorMessage = 'Failed to create SPBG';
       if (err instanceof Error) {
         errorMessage = err.message;
       } else if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -75,12 +75,12 @@ const CreateDepositGroup = () => {
   return (
     <div className="container mx-auto px-4 py-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Create New Deposit Group</h1>
+        <h1 className="text-2xl font-bold">Create New SPBG</h1>
         <button
           onClick={() => navigate('/deposit-groups')}
           className="bg-gray-500 hover:bg-gray-700 text-white px-4 py-2 rounded"
         >
-          ← Back to Deposit Groups
+          ← Back to SPBG Management
         </button>
       </div>
 
@@ -161,7 +161,7 @@ const CreateDepositGroup = () => {
             disabled={isLoading}
             className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
           >
-            {isLoading ? 'Creating...' : 'Create Deposit Group'}
+            {isLoading ? 'Creating...' : 'Create SPBG'}
           </button>
         </div>
       </form>
