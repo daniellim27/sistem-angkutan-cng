@@ -48,6 +48,7 @@ const DeliveryOrderCreatePage = () => {
     gaji: '0',
     do_name: '',
     paid_amount: '0',
+    deposit_group_id: '', // Add deposit group selection
     // Gas filling fields
     gas_volume_m3: '',
     calculation_method: 'jisdor' as 'jisdor' | 'fixed',
@@ -65,6 +66,7 @@ const DeliveryOrderCreatePage = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [gasStations, setGasStations] = useState<GasStation[]>([]);
   const [spbgLocations, setSpbgLocations] = useState<{id: number, location: string}[]>([]);
+  const [depositGroups, setDepositGroups] = useState<any[]>([]);
   
   // JISDOR rate state for automatic calculation
   const [currentJisdorRate, setCurrentJisdorRate] = useState<number | null>(null);
@@ -98,8 +100,9 @@ const DeliveryOrderCreatePage = () => {
       setCustomers(customersRes.data.data || customersRes.data || []);
       setGasStations(gasStationsRes.data || []);
       
-      // Extract SPBG locations from deposit groups
+      // Store deposit groups and extract SPBG locations
       const spbgData = spbgRes.data.data || spbgRes.data || [];
+      setDepositGroups(spbgData);
       const locations = spbgData.map((group: any) => ({
         id: group.id,
         location: group.spbg_location
@@ -172,6 +175,22 @@ const DeliveryOrderCreatePage = () => {
     }
   };
 
+  // Handle deposit group selection and auto-populate SPBG location
+  const handleDepositGroupChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const depositGroupId = e.target.value;
+    setFormData(prev => ({ ...prev, deposit_group_id: depositGroupId }));
+    
+    // Auto-populate SPBG location from selected deposit group
+    if (depositGroupId) {
+      const selectedGroup = depositGroups.find(group => group.id.toString() === depositGroupId);
+      if (selectedGroup && selectedGroup.spbg_location) {
+        setFormData(prev => ({ ...prev, load_location: selectedGroup.spbg_location }));
+      }
+    } else {
+      // Clear SPBG location if no deposit group selected
+      setFormData(prev => ({ ...prev, load_location: '' }));
+    }
+  };
 
   // Functions to handle multiple unload locations
   const addUnloadLocation = () => {
@@ -356,6 +375,7 @@ const DeliveryOrderCreatePage = () => {
       gaji: '0',
       do_name: '',
       paid_amount: '0',
+      deposit_group_id: '',
       // Reset gas filling fields
       gas_volume_m3: '',
       calculation_method: 'jisdor',
@@ -476,6 +496,28 @@ const DeliveryOrderCreatePage = () => {
               />
             </div>
 
+            {/* Deposit Group Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                SPBG Group (Optional)
+              </label>
+              <select
+                name="deposit_group_id"
+                value={formData.deposit_group_id}
+                onChange={handleDepositGroupChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select SPBG Group (Auto-fills SPBG Location)</option>
+                {depositGroups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.spbg_location} - Balance: {group.balance?.toLocaleString() || 0}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Selecting an SPBG group will automatically populate the SPBG location below
+              </p>
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -496,7 +538,7 @@ const DeliveryOrderCreatePage = () => {
                 ))}
               </select>
               <p className="text-xs text-gray-500 mt-1">
-                Select the SPBG location from SPBG Management
+                Select the SPBG location from SPBG Management (or select an SPBG Group above to auto-populate)
               </p>
             </div>
 

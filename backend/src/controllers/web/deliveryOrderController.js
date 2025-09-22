@@ -77,6 +77,16 @@ exports.createDeliveryOrder = async (req, res, next) => {
     // Force unit to always be 'kubik' for delivery orders
     const finalUnit = "kubik";
 
+    // Auto-populate SPBG location from deposit group if not provided
+    let finalLoadLocation = load_location;
+    if (deposit_group_id && !load_location) {
+      const depositGroup = await DepositGroup.findByPk(deposit_group_id, { transaction });
+      if (depositGroup && depositGroup.spbg_location) {
+        finalLoadLocation = depositGroup.spbg_location;
+        console.log(`✅ Auto-populated SPBG location from deposit group: ${finalLoadLocation}`);
+      }
+    }
+
     // Enhanced validation with numeric checks
     if (
       !vehicle_id ||
@@ -214,9 +224,9 @@ exports.createDeliveryOrder = async (req, res, next) => {
       const locationsToScrape = [];
       
       // Add load location (SPBU) for scraping if coordinates not provided
-      if (load_location && !load_latitude && !load_longitude) {
-        locationsToScrape.push({ type: 'load', location: load_location });
-        console.log(`➕ Added load location for scraping: ${load_location}`);
+      if (finalLoadLocation && !load_latitude && !load_longitude) {
+        locationsToScrape.push({ type: 'load', location: finalLoadLocation });
+        console.log(`➕ Added load location for scraping: ${finalLoadLocation}`);
       }
       
       // Add unload location for scraping if coordinates not provided
@@ -243,7 +253,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
         backgroundScrapingData = {
           locationsToScrape,
           deliveryOrderData: {
-            load_location,
+            load_location: finalLoadLocation,
             unload_location,
             additional_unload_locations
           }
@@ -268,7 +278,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
       trip_allowance,
       gaji,
       ongkosan: calculatedOngkosan,
-      load_location,
+      load_location: finalLoadLocation,
       load_latitude: finalLoadLatitude,
       load_longitude: finalLoadLongitude,
       unload_location,
