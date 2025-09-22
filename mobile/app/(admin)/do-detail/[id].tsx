@@ -23,7 +23,6 @@ interface DODetails {
   do_number: string;
   customer_name: string;
   item_name: string;
-  minimal_load_quantity: number;
   actual_load_quantity?: number;
   unit_price: number;
   total_amount: number;
@@ -268,30 +267,11 @@ const DODetailScreen = () => {
       {/* Quantity Information */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>📦 Quantity Information</Text>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Minimal Load:</Text>
-          <Text style={styles.infoValue}>
-            {doDetails.minimal_load_quantity} Ton
-          </Text>
-        </View>
         {doDetails.actual_load_quantity && (
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Actual Load:</Text>
             <Text style={[styles.infoValue, { color: "#27ae60" }]}>
               {doDetails.actual_load_quantity} Ton
-            </Text>
-          </View>
-        )}
-        {doDetails.actual_load_quantity && (
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Load Efficiency:</Text>
-            <Text style={styles.infoValue}>
-              {(
-                (doDetails.actual_load_quantity /
-                  doDetails.minimal_load_quantity) *
-                100
-              ).toFixed(1)}
-              %
             </Text>
           </View>
         )}

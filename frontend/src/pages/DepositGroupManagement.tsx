@@ -5,9 +5,6 @@ import apiClient from '../api/axiosConfig';
 interface DeliveryOrder {
   id: number;
   do_number: string;
-  customer_name: string;
-  item_name: string;
-  minimal_load_quantity: number;
   unit: string;
   unit_price: string;
   total_amount: string;
@@ -44,6 +41,13 @@ interface DepositGroupWithMembers extends DepositGroup {
   do_count: number;
 }
 
+interface Customer {
+  id: number;
+  customer_name: string;
+  location: string;
+  display_name: string;
+}
+
 const DepositGroupManagement = () => {
   const [groups, setGroups] = useState<DepositGroupWithMembers[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +62,7 @@ const DepositGroupManagement = () => {
   // const [loadingPOs, setLoadingPOs] = useState(false);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loadingDriversVehicles, setLoadingDriversVehicles] = useState(false);
 
   // Form data for creating/editing groups
@@ -70,13 +75,12 @@ const DepositGroupManagement = () => {
 
   // Form data for creating DOs - match delivery orders page structure
   const [doFormData, setDOFormData] = useState({
-    customer_name: '',
-    item_name: '',
-    minimal_load_quantity: '',
     unit: 'kubik', // DOs always use kubik
     unit_price: '',
     load_location: '',
     unload_location: '',
+    customer_name: '',
+    customer_location: '',
     driver_id: '',
     vehicle_id: '',
     trip_allowance: '0',
@@ -85,7 +89,6 @@ const DepositGroupManagement = () => {
     paid_amount: '0',
     // Gas filling fields - match delivery orders page
     gas_volume_m3: '',
-    spbg_location: '',
     calculation_method: 'jisdor' as 'jisdor' | 'fixed',
     jisdor_rate: '',
     gas_filling_cost: ''
@@ -107,14 +110,16 @@ const DepositGroupManagement = () => {
   const fetchDriversAndVehicles = async () => {
     try {
       setLoadingDriversVehicles(true);
-      const [driversRes, vehiclesRes] = await Promise.all([
+      const [driversRes, vehiclesRes, customersRes] = await Promise.all([
         apiClient.get('/users?role=driver'),
-        apiClient.get('/vehicles')
+        apiClient.get('/vehicles'),
+        apiClient.get('/customers/locations')
       ]);
       setDrivers(driversRes.data.data || driversRes.data || []);
       setVehicles(vehiclesRes.data.data || vehiclesRes.data || []);
+      setCustomers(customersRes.data.data || customersRes.data || []);
     } catch (err) {
-      console.error('Failed to fetch drivers and vehicles:', err);
+      console.error('Failed to fetch drivers, vehicles, and customers:', err);
     } finally {
       setLoadingDriversVehicles(false);
     }
@@ -241,15 +246,14 @@ const DepositGroupManagement = () => {
 
     try {
       const payload = {
-        customer_name: doFormData.customer_name,
-        item_name: doFormData.item_name,
         unit: 'kubik', // Force kubik for DOs
         unit_price: parseFloat(doFormData.unit_price),
-        minimal_load_quantity: parseFloat(doFormData.minimal_load_quantity),
         driver_id: parseInt(doFormData.driver_id),
         vehicle_id: parseInt(doFormData.vehicle_id),
         load_location: doFormData.load_location,
         unload_location: doFormData.unload_location,
+        customer_name: doFormData.customer_name,
+        customer_location: doFormData.customer_location,
         additional_unload_locations: unloadLocations.slice(1).filter(loc => loc.trim() !== ''), // Include only additional locations
         trip_allowance: parseFloat(doFormData.trip_allowance),
         gaji: parseFloat(doFormData.gaji),
@@ -257,7 +261,6 @@ const DepositGroupManagement = () => {
         deposit_group_id: selectedGroup.id,
         // Include gas filling data - match delivery orders page
         gas_volume_m3: doFormData.gas_volume_m3 ? parseFloat(doFormData.gas_volume_m3) : null,
-        spbg_location: doFormData.spbg_location || null,
         calculation_method: doFormData.calculation_method,
         jisdor_rate: doFormData.jisdor_rate ? parseFloat(doFormData.jisdor_rate) : null,
         gas_filling_cost: doFormData.gas_filling_cost ? parseFloat(doFormData.gas_filling_cost) : null
@@ -278,13 +281,12 @@ const DepositGroupManagement = () => {
 
   const resetDOForm = () => {
     setDOFormData({
-      customer_name: '',
-      item_name: '',
-      minimal_load_quantity: '',
       unit: 'kubik',
       unit_price: '',
       load_location: '',
       unload_location: '',
+      customer_name: '',
+      customer_location: '',
       driver_id: '',
       vehicle_id: '',
       trip_allowance: '0',
@@ -293,7 +295,6 @@ const DepositGroupManagement = () => {
       paid_amount: '0',
       // Gas filling fields - match delivery orders page
       gas_volume_m3: '',
-      spbg_location: '',
       calculation_method: 'jisdor' as 'jisdor' | 'fixed',
       jisdor_rate: '',
       gas_filling_cost: ''
@@ -302,6 +303,42 @@ const DepositGroupManagement = () => {
 
   const resetUnloadLocations = () => {
     setUnloadLocations(['']);
+  };
+
+  const handleCustomerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const customerId = e.target.value;
+    if (customerId) {
+      const selectedCustomer = customers.find((c: Customer) => c.id.toString() === customerId);
+      if (selectedCustomer) {
+        setDOFormData(prev => ({
+          ...prev,
+          customer_name: selectedCustomer.customer_name,
+          customer_location: selectedCustomer.location,
+          unload_location: selectedCustomer.location // Auto-populate unload location
+        }));
+        
+        // Update the first unload location in the array
+        setUnloadLocations(prev => {
+          const newLocations = [...prev];
+          newLocations[0] = selectedCustomer.location;
+          return newLocations;
+        });
+      }
+    } else {
+      setDOFormData(prev => ({
+        ...prev,
+        customer_name: '',
+        customer_location: '',
+        unload_location: ''
+      }));
+      
+      // Clear the first unload location
+      setUnloadLocations(prev => {
+        const newLocations = [...prev];
+        newLocations[0] = '';
+        return newLocations;
+      });
+    }
   };
 
   // Functions to handle unload locations
@@ -617,35 +654,6 @@ const DepositGroupManagement = () => {
                     />
                   </div>
 
-                  {/* Customer Name */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Customer Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={doFormData.customer_name}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, customer_name: e.target.value }))}
-                      placeholder="Enter customer name"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                  </div>
-
-                  {/* Item Name */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Item Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={doFormData.item_name}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, item_name: e.target.value }))}
-                      placeholder="Enter item name"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                  </div>
 
                   {/* Driver */}
                   <div>
@@ -687,22 +695,6 @@ const DepositGroupManagement = () => {
                     </select>
                   </div>
 
-                  {/* Minimal Load Quantity */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Minimal Load Quantity *
-                    </label>
-                    <input
-                      type="number"
-                      value={doFormData.minimal_load_quantity}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, minimal_load_quantity: e.target.value }))}
-                      placeholder="Enter quantity"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      min="0"
-                      step="0.01"
-                      required
-                    />
-                  </div>
 
                   {/* Unit Price */}
                   <div>
@@ -753,24 +745,44 @@ const DepositGroupManagement = () => {
                     />
                   </div>
 
-                  {/* Load Location */}
+                  {/* Customer Locations */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Load Location
+                      Customer Locations *
+                    </label>
+                    <select
+                      value={doFormData.customer_name ? customers.find((c: Customer) => c.customer_name === doFormData.customer_name)?.id || '' : ''}
+                      onChange={handleCustomerChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      required
+                    >
+                      <option value="">Select Customer Location</option>
+                      {customers.map((customer: Customer) => (
+                        <option key={customer.id} value={customer.id}>
+                          {customer.display_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* SPBU Location */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      SPBU Location
                     </label>
                     <input
                       type="text"
                       value={doFormData.load_location}
                       onChange={(e) => setDOFormData(prev => ({ ...prev, load_location: e.target.value }))}
-                      placeholder="Enter load location"
+                      placeholder="Enter SPBU location"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     />
                   </div>
 
-                  {/* Unload Locations */}
+                  {/* Customer Locations (Unload Locations) */}
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Unload Locations
+                      Customer Locations *
                     </label>
                     {unloadLocations.map((location, index) => (
                       <div key={index} className="flex items-center space-x-2 mb-2">
@@ -778,8 +790,9 @@ const DepositGroupManagement = () => {
                           type="text"
                           value={location}
                           onChange={(e) => updateUnloadLocation(index, e.target.value)}
-                          placeholder={`Enter unload location ${index + 1}`}
+                          placeholder={index === 0 ? "Primary customer location (auto-filled from dropdown above)" : `Additional customer location ${index + 1}`}
                           className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                          required={index === 0}
                         />
                         {index > 0 && (
                           <button
@@ -797,8 +810,11 @@ const DepositGroupManagement = () => {
                       onClick={addUnloadLocation}
                       className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
                     >
-                      Add Unload Location
+                      Add Customer Location
                     </button>
+                    <p className="text-xs text-gray-500 mt-1">
+                      First location is auto-filled when you select a customer above. Add additional customer locations as needed.
+                    </p>
                   </div>
 
                   {/* Gas Volume */}
@@ -817,19 +833,6 @@ const DepositGroupManagement = () => {
                     />
                   </div>
 
-                  {/* SPBG Location */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      SPBG Location
-                    </label>
-                    <input
-                      type="text"
-                      value={doFormData.spbg_location}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, spbg_location: e.target.value }))}
-                      placeholder="Enter SPBG location"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                  </div>
 
                   {/* Calculation Method */}
                   <div>
@@ -945,15 +948,6 @@ const DepositGroupManagement = () => {
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           DO Number
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Customer
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Item
-                        </th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Quantity
-                        </th>
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Unit Price
                         </th>
@@ -970,15 +964,6 @@ const DepositGroupManagement = () => {
                         <tr key={do_item.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {do_item.do_number}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {do_item.customer_name}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {do_item.item_name}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                            {do_item.minimal_load_quantity} Kubik
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
                             {formatCurrency(parseFloat(do_item.unit_price))}

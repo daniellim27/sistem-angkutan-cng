@@ -88,6 +88,7 @@ const utilsRoutes = require("./routes/utils.routes");
 const webDepositGroupRoutes = require("./routes/web/depositGroup.routes");
 const trackingRoutes = require("./routes/tracking.routes");
 const gasStationRoutes = require("./routes/gasStation.routes");
+const customerRoutes = require("./routes/customer.routes");
 const scheduledScrapingService = require("./services/scheduledScraper");
 
 const app = express();
@@ -217,6 +218,10 @@ initializeDatabase().then(() => {
   // Add gas station routes
   app.use("/api/gas-stations", gasStationRoutes);
   app.use("/api/web/gas-stations", gasStationRoutes);
+
+  // Add customer routes
+  app.use("/api/customers", customerRoutes);
+  app.use("/api/web/customers", customerRoutes);
 
   app.use("/api/utils", utilsRoutes);
 

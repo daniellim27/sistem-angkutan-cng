@@ -23,7 +23,6 @@ interface LoadConfirmationModalProps {
     actual_load_quantity: number;
     surat_jalan_photo: any;
   }) => void;
-  minimalQuantity: number;
   isLoading: boolean;
 }
 
@@ -31,7 +30,6 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
   visible,
   onClose,
   onConfirm,
-  minimalQuantity,
   isLoading,
 }) => {
   const [actualQuantity, setActualQuantity] = useState("");
@@ -125,13 +123,6 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
       Alert.alert("Error", "Masukkan volume muatan aktual yang valid");
       return;
     }
-    if (quantity < minimalQuantity) {
-      Alert.alert(
-        "Error",
-        `Muatan aktual (${quantity} m³) kurang dari minimal yang ditetapkan (${minimalQuantity} m³)`
-      );
-      return;
-    }
     // Surat jalan photos are now optional - drivers can upload them later
     // if (suratJalanPhotos.length === 0) {
     //   Alert.alert("Error", "Minimal 1 foto surat jalan harus diambil");
@@ -178,11 +169,6 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
 
           <View style={styles.quantitySection}>
             <Text style={styles.label}>Volume Muatan</Text>
-            <View style={styles.quantityInfo}>
-              <Text style={styles.minimalText}>
-                Minimal: {minimalQuantity} m³
-              </Text>
-            </View>
             <TextInput
               style={styles.input}
               value={actualQuantity}

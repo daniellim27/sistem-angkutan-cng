@@ -22,7 +22,7 @@ exports.getDriverActiveBigDO = async (req, res, next) => {
     const bigDO = await BigDeliveryOrder.findOne({
       where: {
         driver_id,
-        status: { [Op.in]: ["at_spbu", "in_progress"] },
+        status: { [Op.in]: ["assigned", "in_progress"] },
       },
       include: [
         {
@@ -77,7 +77,7 @@ exports.getDriverActiveBigDO = async (req, res, next) => {
         status: dOrder.status,
         status_text: dOrder.getStatusText(),
         can_start:
-          bigDO.status === "in_progress" && dOrder.status === "at_spbu",
+          bigDO.status === "in_progress" && dOrder.status === "assigned",
       })),
       workflow_info: {
         instruction:
@@ -113,7 +113,7 @@ exports.startBigDeliveryOrder = async (req, res, next) => {
       where: {
         id,
         driver_id,
-        status: "at_spbu",
+        status: "assigned",
       },
       transaction,
     });

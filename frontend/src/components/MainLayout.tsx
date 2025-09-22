@@ -44,6 +44,9 @@ const MainLayout = () => {
     if (path.startsWith("/vehicle-expense-cash")) return "Kas Pengeluaran Mobil";
     if (path.startsWith("/deposit-groups")) return "Deposit Payments";
     if (path.startsWith("/driver-expenses")) return "Driver Expense Management";
+    if (path.startsWith("/customers") && path.includes("/nota-besar")) return "Nota Besar Management";
+    if (path.startsWith("/customers") && path.includes("/nota-kecil")) return "Nota Kecil Management";
+    if (path.startsWith("/customers")) return "Customer Management";
     return "CNG Dashboard";
   };
 
@@ -189,6 +192,24 @@ const MainLayout = () => {
                 <span className="text-xl mr-3">🗺️</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
                   Live GPS
+                </span>
+              </Link>
+            </li>
+
+            {/* Customer Management */}
+            <li className="mb-4">
+              <Link
+                to="/customers"
+                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
+                  isActiveLink("/customers")
+                    ? "bg-gray-700 border-l-4 border-blue-500"
+                    : ""
+                }`}
+                title="Customer Management"
+              >
+                <span className="text-xl mr-3">👥</span>
+                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
+                  Customer Management
                 </span>
               </Link>
             </li>

@@ -20,7 +20,6 @@ interface DeliveryOrder {
   do_number: string;
   customer_name: string;
   item_name: string;
-  minimal_load_quantity: number;
   actual_load_quantity?: number;
   status: string;
   trip_allowance: number;
@@ -127,7 +126,7 @@ export default function AdminIndex() {
 
       <View style={styles.itemRow}>
         <Text style={styles.item}>
-          {item.item_name} - {item.minimal_load_quantity} Ton (min)
+          {item.item_name}
         </Text>
         {item.actual_load_quantity && (
           <Text style={styles.actualQuantity}>

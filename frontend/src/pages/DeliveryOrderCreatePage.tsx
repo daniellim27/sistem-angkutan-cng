@@ -6,10 +6,7 @@ import apiClient from '../api/axiosConfig';
 interface DeliveryOrder {
   id: number;
   do_number: string;
-  customer_name: string;
-  item_name: string;
   unit_price: number;
-  minimal_load_quantity: number;
   actual_load_quantity?: number;
   final_amount: number;
   total_amount: number;
@@ -18,10 +15,16 @@ interface DeliveryOrder {
   payment_id?: number;
   // Enhanced with gas filling fields
   gas_volume_m3?: number;
-  spbg_location?: string;
   calculation_method?: 'jisdor' | 'fixed';
   jisdor_rate?: number;
   gas_filling_cost?: number;
+}
+
+interface Customer {
+  id: number;
+  customer_name: string;
+  location: string;
+  display_name: string;
 }
 
 const DeliveryOrderCreatePage = () => {
@@ -32,55 +35,51 @@ const DeliveryOrderCreatePage = () => {
 
   // Standalone DO form data with all required fields
   const [formData, setFormData] = useState({
-    customer_name: '',
-    item_name: '',
     unit: 'kubik', // DOs always use kubik
     unit_price: '',
-    minimal_load_quantity: '',
     driver_id: '',
     vehicle_id: '',
     load_location: '',
     unload_location: '',
+    customer_name: '',
+    customer_location: '',
     trip_allowance: '0',
     gaji: '0',
     do_name: '',
     paid_amount: '0',
     // Gas filling fields
     gas_volume_m3: '',
-    spbg_location: '',
     calculation_method: 'jisdor' as 'jisdor' | 'fixed',
     jisdor_rate: '',
     gas_filling_cost: ''
   });
 
-  // State for multiple unload locations
+  // State for multiple unload locations - now using customer IDs
   const [unloadLocations, setUnloadLocations] = useState<string[]>(['']);
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<(number | null)[]>([null]);
 
-  // SPBG locations for selection
-  const spbgLocations: { value: string; label: string }[] = [];
-
-  // Gas calculation methods
-  const calculationMethods: { value: string; label: string }[] = [];
-
-  // Add state for drivers and vehicles
-  const [drivers, setDrivers] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
+  // Add state for drivers, vehicles, and customers
+  const [drivers, setDrivers] = useState<any[]>([]);
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
   useEffect(() => {
-    fetchDriversAndVehicles();
+    fetchDriversVehiclesAndCustomers();
   }, []);
 
-  const fetchDriversAndVehicles = async () => {
+  const fetchDriversVehiclesAndCustomers = async () => {
     try {
       setLoading(true);
-      const [driversRes, vehiclesRes] = await Promise.all([
+      const [driversRes, vehiclesRes, customersRes] = await Promise.all([
         apiClient.get('/users?role=driver'),
-        apiClient.get('/vehicles')
+        apiClient.get('/vehicles'),
+        apiClient.get('/customers/locations')
       ]);
       setDrivers(driversRes.data.data || driversRes.data || []);
       setVehicles(vehiclesRes.data.data || vehiclesRes.data || []);
+      setCustomers(customersRes.data.data || customersRes.data || []);
     } catch (err) {
-      setError('Failed to fetch drivers and vehicles.');
+      setError('Failed to fetch drivers, vehicles, and customers.');
       console.error(err);
     } finally {
       setLoading(false);
@@ -91,13 +90,13 @@ const DeliveryOrderCreatePage = () => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     
-    // Auto-calculate amounts when quantity or unit price changes
-    if (name === 'minimal_load_quantity' || name === 'unit_price') {
-      const quantity = parseFloat(name === 'minimal_load_quantity' ? value : formData.minimal_load_quantity);
-      const price = parseFloat(name === 'unit_price' ? value : formData.unit_price);
+    // Auto-calculate amounts when unit price changes
+    if (name === 'unit_price') {
+      const price = parseFloat(value);
       
-      if (!isNaN(quantity) && !isNaN(price)) {
-        const total = quantity * price;
+      if (!isNaN(price)) {
+        // Set a default quantity of 1 for calculation
+        const total = price;
         setFormData(prev => ({ 
           ...prev, 
           total_amount: total.toString(),
@@ -112,14 +111,17 @@ const DeliveryOrderCreatePage = () => {
     }
   };
 
+
   // Functions to handle multiple unload locations
   const addUnloadLocation = () => {
     setUnloadLocations(prev => [...prev, '']);
+    setSelectedCustomerIds(prev => [...prev, null]);
   };
 
   const removeUnloadLocation = (index: number) => {
     if (unloadLocations.length > 1) {
       setUnloadLocations(prev => prev.filter((_, i) => i !== index));
+      setSelectedCustomerIds(prev => prev.filter((_, i) => i !== index));
     }
   };
 
@@ -137,6 +139,72 @@ const DeliveryOrderCreatePage = () => {
         unload_location: value
       }));
     }
+  };
+
+  const handleAdditionalCustomerChange = (index: number, e: React.ChangeEvent<HTMLSelectElement>) => {
+    const customerId = e.target.value;
+    if (customerId) {
+      const selectedCustomer = customers.find((c: Customer) => c.id.toString() === customerId);
+      if (selectedCustomer) {
+        // Update the location
+        setUnloadLocations(prev => {
+          const newLocations = [...prev];
+          newLocations[index] = selectedCustomer.location;
+          return newLocations;
+        });
+
+        // Update selected customer IDs
+        setSelectedCustomerIds(prev => {
+          const newIds = [...prev];
+          newIds[index] = selectedCustomer.id;
+          return newIds;
+        });
+
+        // Keep the main fields in sync with the first location for backward compatibility
+        if (index === 0) {
+          setFormData(prev => ({
+            ...prev,
+            customer_name: selectedCustomer.customer_name,
+            customer_location: selectedCustomer.location,
+            unload_location: selectedCustomer.location
+          }));
+        }
+      }
+    } else {
+      // Clear the location
+      setUnloadLocations(prev => {
+        const newLocations = [...prev];
+        newLocations[index] = '';
+        return newLocations;
+      });
+
+      // Clear selected customer ID
+      setSelectedCustomerIds(prev => {
+        const newIds = [...prev];
+        newIds[index] = null;
+        return newIds;
+      });
+
+      // Keep the main fields in sync with the first location for backward compatibility
+      if (index === 0) {
+        setFormData(prev => ({
+          ...prev,
+          customer_name: '',
+          customer_location: '',
+          unload_location: ''
+        }));
+      }
+    }
+  };
+
+  // Get available customers for a specific dropdown (excluding already selected ones)
+  const getAvailableCustomers = (currentIndex: number) => {
+    return customers.filter((customer) => {
+      const isAlreadySelected = selectedCustomerIds.some((id, index) => 
+        index !== currentIndex && id === customer.id
+      );
+      return !isAlreadySelected;
+    });
   };
 
   const calculateGasFillingCost = () => {
@@ -171,22 +239,20 @@ const DeliveryOrderCreatePage = () => {
       setSubmitting(true);
       
       const payload = {
-        customer_name: formData.customer_name,
-        item_name: formData.item_name,
         unit: 'kubik', // Force kubik for DOs
         unit_price: parseFloat(formData.unit_price),
-        minimal_load_quantity: parseFloat(formData.minimal_load_quantity),
         driver_id: parseInt(formData.driver_id),
         vehicle_id: parseInt(formData.vehicle_id),
         load_location: formData.load_location,
         unload_location: formData.unload_location,
+        customer_name: formData.customer_name,
+        customer_location: formData.customer_location,
         additional_unload_locations: unloadLocations.slice(1).filter(loc => loc.trim() !== ''), // Include only additional locations (excluding first one)
         trip_allowance: parseFloat(formData.trip_allowance),
         gaji: parseFloat(formData.gaji),
         do_name: formData.do_name,
         // Include gas filling data
         gas_volume_m3: formData.gas_volume_m3 ? parseFloat(formData.gas_volume_m3) : null,
-        spbg_location: formData.spbg_location || null,
         calculation_method: formData.calculation_method,
         jisdor_rate: formData.jisdor_rate ? parseFloat(formData.jisdor_rate) : null,
         gas_filling_cost: formData.gas_filling_cost ? parseFloat(formData.gas_filling_cost) : null
@@ -213,28 +279,27 @@ const DeliveryOrderCreatePage = () => {
 
   const resetForm = () => {
     setFormData({
-      customer_name: '',
-      item_name: '',
       unit: 'kubik', // DOs always use kubik
       unit_price: '',
-      minimal_load_quantity: '',
       driver_id: '',
       vehicle_id: '',
       load_location: '',
       unload_location: '',
+      customer_name: '',
+      customer_location: '',
       trip_allowance: '0',
       gaji: '0',
       do_name: '',
       paid_amount: '0',
       // Reset gas filling fields
       gas_volume_m3: '',
-      spbg_location: '',
       calculation_method: 'jisdor',
       jisdor_rate: '',
       gas_filling_cost: ''
     });
     // Reset unload locations
     setUnloadLocations(['']);
+    setSelectedCustomerIds([null]);
   };
 
   if (loading) return <div className="text-center p-8">Loading drivers and vehicles...</div>;
@@ -258,33 +323,6 @@ const DeliveryOrderCreatePage = () => {
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Delivery Order Details</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Customer Name *
-              </label>
-              <input
-                type="text"
-                name="customer_name"
-                value={formData.customer_name}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Item Name *
-              </label>
-              <input
-                type="text"
-                name="item_name"
-                value={formData.item_name}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -358,20 +396,6 @@ const DeliveryOrderCreatePage = () => {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Minimal Load Quantity *
-              </label>
-              <input
-                type="number"
-                name="minimal_load_quantity"
-                value={formData.minimal_load_quantity}
-                onChange={handleInputChange}
-                step="0.01"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -386,6 +410,7 @@ const DeliveryOrderCreatePage = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -402,7 +427,7 @@ const DeliveryOrderCreatePage = () => {
               />
             </div>
 
-            {/* Multiple Unload Locations */}
+            {/* Customer Locations (Unload Locations) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Customer Locations *
@@ -410,14 +435,29 @@ const DeliveryOrderCreatePage = () => {
               <div className="space-y-2">
                 {unloadLocations.map((location, index) => (
                   <div key={index} className="flex gap-2">
-                    <input
-                      type="text"
+                    <div className="flex-1">
+                      <select
+                        value={selectedCustomerIds[index] || ''}
+                        onChange={(e) => handleAdditionalCustomerChange(index, e)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required={index === 0} // First location is required
+                      >
+                        <option value="">
+                          {index === 0 ? "Select Primary Customer Location" : `Select Additional Customer Location ${index + 1}`}
+                        </option>
+                        {getAvailableCustomers(index).map((customer: Customer) => (
+                          <option key={customer.id} value={customer.id}>
+                            {customer.display_name}
+                          </option>
+                        ))}
+                      </select>
+                      {/* Hidden input to maintain the location value for backend */}
+                      <input
+                        type="hidden"
                         value={location}
-                      onChange={(e) => updateUnloadLocation(index, e.target.value)}
-                      placeholder={`Unload location ${index + 1}`}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required={index === 0} // First location is required
-                    />
+                        onChange={(e) => updateUnloadLocation(index, e.target.value)}
+                      />
+                    </div>
                     {unloadLocations.length > 1 && (
                       <button
                         type="button"
@@ -440,11 +480,11 @@ const DeliveryOrderCreatePage = () => {
                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                   </svg>
-                  Add Unload Location
+                  Add Customer Location
                 </button>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                Add multiple unload locations for this delivery order. First location is required.
+                Select customers from the dropdown. Each customer can only be selected once.
               </p>
             </div>
 
@@ -494,141 +534,6 @@ const DeliveryOrderCreatePage = () => {
           </div>
         </div>
 
-        {/* Gas Filling Information Section */}
-        <div className="bg-white p-6 rounded-lg shadow border-t-4 border-blue-500">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
-            ⛽ Gas Filling Information
-          </h2>
-          <p className="text-gray-600 mb-4">
-            Optional: Record gas filling details for this delivery order
-          </p>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Gas Volume (m³)
-              </label>
-              <input
-                type="number"
-                name="gas_volume_m3"
-                value={formData.gas_volume_m3}
-                onChange={handleInputChange}
-                step="0.01"
-                placeholder="100.00"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                SPBG Location
-              </label>
-              <select
-                name="spbg_location"
-                value={formData.spbg_location}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select SPBG Location</option>
-                {spbgLocations.map(location => (
-                  <option key={location.value} value={location.value}>
-                    {location.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Calculation Method
-              </label>
-              <select
-                name="calculation_method"
-                value={formData.calculation_method}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {calculationMethods.map(method => (
-                  <option key={method.value} value={method.value}>
-                    {method.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                JISDOR Rate (IDR)
-              </label>
-              <input
-                type="number"
-                name="jisdor_rate"
-                value={formData.jisdor_rate}
-                onChange={handleInputChange}
-                step="0.01"
-                placeholder="7800.00"
-                disabled={formData.calculation_method !== 'jisdor'}
-                className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  formData.calculation_method !== 'jisdor' ? 'bg-gray-100' : ''
-                }`}
-              />
-              {formData.calculation_method !== 'jisdor' && (
-                <p className="text-xs text-gray-500 mt-1">Only required for JISDOR calculation</p>
-              )}
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Calculated Gas Filling Cost (IDR)
-              </label>
-              <input
-                type="number"
-                name="gas_filling_cost"
-                value={formData.gas_filling_cost}
-                readOnly
-                placeholder="Will be calculated automatically"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-blue-50 font-medium"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                {formData.calculation_method === 'jisdor' 
-                  ? 'Formula: (Volume/27.27) × 12.7 × JISDOR Rate'
-                  : 'Fixed Rate: 7,800 IDR per m³'
-                }
-              </p>
-            </div>
-          </div>
-
-          {/* Gas Filling Summary */}
-          {formData.gas_volume_m3 && formData.spbg_location && (
-            <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <h4 className="text-sm font-medium text-blue-900 mb-2">Gas Filling Summary</h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <span className="text-blue-700">Volume:</span>
-                  <span className="ml-2 text-blue-900 font-medium">{formData.gas_volume_m3} m³</span>
-                </div>
-                <div>
-                  <span className="text-blue-700">Location:</span>
-                  <span className="ml-2 text-blue-900 font-medium">
-                    {spbgLocations.find(loc => loc.value === formData.spbg_location)?.label}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-blue-700">Method:</span>
-                  <span className="ml-2 text-blue-900 font-medium capitalize">
-                    {formData.calculation_method}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-blue-700">Cost:</span>
-                  <span className="ml-2 text-blue-900 font-medium">
-                    {formData.gas_filling_cost ? `Rp ${parseFloat(formData.gas_filling_cost).toLocaleString('id-ID')}` : 'Calculating...'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
 
         {/* Form Actions */}
         <div className="flex justify-end space-x-3">

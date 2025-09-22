@@ -7,9 +7,9 @@ interface DeliveryOrder {
   do_number: string;
   do_name?: string;
   standalone_po_number?: string;
-  customer_name: string;
-  item_name: string;
-  minimal_load_quantity: number;
+  customer_name?: string;
+  item_name?: string;
+  minimal_load_quantity?: number;
   actual_load_quantity?: number;
   unit: string;
   unit_price?: number;
@@ -125,11 +125,11 @@ const DeliveryOrderCard: React.FC<DeliveryOrderCardProps> = ({ deliveryOrder }) 
         <div>
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-500">Customer:</span>
-            <span className="text-sm font-medium text-gray-900 text-right">{deliveryOrder.customer_name}</span>
+            <span className="text-sm font-medium text-gray-900 text-right">{deliveryOrder.customer_name || 'N/A'}</span>
           </div>
           <div className="flex justify-between items-center mt-1">
             <span className="text-sm text-gray-500">Item:</span>
-            <span className="text-sm text-gray-700 text-right">{deliveryOrder.item_name}</span>
+            <span className="text-sm text-gray-700 text-right">{deliveryOrder.item_name || 'N/A'}</span>
           </div>
         </div>
 
@@ -145,51 +145,65 @@ const DeliveryOrderCard: React.FC<DeliveryOrderCardProps> = ({ deliveryOrder }) 
           </div>
         </div>
 
-        {/* Quantity Information */}
-        <div className="border border-gray-200 rounded-lg p-3">
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-500">Target:</span>
-            <span className="text-sm font-semibold text-gray-900">
-              {parseFloat(deliveryOrder.minimal_load_quantity.toString()).toLocaleString("id-ID")} {unitDisplay}
-            </span>
+        {/* Quantity Information - only show if minimal_load_quantity exists */}
+        {deliveryOrder.minimal_load_quantity && (
+          <div className="border border-gray-200 rounded-lg p-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-500">Target:</span>
+              <span className="text-sm font-semibold text-gray-900">
+                {parseFloat(deliveryOrder.minimal_load_quantity.toString()).toLocaleString("id-ID")} {unitDisplay}
+              </span>
+            </div>
+            
+            {deliveryOrder.actual_load_quantity && (
+              <div className="flex justify-between items-center mt-1">
+                <span className="text-sm text-gray-500">Actual:</span>
+                <span className="text-sm font-semibold text-green-600">
+                  {parseFloat(deliveryOrder.actual_load_quantity.toString()).toLocaleString("id-ID")} {unitDisplay}
+                </span>
+              </div>
+            )}
+
+            {/* Progress bar - only show if both actual and minimal exist */}
+            {deliveryOrder.actual_load_quantity && deliveryOrder.minimal_load_quantity && (
+              <div className="mt-2">
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Progress</span>
+                  <span>
+                    {Math.round((deliveryOrder.actual_load_quantity / deliveryOrder.minimal_load_quantity) * 100)}%
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all duration-300 ${
+                      deliveryOrder.actual_load_quantity >= deliveryOrder.minimal_load_quantity
+                        ? "bg-green-500"
+                        : "bg-orange-500"
+                    }`}
+                    style={{
+                      width: `${Math.min(
+                        (deliveryOrder.actual_load_quantity / deliveryOrder.minimal_load_quantity) * 100,
+                        100
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
-          
-          {deliveryOrder.actual_load_quantity && (
-            <div className="flex justify-between items-center mt-1">
+        )}
+
+        {/* Show actual quantity even if no target quantity exists */}
+        {!deliveryOrder.minimal_load_quantity && deliveryOrder.actual_load_quantity && (
+          <div className="border border-gray-200 rounded-lg p-3">
+            <div className="flex justify-between items-center">
               <span className="text-sm text-gray-500">Actual:</span>
               <span className="text-sm font-semibold text-green-600">
                 {parseFloat(deliveryOrder.actual_load_quantity.toString()).toLocaleString("id-ID")} {unitDisplay}
               </span>
             </div>
-          )}
-
-          {/* Progress bar */}
-          {deliveryOrder.actual_load_quantity && (
-            <div className="mt-2">
-              <div className="flex justify-between text-xs text-gray-500 mb-1">
-                <span>Progress</span>
-                <span>
-                  {Math.round((deliveryOrder.actual_load_quantity / deliveryOrder.minimal_load_quantity) * 100)}%
-                </span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-all duration-300 ${
-                    deliveryOrder.actual_load_quantity >= deliveryOrder.minimal_load_quantity
-                      ? "bg-green-500"
-                      : "bg-orange-500"
-                  }`}
-                  style={{
-                    width: `${Math.min(
-                      (deliveryOrder.actual_load_quantity / deliveryOrder.minimal_load_quantity) * 100,
-                      100
-                    )}%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Financial Information */}
         <div className="border-t border-gray-200 pt-3">

@@ -64,6 +64,9 @@ const setupInfrastructureLocationModel = require("./infrastructureLocation.model
 const setupInfrastructureItemModel = require("./infrastructureItem.model");
 const setupInfrastructureBatchModel = require("./infrastructureBatch.model");
 const setupInfrastructureTransactionModel = require("./infrastructureTransaction.model");
+
+// NEW: Customer Management Model
+const setupCustomerModel = require("./customer.model");
 // Initialize Sequelize connection using your .env variables
 const sequelize = new Sequelize(
   process.env.DB_NAME,
@@ -153,6 +156,9 @@ db.InfrastructureLocation = setupInfrastructureLocationModel(sequelize);
 db.InfrastructureItem = setupInfrastructureItemModel(sequelize);
 db.InfrastructureBatch = setupInfrastructureBatchModel(sequelize);
 db.InfrastructureTransaction = setupInfrastructureTransactionModel(sequelize);
+
+// Customer Management model
+db.Customer = setupCustomerModel(sequelize);
 const {
   User,
   DriverProfile,
@@ -195,6 +201,7 @@ const {
   InfrastructureItem,
   InfrastructureBatch,
   InfrastructureTransaction,
+  Customer,
 } = db;
 
 // User <-> Profile Associations (One-to-One)

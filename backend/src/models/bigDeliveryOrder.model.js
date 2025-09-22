@@ -96,7 +96,7 @@ module.exports = (sequelize) => {
   };
 
   BigDeliveryOrder.prototype.canStart = function () {
-    return this.status === "at_spbu";
+    return this.status === "assigned";
   };
 
   BigDeliveryOrder.prototype.canComplete = function () {
@@ -104,7 +104,7 @@ module.exports = (sequelize) => {
   };
 
   BigDeliveryOrder.prototype.canCancel = function () {
-    return ["at_spbu", "in_progress"].includes(this.status);
+    return ["assigned", "in_progress"].includes(this.status);
   };
 
   BigDeliveryOrder.prototype.getFinancialSummary = function () {

@@ -18,16 +18,17 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Human-readable name for the delivery order",
       },
-      customer_name: { type: DataTypes.STRING(100), allowNull: false },
+      customer_name: { type: DataTypes.STRING(100), allowNull: true },
+      customer_location: { type: DataTypes.TEXT, allowNull: true },
       // Item name now directly specified for each DO
-      item_name: { type: DataTypes.STRING(100), allowNull: false },
+      item_name: { type: DataTypes.STRING(100), allowNull: true },
 
       // === QUANTITY FIELDS ===
       minimal_load_quantity: {
         type: DataTypes.DECIMAL(10, 2),
-        allowNull: false,
-        defaultValue: 0,
-        comment: "Minimal quantity yang harus diangkut (dari admin)",
+        allowNull: true,
+        defaultValue: null,
+        comment: "Minimal quantity yang harus diangkut (dari admin) - DEPRECATED",
         validate: { min: 0 },
       },
       actual_load_quantity: {
@@ -121,7 +122,7 @@ module.exports = (sequelize) => {
       spbg_location: {
         type: DataTypes.STRING(100),
         allowNull: true,
-        comment: 'SPBG (Stasiun Pengisian Bahan Bakar Gas) location for gas filling'
+        comment: 'SPBG (Stasiun Pengisian Bahan Bakar Gas) location for gas filling - DEPRECATED'
       },
       calculation_method: {
         type: DataTypes.ENUM('jisdor', 'fixed'),
@@ -230,14 +231,17 @@ module.exports = (sequelize) => {
       // === STATUS ===
       status: {
         type: DataTypes.ENUM(
-          "at_spbu",
+          "assigned",
+          "otw_to_load_location",
+          "at_load_location",
           "otw_to_unload_location",
           "at_unload_location",
+          "otw_to_base",
           "completed",
           "cancelled"
         ),
         allowNull: false,
-        defaultValue: "at_spbu",
+        defaultValue: "assigned",
       },
 
       // === TIMESTAMPS ===
@@ -335,9 +339,12 @@ module.exports = (sequelize) => {
   // === INSTANCE METHODS ===
   DeliveryOrder.prototype.getStatusText = function () {
     const statusMap = {
-      at_spbu: "Di SPBU",
+      assigned: "Ditugaskan",
+      otw_to_load_location: "Menuju Lokasi Muat",
+      at_load_location: "Di Lokasi Muat",
       otw_to_unload_location: "Menuju Lokasi Bongkar",
       at_unload_location: "Di Lokasi Bongkar",
+      otw_to_base: "Kembali ke Base",
       completed: "Selesai",
       cancelled: "Dibatalkan",
     };

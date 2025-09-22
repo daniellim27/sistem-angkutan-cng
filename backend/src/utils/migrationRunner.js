@@ -51,7 +51,9 @@ class MigrationRunner {
       '20250921_add_missing_timestamp_columns.js',
       '20250121_create_nota_kecils_table.js',
       '20250121_create_nota_besars_table.js',
-      '20250121_create_nota_besar_items_table.js'
+      '20250121_create_nota_besar_items_table.js',
+      '20250122_create_customers_table.js',
+      '20250122_add_customer_location_to_delivery_orders.js'
     ];
   }
 

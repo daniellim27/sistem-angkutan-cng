@@ -72,10 +72,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
       driver_id,
       vehicle_id,
       do_number,
-      customer_name,
-      item_name,
       unit, // Unit input (will be overridden to kubik)
-      minimal_load_quantity, // <-- RENAMED
       unit_price,
       total_amount,
       load_location,
@@ -92,19 +89,21 @@ exports.createDeliveryOrder = async (req, res, next) => {
       due_date,
       trip_allowance,
       gaji, // <-- FIELD BARU
+      customer_name,
+      customer_location,
     } = req.body;
 
     // Force unit to always be 'kubik' for delivery orders
     const finalUnit = "kubik";
 
     // Validasi sederhana
-    // CEK: Apakah driver sudah punya trip aktif (at_spbu, otw_to_unload_location, at_unload_location)
+    // CEK: Apakah driver sudah punya trip aktif (assigned, otw_to_unload_location, at_unload_location)
     const activeTrip = await DeliveryOrder.findOne({
       where: {
         driver_id,
         status: {
           [Op.in]: [
-            "at_spbu",
+            "assigned",
             "otw_to_unload_location",
             "at_unload_location",
           ],
@@ -123,7 +122,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
         vehicle_id,
         status: {
           [Op.in]: [
-            "at_spbu",
+            "assigned",
             "otw_to_unload_location",
             "at_unload_location",
           ],
@@ -140,9 +139,6 @@ exports.createDeliveryOrder = async (req, res, next) => {
       !driver_id ||
       !vehicle_id ||
       !do_number ||
-      !customer_name ||
-      !item_name ||
-      !minimal_load_quantity ||
       !unit_price ||
       !trip_allowance ||
       !gaji
@@ -153,9 +149,6 @@ exports.createDeliveryOrder = async (req, res, next) => {
           driver_id: !driver_id,
           vehicle_id: !vehicle_id,
           do_number: !do_number,
-          customer_name: !customer_name,
-          item_name: !item_name,
-          minimal_load_quantity: !minimal_load_quantity,
           unit_price: !unit_price,
           trip_allowance: !trip_allowance,
           gaji: !gaji,
@@ -172,17 +165,14 @@ exports.createDeliveryOrder = async (req, res, next) => {
     }
 
     // Calculate total amount if not provided
-    const calculatedTotalAmount = total_amount || (parseFloat(minimal_load_quantity) * parseFloat(unit_price));
+    const calculatedTotalAmount = total_amount || parseFloat(unit_price);
 
     // Buat DeliveryOrder baru
     const newDO = await DeliveryOrder.create({
       driver_id,
       vehicle_id,
       do_number,
-      customer_name,
-      item_name,
       unit: finalUnit, // Always kubik
-      minimal_load_quantity: minimal_load_quantity || 0,
       unit_price: unit_price || 0,
       total_amount: calculatedTotalAmount,
       load_location,
@@ -199,7 +189,9 @@ exports.createDeliveryOrder = async (req, res, next) => {
       due_date,
       trip_allowance: trip_allowance || 0,
       gaji: gaji || 0,
-      status: "at_spbu",
+      customer_name,
+      customer_location,
+      status: "assigned",
     });
 
     // Set status driver & mobil ke busy/in_use (opsional, jika ada field status di tabel driver/vehicle)
@@ -355,7 +347,7 @@ exports.getAllDeliveryOrders = async (req, res, next) => {
 exports.getActiveDeliveryOrders = async (req, res, next) => {
   try {
     const ACTIVE_STATUSES = [
-      "at_spbu",
+      "assigned",
       "otw_to_unload_location",
       "at_unload_location",
     ];
@@ -1078,7 +1070,7 @@ const updateStatus = async (orderId, driverId, newStatus, timestampField) => {
 
     // Status validation mapping
     const validTransitions = {
-      at_spbu: ["otw_to_unload_location"],
+      assigned: ["otw_to_load_location"],
       otw_to_unload_location: ["at_unload_location"],
       at_unload_location: ["completed"],
       completed: [],

@@ -5,9 +5,9 @@ import apiClient from "../api/axiosConfig";
 interface DeliveryOrderData {
   id: number;
   do_number: string;
-  customer_name: string;
-  item_name: string;
-  minimal_load_quantity: number;
+  customer_name?: string;
+  item_name?: string;
+  minimal_load_quantity?: number;
   actual_load_quantity?: number;
   unit: string;
   unit_price: number;
@@ -53,6 +53,10 @@ const EditDeliveryOrder: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancellationReason, setCancellationReason] = useState("");
+  
+  // Add state for customers
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<(number | null)[]>([null]);
 
   // SPBG locations for selection
   const spbgLocations: { value: string; label: string }[] = [
@@ -133,6 +137,7 @@ const EditDeliveryOrder: React.FC = () => {
       ...prev,
       unload_locations: [...prev.unload_locations, ""]
     }));
+    setSelectedCustomerIds(prev => [...prev, null]);
   };
 
   const removeUnloadLocation = (index: number) => {
@@ -140,6 +145,7 @@ const EditDeliveryOrder: React.FC = () => {
       ...prev,
       unload_locations: prev.unload_locations.filter((_, i) => i !== index)
     }));
+    setSelectedCustomerIds(prev => prev.filter((_, i) => i !== index));
   };
 
   const updateUnloadLocation = (index: number, value: string) => {
@@ -154,11 +160,64 @@ const EditDeliveryOrder: React.FC = () => {
     });
   };
 
+  const handleCustomerLocationChange = (index: number, e: React.ChangeEvent<HTMLSelectElement>) => {
+    const customerId = e.target.value;
+    if (customerId) {
+      const selectedCustomer = customers.find((c: any) => c.id.toString() === customerId);
+      if (selectedCustomer) {
+        // Update the location
+        setFormData(prev => {
+          const newUnloadLocations = [...prev.unload_locations];
+          newUnloadLocations[index] = selectedCustomer.location;
+          return {
+            ...prev,
+            unload_locations: newUnloadLocations,
+            // Keep original field in sync for backward compatibility
+            unload_location: newUnloadLocations[0] || ""
+          };
+        });
+
+        // Update selected customer IDs
+        setSelectedCustomerIds(prev => {
+          const newIds = [...prev];
+          newIds[index] = selectedCustomer.id;
+          return newIds;
+        });
+      }
+    } else {
+      // Clear the location
+      setFormData(prev => {
+        const newUnloadLocations = [...prev.unload_locations];
+        newUnloadLocations[index] = '';
+        return {
+          ...prev,
+          unload_locations: newUnloadLocations,
+          // Keep original field in sync for backward compatibility
+          unload_location: newUnloadLocations[0] || ""
+        };
+      });
+
+      // Clear selected customer ID
+      setSelectedCustomerIds(prev => {
+        const newIds = [...prev];
+        newIds[index] = null;
+        return newIds;
+      });
+    }
+  };
+
+  // Get available customers for a specific dropdown (excluding already selected ones)
+  const getAvailableCustomers = (currentIndex: number) => {
+    return customers.filter((customer: any) => {
+      const isAlreadySelected = selectedCustomerIds.some((id, index) => 
+        index !== currentIndex && id === customer.id
+      );
+      return !isAlreadySelected;
+    });
+  };
+
   // Form state
   const [formData, setFormData] = useState({
-    customer_name: "",
-    item_name: "",
-    minimal_load_quantity: 0,
     actual_load_quantity: 0,
     unit: "kubik", // DOs always use kubik
     unit_price: 0,
@@ -181,9 +240,20 @@ const EditDeliveryOrder: React.FC = () => {
   useEffect(() => {
     if (id) {
       fetchDeliveryOrder();
+      fetchCustomers();
     }
     // eslint-disable-next-line
   }, [id]);
+
+  // Fetch customers for dropdown
+  const fetchCustomers = async () => {
+    try {
+      const response = await apiClient.get('/customers/locations');
+      setCustomers(response.data.data || response.data || []);
+    } catch (err) {
+      console.error('Failed to fetch customers:', err);
+    }
+  };
 
   const fetchDeliveryOrder = async () => {
     try {
@@ -193,9 +263,6 @@ const EditDeliveryOrder: React.FC = () => {
 
       setDeliveryOrder(data);
       setFormData({
-        customer_name: data.customer_name || "",
-        item_name: data.item_name || "",
-        minimal_load_quantity: data.minimal_load_quantity || 0,
         actual_load_quantity: data.actual_load_quantity || 0,
         unit: "kubik", // All delivery orders use cubic meters only
         unit_price: data.unit_price || 0,
@@ -227,6 +294,18 @@ const EditDeliveryOrder: React.FC = () => {
         jisdor_rate: data.jisdor_rate || 0,
         gas_filling_cost: data.gas_filling_cost || 0,
       });
+
+      // Initialize selected customer IDs based on unload locations
+      const unloadLocationCount = (() => {
+        if (data.additional_unload_locations && data.additional_unload_locations.length > 0) {
+          return 1 + data.additional_unload_locations.length; // primary + additional
+        }
+        return data.unload_locations && data.unload_locations.length > 0 
+          ? data.unload_locations.length 
+          : 1;
+      })();
+      
+      setSelectedCustomerIds(new Array(unloadLocationCount).fill(null));
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to fetch delivery order");
     } finally {
@@ -424,52 +503,6 @@ const EditDeliveryOrder: React.FC = () => {
         className="bg-white shadow-lg rounded-lg p-8 border border-gray-100"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Customer Name */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Customer Name
-            </label>
-            <input
-              type="text"
-              name="customer_name"
-              value={formData.customer_name}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-
-          {/* Item Name */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Item Name
-            </label>
-            <input
-              type="text"
-              name="item_name"
-              value={formData.item_name}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-
-          {/* Minimal Load Quantity */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Target Quantity
-            </label>
-            <input
-              type="number"
-              name="minimal_load_quantity"
-              value={formData.minimal_load_quantity}
-              onChange={handleInputChange}
-              step="0.01"
-              min="0"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
 
           {/* Actual Load Quantity */}
           <div>
@@ -773,14 +806,29 @@ const EditDeliveryOrder: React.FC = () => {
           <div className="space-y-3">
             {formData.unload_locations.map((location, index) => (
               <div key={index} className="flex gap-2">
-                <input
-                  type="text"
-                  value={location}
-                  onChange={(e) => updateUnloadLocation(index, e.target.value)}
-                  placeholder={`Unload location ${index + 1}`}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required={index === 0}
-                />
+                <div className="flex-1">
+                  <select
+                    value={selectedCustomerIds[index] || ''}
+                    onChange={(e) => handleCustomerLocationChange(index, e)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required={index === 0}
+                  >
+                    <option value="">
+                      {index === 0 ? "Select Primary Customer Location" : `Select Additional Customer Location ${index + 1}`}
+                    </option>
+                    {getAvailableCustomers(index).map((customer: any) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.display_name}
+                      </option>
+                    ))}
+                  </select>
+                  {/* Hidden input to maintain the location value for backend */}
+                  <input
+                    type="hidden"
+                    value={location}
+                    onChange={(e) => updateUnloadLocation(index, e.target.value)}
+                  />
+                </div>
                 {formData.unload_locations.length > 1 && (
                   <button
                     type="button"
@@ -793,6 +841,9 @@ const EditDeliveryOrder: React.FC = () => {
               </div>
             ))}
           </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Select customers from the dropdown. Each customer can only be selected once.
+          </p>
         </div>
 
         {/* Notes */}

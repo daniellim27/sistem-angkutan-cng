@@ -61,7 +61,6 @@ interface DeliveryOrderDetails {
   customer_name: string;
   item_name: string;
   trip_allowance: number;
-  minimal_load_quantity: number;
   actual_load_quantity?: number;
   load_location: string;
   unload_location: string;
@@ -2517,7 +2516,6 @@ const TripDetailScreen = () => {
         visible={showLoadConfirmation}
         onClose={() => setShowLoadConfirmation(false)}
         onConfirm={handleLoadConfirmation}
-        minimalQuantity={trip?.minimal_load_quantity || 0}
         isLoading={submittingLoad}
       />
 

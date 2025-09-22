@@ -24,10 +24,10 @@ interface DriverExpense {
 interface DeliveryOrder {
   id: number;
   do_number: string;
-  customer_name: string;
-  item_name: string;
+  customer_name?: string;
+  item_name?: string;
   unit_price: number;
-  minimal_load_quantity: number;
+  minimal_load_quantity?: number;
   actual_load_quantity?: number;
   final_amount: number;
   total_amount: number;
@@ -535,15 +535,19 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
               <div className="mt-1">{getStatusBadge(deliveryOrder.status)}</div>
             </div>
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Customer Name</label>
-              <p className="text-gray-900">{deliveryOrder.customer_name}</p>
-            </div>
+            {deliveryOrder.customer_name && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Customer Name</label>
+                <p className="text-gray-900">{deliveryOrder.customer_name}</p>
+              </div>
+            )}
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Item Name</label>
-              <p className="text-gray-900">{deliveryOrder.item_name}</p>
-            </div>
+            {deliveryOrder.item_name && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Item Name</label>
+                <p className="text-gray-900">{deliveryOrder.item_name}</p>
+              </div>
+            )}
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Created Date</label>
@@ -562,12 +566,14 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Quantity & Pricing</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Minimal Load Quantity</label>
-              <p className="text-lg font-semibold text-gray-900">
-                {deliveryOrder.minimal_load_quantity.toLocaleString('id-ID')}
-              </p>
-            </div>
+            {deliveryOrder.minimal_load_quantity && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Minimal Load Quantity</label>
+                <p className="text-lg font-semibold text-gray-900">
+                  {deliveryOrder.minimal_load_quantity.toLocaleString('id-ID')}
+                </p>
+              </div>
+            )}
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Actual Load Quantity</label>

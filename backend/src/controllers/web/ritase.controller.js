@@ -1329,7 +1329,7 @@ exports.getRitaseDashboard = async (req, res, next) => {
           ...whereClause,
           status: {
             [Op.in]: [
-              "at_spbu",
+              "assigned",
               "otw_to_unload_location",
               "at_unload_location",
             ],

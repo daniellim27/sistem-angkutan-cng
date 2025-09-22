@@ -30,7 +30,7 @@ class DistanceTrackingService {
       }
 
       // Only process for active delivery orders
-      const activeStatuses = ['at_spbu', 'otw_to_unload_location', 'at_unload_location'];
+      const activeStatuses = ['assigned', 'otw_to_unload_location', 'at_unload_location'];
       if (!activeStatuses.includes(deliveryOrder.status)) {
         return { success: false, message: 'Delivery order is not in active tracking status' };
       }
@@ -126,7 +126,7 @@ class DistanceTrackingService {
     try {
       const activeDeliveryOrders = await DeliveryOrder.findAll({
         where: {
-          status: ['at_spbu', 'otw_to_unload_location', 'at_unload_location']
+          status: ['assigned', 'otw_to_unload_location', 'at_unload_location']
         },
         attributes: [
           'id',
@@ -196,7 +196,7 @@ class DistanceTrackingService {
       const deliveryOrders = await DeliveryOrder.findAll({
         where: {
           distance_compliance_status: 'exceeds_tolerance',
-          status: ['at_spbu', 'otw_to_unload_location', 'at_unload_location']
+          status: ['assigned', 'otw_to_unload_location', 'at_unload_location']
         },
         attributes: [
           'id',

@@ -33,7 +33,6 @@ interface DeliveryOrder {
   do_number: string;
   customer_name: string;
   item_name: string;
-  minimal_load_quantity: number;
   actual_load_quantity?: number;
   status:
     | "assigned"
@@ -651,7 +650,7 @@ const DriverDashboard = () => {
         <View style={styles.cardBody}>
           <Text style={styles.customerName}>{item.customer_name}</Text>
           <Text style={styles.itemDetails}>
-            {item.item_name} - {item.minimal_load_quantity} {getUnitDisplay(item.unit)} (minimal)
+            {item.item_name}
             {item.actual_load_quantity &&
               ` → ${item.actual_load_quantity} ${getUnitDisplay(item.unit)} (aktual)`}
           </Text>

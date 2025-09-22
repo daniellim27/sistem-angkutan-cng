@@ -49,9 +49,6 @@ exports.createDeliveryOrder = async (req, res, next) => {
     const {
       vehicle_id,
       driver_id,
-      customer_name,
-      item_name,
-      minimal_load_quantity,
       unit, // Unit input (will be overridden to kubik)
       unit_price,
       total_amount,
@@ -66,12 +63,13 @@ exports.createDeliveryOrder = async (req, res, next) => {
       unload_longitude,
       additional_unload_locations, // New field for multiple unload locations
       payment_status = "proses_tagihan",
-      status = "at_spbu",
+      status = "assigned",
       do_name,
       deposit_group_id, // Add deposit group support
+      customer_name,
+      customer_location,
       // Gas filling fields
       gas_volume_m3,
-      spbg_location,
       calculation_method,
       jisdor_rate,
       gas_filling_cost,
@@ -84,18 +82,14 @@ exports.createDeliveryOrder = async (req, res, next) => {
     if (
       !vehicle_id ||
       !driver_id ||
-      !customer_name ||
-      !item_name ||
       !unit_price ||
-      !minimal_load_quantity ||
-      isNaN(parseFloat(minimal_load_quantity)) ||
       isNaN(parseFloat(unit_price))
     ) {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
         message:
-          "Missing or invalid required fields: vehicle_id, driver_id, customer_name, item_name, unit_price, minimal_load_quantity (must be numbers)",
+          "Missing or invalid required fields: vehicle_id, driver_id, unit_price (must be numbers)",
       });
     }
 
@@ -108,7 +102,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
         driver_id,
         status: {
           [Op.in]: [
-            "at_spbu",
+            "assigned",
             "otw_to_unload_location",
             "at_unload_location",
           ],
@@ -131,7 +125,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
         vehicle_id,
         status: {
           [Op.in]: [
-            "at_spbu",
+            "assigned",
             "otw_to_unload_location",
             "at_unload_location",
           ],
@@ -152,7 +146,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
     const existingBigDO = await BigDeliveryOrder.findOne({
       where: {
         driver_id,
-        status: { [Op.in]: ["at_spbu", "in_progress"] },
+        status: { [Op.in]: ["assigned", "in_progress"] },
       },
       transaction,
     });
@@ -192,8 +186,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
 
     // Enhanced calculations
     let calculatedTotalAmount =
-      total_amount ||
-      calculateTotalAmount(minimal_load_quantity, finalUnitPrice, finalUnit);
+      total_amount || finalUnitPrice; // Use unit price as base amount
     let calculatedOngkosan =
       ongkosan ||
       calculateOngkosan(calculatedTotalAmount, trip_allowance, gaji);
@@ -285,8 +278,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
       do_number: finalDoNumber,
       do_name,
       customer_name,
-      item_name,
-      minimal_load_quantity,
+      customer_location,
       unit: finalUnit,
       unit_price: finalUnitPrice,
       total_amount: calculatedTotalAmount,
@@ -304,7 +296,6 @@ exports.createDeliveryOrder = async (req, res, next) => {
       status,
       // Gas filling fields
       gas_volume_m3: gas_volume_m3 ? parseFloat(gas_volume_m3) : null,
-      spbg_location,
       calculation_method,
       jisdor_rate: jisdor_rate ? parseFloat(jisdor_rate) : null,
       gas_filling_cost: gas_filling_cost ? parseFloat(gas_filling_cost) : null,
@@ -479,13 +470,13 @@ exports.getAllDeliveryOrders = async (req, res, next) => {
     const fullWhere = { ...whereClause };
     const statsPromises = [
       DeliveryOrder.count({ where: fullWhere }),
-      DeliveryOrder.count({ where: { ...fullWhere, status: "at_spbu" } }),
+      DeliveryOrder.count({ where: { ...fullWhere, status: "assigned" } }),
       DeliveryOrder.count({
         where: {
           ...fullWhere,
           status: {
             [Op.in]: [
-              "at_spbu",
+              "assigned",
               "otw_to_unload_location",
               "at_unload_location",
             ],
@@ -1260,7 +1251,7 @@ const updateDriverAndVehicleStatus = async (deliveryOrder, oldStatus, newStatus,
     // Define status mappings for driver and vehicle
     const getDriverStatus = (doStatus) => {
       switch (doStatus) {
-        case 'at_spbu':
+        case 'assigned':
         case 'otw_to_unload_location':
         case 'at_unload_location':
           return 'busy';
@@ -1274,7 +1265,7 @@ const updateDriverAndVehicleStatus = async (deliveryOrder, oldStatus, newStatus,
 
     const getVehicleStatus = (doStatus) => {
       switch (doStatus) {
-        case 'at_spbu':
+        case 'assigned':
         case 'otw_to_unload_location':
         case 'at_unload_location':
           return 'in_use';

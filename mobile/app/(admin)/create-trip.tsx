@@ -49,7 +49,6 @@ export default function CreateTrip() {
     item_name: "",
     unit: "ton",
     unit_price: "",
-    minimal_load_quantity: "",
     driver_id: "",
     vehicle_id: "",
     trip_allowance: "",
@@ -133,7 +132,6 @@ export default function CreateTrip() {
       !form.unit_price ||
       !form.driver_id ||
       !form.vehicle_id ||
-      !form.minimal_load_quantity ||
       !form.trip_allowance ||
       !form.gaji ||
       !form.load_location ||
@@ -151,7 +149,6 @@ export default function CreateTrip() {
         item_name: form.item_name,
         unit: form.unit,
         unit_price: parseFloat(form.unit_price),
-        minimal_load_quantity: parseFloat(form.minimal_load_quantity),
         driver_id: parseInt(form.driver_id),
         vehicle_id: parseInt(form.vehicle_id),
         trip_allowance: parseFloat(form.trip_allowance),
@@ -258,14 +255,6 @@ export default function CreateTrip() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>2. Detail Muatan</Text>
         
-        <Text style={styles.label}>Minimal Kuantitas Muatan *</Text>
-        <TextInput
-          style={styles.input}
-          value={form.minimal_load_quantity}
-          onChangeText={(v) => handleChange("minimal_load_quantity", v)}
-          placeholder="Masukkan kuantitas minimal"
-          keyboardType="numeric"
-        />
       </View>
 
       {/* === SECTION 3: LOKASI === */}

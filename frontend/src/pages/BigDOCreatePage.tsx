@@ -7,9 +7,9 @@ import { toast } from "react-hot-toast";
 interface AvailableDO {
   id: number;
   do_number: string;
-  customer_name: string;
-  item_name: string;
-  minimal_load_quantity: number;
+  customer_name?: string;
+  item_name?: string;
+  minimal_load_quantity?: number;
   unit: string;
   unit_price: number;
   total_amount: number;
@@ -54,6 +54,10 @@ const BigDOCreatePage: React.FC = () => {
   });
   const [loading, setLoading] = useState(false);
   const [fetchingDOs, setFetchingDOs] = useState(true);
+  
+  // Add state for customers
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<{ [key: number]: number | null }>({});
 
   const initialTambahanForm: TambahanForm = {
     customer_name: "",
@@ -117,7 +121,18 @@ const BigDOCreatePage: React.FC = () => {
 
   useEffect(() => {
     fetchAvailableDOs();
+    fetchCustomers();
   }, []);
+
+  // Fetch customers for dropdown
+  const fetchCustomers = async () => {
+    try {
+      const response = await apiClient.get('/customers/locations');
+      setCustomers(response.data.data || response.data || []);
+    } catch (err) {
+      console.error('Failed to fetch customers:', err);
+    }
+  };
 
   // Calculate tambahan amount
   const calculateTambahanAmount = (
@@ -139,6 +154,20 @@ const BigDOCreatePage: React.FC = () => {
 
   const removeTambahan = (index: number) => {
     setTambahan(tambahan.filter((_, i) => i !== index));
+    // Remove selected customer ID for this tambahan
+    const newSelectedCustomerIds = { ...selectedCustomerIds };
+    delete newSelectedCustomerIds[index];
+    // Reindex the remaining customer IDs
+    const reindexedIds: { [key: number]: number | null } = {};
+    Object.keys(newSelectedCustomerIds).forEach((key) => {
+      const keyIndex = parseInt(key);
+      if (keyIndex > index) {
+        reindexedIds[keyIndex - 1] = newSelectedCustomerIds[keyIndex];
+      } else {
+        reindexedIds[keyIndex] = newSelectedCustomerIds[keyIndex];
+      }
+    });
+    setSelectedCustomerIds(reindexedIds);
   };
 
   const updateTambahan = (
@@ -149,6 +178,54 @@ const BigDOCreatePage: React.FC = () => {
     const updatedTambahan = [...tambahan];
     updatedTambahan[index] = { ...updatedTambahan[index], [field]: value };
     setTambahan(updatedTambahan);
+  };
+
+  const handleTambahanCustomerChange = (index: number, e: React.ChangeEvent<HTMLSelectElement>) => {
+    const customerId = e.target.value;
+    if (customerId) {
+      const selectedCustomer = customers.find((c: any) => c.id.toString() === customerId);
+      if (selectedCustomer) {
+        // Update tambahan with customer info and delivery location
+        const updatedTambahan = [...tambahan];
+        updatedTambahan[index] = { 
+          ...updatedTambahan[index], 
+          customer_name: selectedCustomer.customer_name,
+          delivery_location: selectedCustomer.location
+        };
+        setTambahan(updatedTambahan);
+
+        // Update selected customer ID
+        setSelectedCustomerIds(prev => ({
+          ...prev,
+          [index]: selectedCustomer.id
+        }));
+      }
+    } else {
+      // Clear customer info and delivery location
+      const updatedTambahan = [...tambahan];
+      updatedTambahan[index] = { 
+        ...updatedTambahan[index], 
+        customer_name: '',
+        delivery_location: ''
+      };
+      setTambahan(updatedTambahan);
+
+      // Clear selected customer ID
+      setSelectedCustomerIds(prev => ({
+        ...prev,
+        [index]: null
+      }));
+    }
+  };
+
+  // Get available customers for a specific tambahan (excluding already selected ones)
+  const getAvailableCustomersForTambahan = (currentIndex: number) => {
+    return customers.filter((customer: any) => {
+      const isAlreadySelected = Object.entries(selectedCustomerIds).some(([index, id]) => 
+        parseInt(index) !== currentIndex && id === customer.id
+      );
+      return !isAlreadySelected;
+    });
   };
 
   const calculateTotalRevenue = () => {
@@ -444,7 +521,7 @@ const BigDOCreatePage: React.FC = () => {
                             </div>
                           </div>
                           <div className="mt-1 text-sm text-gray-600">
-                            {doItem.customer_name} • {doItem.item_name}
+                            {doItem.customer_name || 'N/A'} • {doItem.item_name || 'N/A'}
                           </div>
                           <div className="mt-1 text-sm text-gray-500">
                             {doItem.driver_name} • {doItem.vehicle_info}
@@ -523,7 +600,7 @@ const BigDOCreatePage: React.FC = () => {
               <span className="text-xs text-blue-600">
                 ({getPONumber(selectedMainDO)})
               </span> •{" "}
-              {selectedMainDO.customer_name} •
+              {selectedMainDO.customer_name || 'N/A'} •
               {formatCurrency(selectedMainDO.total_amount)}
               {!selectedMainDO.purchaseOrder && (
                 <span className="text-xs text-blue-500 italic ml-2">(Standalone DO)</span>
@@ -580,10 +657,24 @@ const BigDOCreatePage: React.FC = () => {
                         {/* Customer Info */}
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Customer Name *
+                            Customer *
                           </label>
+                          <select
+                            value={selectedCustomerIds[index] || ''}
+                            onChange={(e) => handleTambahanCustomerChange(index, e)}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2"
+                            required
+                          >
+                            <option value="">Select Customer</option>
+                            {getAvailableCustomersForTambahan(index).map((customer: any) => (
+                              <option key={customer.id} value={customer.id}>
+                                {customer.display_name}
+                              </option>
+                            ))}
+                          </select>
+                          {/* Hidden input to maintain the customer name for backend */}
                           <input
-                            type="text"
+                            type="hidden"
                             value={item.customer_name}
                             onChange={(e) =>
                               updateTambahan(
@@ -592,8 +683,6 @@ const BigDOCreatePage: React.FC = () => {
                                 e.target.value
                               )
                             }
-                            className="w-full border border-gray-300 rounded-md px-3 py-2"
-                            required
                           />
                         </div>
 
@@ -726,24 +815,33 @@ const BigDOCreatePage: React.FC = () => {
                           />
                         </div>
 
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Delivery Location *
-                          </label>
-                          <input
-                            type="text"
-                            value={item.delivery_location}
-                            onChange={(e) =>
-                              updateTambahan(
-                                index,
-                                "delivery_location",
-                                e.target.value
-                              )
-                            }
-                            className="w-full border border-gray-300 rounded-md px-3 py-2"
-                            required
-                          />
-                        </div>
+                        {/* Hidden delivery location field - auto-filled from customer selection */}
+                        <input
+                          type="hidden"
+                          value={item.delivery_location}
+                          onChange={(e) =>
+                            updateTambahan(
+                              index,
+                              "delivery_location",
+                              e.target.value
+                            )
+                          }
+                        />
+                        
+                        {/* Show selected delivery location for reference */}
+                        {item.delivery_location && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Delivery Location
+                            </label>
+                            <div className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-gray-700">
+                              {item.delivery_location}
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Auto-filled from selected customer
+                            </p>
+                          </div>
+                        )}
 
                         <div className="md:col-span-2">
                           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -833,7 +931,7 @@ const BigDOCreatePage: React.FC = () => {
                     return (
                       <div key={index} className="flex justify-between">
                         <span>
-                          Tambahan #{index + 1} ({item.customer_name})
+                          Tambahan #{index + 1} ({item.customer_name || 'N/A'})
                         </span>
                         <span className="font-medium">
                           {formatCurrency(tambahanAmount)}

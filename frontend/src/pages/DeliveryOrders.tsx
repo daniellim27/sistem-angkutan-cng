@@ -11,9 +11,9 @@ interface DeliveryOrder {
   do_number: string;
   do_name?: string; // Add the new field
   standalone_po_number?: string; // ✅ ADD this line
-  customer_name: string;
-  item_name: string;
-  minimal_load_quantity: number;
+  customer_name?: string;
+  item_name?: string;
+  minimal_load_quantity?: number;
   actual_load_quantity?: number;
   unit: string;
   unit_price?: number;
@@ -469,12 +469,21 @@ const DeliveryOrdersPage = () => {
                     {/* Customer */}
                     <td className="px-4 py-4">
                       <div>
-                        <div className="text-sm font-medium text-gray-900 leading-tight">
-                          {dOrder.customer_name}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-0.5">
-                          {dOrder.item_name}
-                        </div>
+                        {dOrder.customer_name && (
+                          <div className="text-sm font-medium text-gray-900 leading-tight">
+                            {dOrder.customer_name}
+                          </div>
+                        )}
+                        {dOrder.item_name && (
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {dOrder.item_name}
+                          </div>
+                        )}
+                        {!dOrder.customer_name && !dOrder.item_name && (
+                          <div className="text-sm font-medium text-gray-900 leading-tight">
+                            {dOrder.do_name || dOrder.do_number}
+                          </div>
+                        )}
                       </div>
                     </td>
 
@@ -574,16 +583,18 @@ const DeliveryOrdersPage = () => {
                     {/* Quantity & Unit Column */}
                     <td className="px-4 py-4">
                       <div className="space-y-1">
-                        {/* Target quantity */}
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-gray-500">Target:</span>
-                          <span className="text-sm font-medium text-gray-900">
-                            {parseFloat(
-                              dOrder.minimal_load_quantity.toString()
-                            ).toLocaleString("id-ID")}{" "}
-                            {unitDisplay}
-                          </span>
-                        </div>
+                        {/* Target quantity - only show if exists */}
+                        {dOrder.minimal_load_quantity && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-500">Target:</span>
+                            <span className="text-sm font-medium text-gray-900">
+                              {parseFloat(
+                                dOrder.minimal_load_quantity.toString()
+                              ).toLocaleString("id-ID")}{" "}
+                              {unitDisplay}
+                            </span>
+                          </div>
+                        )}
 
                         {/* Actual quantity */}
                         {dOrder.actual_load_quantity && (
@@ -611,8 +622,8 @@ const DeliveryOrdersPage = () => {
                             </span>
                           </div>
 
-                          {/* Progress indicator */}
-                          {dOrder.actual_load_quantity && (
+                          {/* Progress indicator - only show if both actual and minimal exist */}
+                          {dOrder.actual_load_quantity && dOrder.minimal_load_quantity && (
                             <span
                               className={`text-xs font-medium ${
                                 dOrder.actual_load_quantity >=
@@ -631,8 +642,8 @@ const DeliveryOrdersPage = () => {
                           )}
                         </div>
 
-                        {/* Progress bar */}
-                        {dOrder.actual_load_quantity && (
+                        {/* Progress bar - only show if both actual and minimal exist */}
+                        {dOrder.actual_load_quantity && dOrder.minimal_load_quantity && (
                           <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
                             <div
                               className={`h-1 rounded-full transition-all duration-300 ${

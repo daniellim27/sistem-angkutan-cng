@@ -34,6 +34,9 @@ import ServiceManagementPage from "./pages/ServiceManagement";
 import ServiceCreatePage from "./pages/ServiceCreate";
 import ServiceDetailPage from "./pages/ServiceDetail";
 import ServiceEditPage from "./pages/ServiceEdit";
+import CustomerManagement from "./pages/CustomerManagement";
+import NotaBesarManagement from "./pages/NotaBesarManagement";
+import NotaKecilManagement from "./pages/NotaKecilManagement";
 import RitaseDashboard from "./pages/Ritase/RitaseDashboard";
 // Removed POPaymentDetail - payment aggregation is now DO-based
 import DOPaymentManagement from "./pages/Ritase/DOPaymentManagement";
@@ -106,6 +109,11 @@ function App() {
           <Route path="drivers" element={<DriversPage />} />
           <Route path="drivers/create" element={<DriverCreatePage />} />
           <Route path="drivers/edit/:id" element={<DriverEditPage />} />
+
+          {/* Customer Management Routes */}
+          <Route path="customers" element={<CustomerManagement />} />
+          <Route path="customers/:customerId/nota-besar" element={<NotaBesarManagement />} />
+          <Route path="customers/:customerId/nota-kecil" element={<NotaKecilManagement />} />
 
           {/* Trips Routes - PO routes removed, DOs are now standalone */}
           <Route path="trips" element={<TripsPage />} />
