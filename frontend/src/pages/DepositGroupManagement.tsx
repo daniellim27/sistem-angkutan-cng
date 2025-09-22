@@ -133,8 +133,8 @@ const DepositGroupManagement = () => {
     try {
       setLoadingDriversVehicles(true);
       const [driversRes, vehiclesRes, gasStationsRes, customersRes] = await Promise.all([
-        apiClient.get('/users?role=driver'),
-        apiClient.get('/vehicles'),
+        apiClient.get('/users?role=driver&status=available'),
+        apiClient.get('/vehicles?status=available'),
         GasStationApi.getAllGasStations(),
         apiClient.get('/customers/locations')
       ]);
@@ -733,6 +733,9 @@ const DepositGroupManagement = () => {
                         </option>
                       ))}
                     </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Only drivers with 'available' status are shown. Drivers with 'busy' or 'on leave' status are automatically filtered out by the system.
+                    </p>
                   </div>
 
                   {/* Vehicle */}
@@ -753,6 +756,9 @@ const DepositGroupManagement = () => {
                         </option>
                       ))}
                     </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Only vehicles with 'available' status are shown. Vehicles with 'in use' or 'maintenance' status are automatically filtered out by the system.
+                    </p>
                   </div>
 
 

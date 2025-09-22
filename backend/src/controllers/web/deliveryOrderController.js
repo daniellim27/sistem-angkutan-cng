@@ -326,6 +326,12 @@ exports.createDeliveryOrder = async (req, res, next) => {
       { where: { id: vehicle_id }, transaction }
     );
 
+    // Update driver status to busy
+    await DriverProfile.update(
+      { status: "busy" },
+      { where: { user_id: driver_id }, transaction }
+    );
+
     // Enhanced push notification handling (from incoming)
     const driverUser = await User.findOne({
       where: { id: driver_id },

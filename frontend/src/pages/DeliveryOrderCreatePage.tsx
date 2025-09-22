@@ -89,8 +89,8 @@ const DeliveryOrderCreatePage = () => {
     try {
       setLoading(true);
       const [driversRes, vehiclesRes, customersRes, gasStationsRes, spbgRes] = await Promise.all([
-        apiClient.get('/users?role=driver'),
-        apiClient.get('/vehicles'),
+        apiClient.get('/users?role=driver&status=available'),
+        apiClient.get('/vehicles?status=available'),
         apiClient.get('/customers/locations'),
         GasStationApi.getAllGasStations(),
         apiClient.get('/deposit-groups')
@@ -440,10 +440,13 @@ const DeliveryOrderCreatePage = () => {
                 <option value="">Select Driver</option>
                 {drivers.map((driver: any) => (
                   <option key={driver.id} value={driver.id}>
-                    {driver.driverProfile?.full_name || driver.username}
+                    {driver.driverProfile?.full_name || driver.full_name || driver.username}
                   </option>
                 ))}
               </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Only drivers with 'available' status are shown. Drivers with 'busy' or 'on leave' status are automatically filtered out by the system.
+              </p>
             </div>
 
             <div>
@@ -464,6 +467,9 @@ const DeliveryOrderCreatePage = () => {
                   </option>
                 ))}
               </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Only vehicles with 'available' status are shown. Vehicles with 'in use' or 'maintenance' status are automatically filtered out by the system.
+              </p>
             </div>
 
             <div>

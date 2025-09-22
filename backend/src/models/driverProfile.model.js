@@ -121,8 +121,8 @@ module.exports = (sequelize) => {
       defaultValue: 'available',
       validate: {
         isIn: {
-          args: [['available', 'busy']],
-          msg: 'Status must be either available or busy'
+          args: [['available', 'busy', 'on_leave']],
+          msg: 'Status must be one of: available, busy, or on_leave'
         }
       }
     },
@@ -180,12 +180,24 @@ module.exports = (sequelize) => {
     return this.status === 'available';
   };
 
+  DriverProfile.prototype.isBusy = function() {
+    return this.status === 'busy';
+  };
+
+  DriverProfile.prototype.isOnLeave = function() {
+    return this.status === 'on_leave';
+  };
+
   DriverProfile.prototype.setBusy = function() {
     return this.update({ status: 'busy' });
   };
 
   DriverProfile.prototype.setAvailable = function() {
     return this.update({ status: 'available' });
+  };
+
+  DriverProfile.prototype.setOnLeave = function() {
+    return this.update({ status: 'on_leave' });
   };
 
   DriverProfile.prototype.getFormattedPhone = function() {
