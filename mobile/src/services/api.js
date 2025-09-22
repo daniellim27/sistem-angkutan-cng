@@ -9,7 +9,7 @@ import Constants from 'expo-constants';
 // Try to get API URL from environment or app config
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 
                      Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL || 
-                     'http://172.20.10.3:3000/api';
+                     'http://192.168.1.202:3000/api';
 
 // Create a dedicated axios instance
 const apiClient = axios.create({
@@ -709,37 +709,6 @@ export const processIndividualPhotoOCR = async (doId, photoType, customerLocatio
       stack: error.stack,
       response: error.response?.data,
     });
-    throw error;
-  }
-};
-
-// === GAS STATION SERVICES ===
-export const getAllGasStations = async () => {
-  try {
-    const response = await apiClient.get('/gas-stations');
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching gas stations:', error);
-    throw error;
-  }
-};
-
-export const getGasStationById = async (id) => {
-  try {
-    const response = await apiClient.get(`/gas-stations/${id}`);
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching gas station:', error);
-    throw error;
-  }
-};
-
-export const searchGasStations = async (params) => {
-  try {
-    const response = await apiClient.get('/gas-stations/search', { params });
-    return response.data;
-  } catch (error) {
-    console.error('Error searching gas stations:', error);
     throw error;
   }
 };

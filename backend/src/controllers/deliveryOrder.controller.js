@@ -554,13 +554,13 @@ exports.startToDestination = (req, res, next) => {
     req.params.id,
     req.user.id,
     "otw_to_unload_location", // ✅ Start journey to unload location
-    "departed_from_spbu_at" // ✅ Updated timestamp field for new workflow
+    "departed_to_load_location_at" // ✅ Update field timestamp baru
   )
     .then((order) =>
       res.json({
-        message: "Status updated to OTW to Unload Location",
+        message: "Status updated to OTW to SPBU Location",
         order,
-        status_text: "Menuju Lokasi Unload",
+        status_text: "Menuju SPBU",
       })
     )
     .catch(next);
@@ -1069,17 +1069,13 @@ const updateStatus = async (orderId, driverId, newStatus, timestampField) => {
       throw { status: 404, message: "Delivery Order tidak ditemukan." };
     }
 
-    // Status validation mapping - Updated for simplified workflow
+    // Status validation mapping
     const validTransitions = {
-      at_spbu: ["otw_to_unload_location"],
+      assigned: ["otw_to_load_location"],
       otw_to_unload_location: ["at_unload_location"],
       at_unload_location: ["completed"],
       completed: [],
       cancelled: [],
-      // Legacy support for old statuses that might still exist
-      assigned: ["otw_to_unload_location", "at_spbu"],
-      otw_to_load_location: ["otw_to_unload_location", "at_spbu"],
-      at_load_location: ["otw_to_unload_location", "at_spbu"],
     };
 
     const allowedTransitions = validTransitions[order.status] || [];

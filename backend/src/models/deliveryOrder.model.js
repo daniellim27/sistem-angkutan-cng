@@ -231,14 +231,17 @@ module.exports = (sequelize) => {
       // === STATUS ===
       status: {
         type: DataTypes.ENUM(
-          "at_spbu",
+          "assigned",
+          "otw_to_load_location",
+          "at_load_location",
           "otw_to_unload_location",
           "at_unload_location",
+          "otw_to_base",
           "completed",
           "cancelled"
         ),
         allowNull: false,
-        defaultValue: "at_spbu",
+        defaultValue: "assigned",
       },
 
       // === TIMESTAMPS ===
@@ -247,7 +250,9 @@ module.exports = (sequelize) => {
         field: "created_at",
         defaultValue: Sequelize.NOW,
       },
-      departed_from_spbu_at: { type: DataTypes.DATE },
+      departed_to_load_location_at: { type: DataTypes.DATE },
+      arrived_at_load_location_at: { type: DataTypes.DATE },
+      departed_from_load_location_at: { type: DataTypes.DATE },
       arrived_at_unload_location_at: { type: DataTypes.DATE },
       departed_from_unload_location_at: { type: DataTypes.DATE },
       completed_at: { type: DataTypes.DATE },
