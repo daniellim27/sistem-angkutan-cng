@@ -88,26 +88,26 @@ const EditDeliveryOrder: React.FC = () => {
     return spbgLocations.find(loc => loc.value === value)?.label || value;
   };
 
-  // Auto-calculate gas filling cost when gas-related fields change
-  const calculateGasFillingCost = (formData: any): number => {
-    const volume = parseFloat(formData.gas_volume_m3);
-    if (!volume) return 0;
+  // Auto-calculate gas volume when gas filling cost changes
+  const calculateGasVolume = (formData: any): number => {
+    const cost = parseFloat(formData.gas_filling_cost);
+    if (!cost) return 0;
 
-    let cost = 0;
+    let volume = 0;
     if (formData.calculation_method === 'jisdor') {
       // Use current JISDOR rate if available, otherwise use the manually entered rate
       const jisdorRate = formData.jisdor_rate ? parseFloat(formData.jisdor_rate) : currentJisdorRate;
       if (jisdorRate && !isNaN(jisdorRate)) {
-        // Formula: (volume/27.27) * 12.7 * jisdor_rate
-        // Round to 2 decimal places to avoid precision issues
-        cost = Math.round((volume / 27.27) * 12.7 * jisdorRate * 100) / 100;
+        // Reverse formula: cost / ((1/27.27) * 12.7 * jisdor_rate)
+        // Simplified: cost / (12.7 * jisdor_rate / 27.27)
+        volume = cost / (12.7 * jisdorRate / 27.27);
       }
     } else if (formData.calculation_method === 'fixed') {
       // Fixed rate: 7800 IDR per m³
-      cost = Math.round(volume * 7800 * 100) / 100;
+      volume = cost / 7800;
     }
 
-    return cost;
+    return Math.round(volume * 100) / 100; // Round to 2 decimal places
   };
 
   // Location management functions
@@ -256,9 +256,9 @@ const EditDeliveryOrder: React.FC = () => {
     if (currentJisdorRate && formData.calculation_method === 'jisdor' && !formData.jisdor_rate) {
       setFormData(prev => ({ ...prev, jisdor_rate: currentJisdorRate }));
     }
-    if (formData.gas_volume_m3) {
-      const newCost = calculateGasFillingCost(formData);
-      setFormData(prev => ({ ...prev, gas_filling_cost: newCost }));
+    if (formData.gas_filling_cost) {
+      const newVolume = calculateGasVolume(formData);
+      setFormData(prev => ({ ...prev, gas_volume_m3: newVolume }));
     }
   }, [currentJisdorRate]);
 
@@ -378,9 +378,9 @@ const EditDeliveryOrder: React.FC = () => {
         newFormData.jisdor_rate = currentJisdorRate;
       }
 
-      // Auto-calculate gas filling cost when gas-related fields change
-      if (name === 'gas_volume_m3' || name === 'calculation_method' || name === 'jisdor_rate') {
-        newFormData.gas_filling_cost = calculateGasFillingCost(newFormData);
+      // Auto-calculate gas volume when gas filling cost changes
+      if (name === 'gas_filling_cost' || name === 'calculation_method' || name === 'jisdor_rate') {
+        newFormData.gas_volume_m3 = calculateGasVolume(newFormData);
       }
 
       // Ensure gas filling cost is properly formatted if manually entered
@@ -660,20 +660,20 @@ const EditDeliveryOrder: React.FC = () => {
           </h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Gas Volume (m³) */}
+            {/* Gas Volume (m³) - Calculated */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Gas Volume (m³)
+                Calculated Gas Volume (m³)
               </label>
               <input
                 type="number"
                 name="gas_volume_m3"
                 value={formData.gas_volume_m3}
-                onChange={handleInputChange}
+                readOnly
                 step="0.01"
                 min="0"
-                placeholder="100.00"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Auto-calculated"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-600"
               />
             </div>
 
@@ -763,7 +763,7 @@ const EditDeliveryOrder: React.FC = () => {
             {/* Gas Filling Cost */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Gas Filling Cost (IDR)
+                Gas Filling Cost (IDR) *
               </label>
               <input
                 type="number"
@@ -773,14 +773,12 @@ const EditDeliveryOrder: React.FC = () => {
                 step="0.01"
                 min="0"
                 max="999999999"
-                placeholder="Calculated automatically"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-blue-100 font-medium"
+                placeholder="Enter gas filling cost"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
               />
               <p className="text-xs text-gray-500 mt-1">
-                {formData.calculation_method === 'jisdor' 
-                  ? 'Formula: (Volume/27.27) × 12.7 × JISDOR Rate'
-                  : 'Fixed Rate: 7,800 IDR per m³'
-                }
+                Enter the total cost for gas filling
               </p>
             </div>
           </div>

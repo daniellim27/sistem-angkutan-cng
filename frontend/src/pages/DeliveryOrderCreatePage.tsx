@@ -80,7 +80,7 @@ const DeliveryOrderCreatePage = () => {
     if (currentJisdorRate && formData.calculation_method === 'jisdor' && !formData.jisdor_rate) {
       setFormData(prev => ({ ...prev, jisdor_rate: currentJisdorRate.toString() }));
     }
-    calculateGasFillingCost();
+    calculateGasVolume();
   }, [currentJisdorRate]);
 
   const fetchDriversVehiclesAndCustomers = async () => {
@@ -166,9 +166,9 @@ const DeliveryOrderCreatePage = () => {
       }
     }
 
-    // Auto-calculate gas filling cost when volume changes
-    if (name === 'gas_volume_m3' || name === 'calculation_method' || name === 'jisdor_rate') {
-      calculateGasFillingCost();
+    // Auto-calculate gas volume when cost changes
+    if (name === 'gas_filling_cost' || name === 'calculation_method' || name === 'jisdor_rate') {
+      calculateGasVolume();
     }
   };
 
@@ -268,29 +268,30 @@ const DeliveryOrderCreatePage = () => {
     });
   };
 
-  const calculateGasFillingCost = () => {
-    const volume = parseFloat(formData.gas_volume_m3);
-    if (!volume) {
-      setFormData(prev => ({ ...prev, gas_filling_cost: '' }));
+  const calculateGasVolume = () => {
+    const cost = parseFloat(formData.gas_filling_cost);
+    if (!cost) {
+      setFormData(prev => ({ ...prev, gas_volume_m3: '' }));
       return;
     }
 
-    let cost = 0;
+    let volume = 0;
     if (formData.calculation_method === 'jisdor') {
       // Use current JISDOR rate if available, otherwise use the manually entered rate
       const jisdorRate = formData.jisdor_rate ? parseFloat(formData.jisdor_rate) : currentJisdorRate;
       if (jisdorRate && !isNaN(jisdorRate)) {
-        // Formula: (volume/27.27) * 12.7 * jisdor_rate
-        cost = (volume / 27.27) * 12.7 * jisdorRate;
+        // Reverse formula: cost / ((1/27.27) * 12.7 * jisdor_rate)
+        // Simplified: cost / (12.7 * jisdor_rate / 27.27)
+        volume = cost / (12.7 * jisdorRate / 27.27);
       }
     } else if (formData.calculation_method === 'fixed') {
       // Fixed rate: 7800 IDR per m³
-      cost = volume * 7800;
+      volume = cost / 7800;
     }
 
     setFormData(prev => ({ 
       ...prev, 
-      gas_filling_cost: cost > 0 ? cost.toString() : ''
+      gas_volume_m3: volume > 0 ? volume.toFixed(2) : ''
     }));
   };
 
@@ -613,17 +614,32 @@ const DeliveryOrderCreatePage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Gas Volume (m³) *
+                Gas Filling Cost (IDR) *
+              </label>
+              <input
+                type="number"
+                name="gas_filling_cost"
+                value={formData.gas_filling_cost}
+                onChange={handleInputChange}
+                step="0.01"
+                placeholder="Enter gas filling cost"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">Enter the total cost for gas filling</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Calculated Gas Volume (m³)
               </label>
               <input
                 type="number"
                 name="gas_volume_m3"
                 value={formData.gas_volume_m3}
-                onChange={handleInputChange}
-                step="0.01"
-                placeholder="Enter gas volume"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
+                readOnly
+                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-600"
+                placeholder="Auto-calculated"
               />
               <p className="text-xs text-gray-500 mt-1">This will be used as the actual load quantity</p>
             </div>

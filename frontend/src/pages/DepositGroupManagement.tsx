@@ -115,10 +115,10 @@ const DepositGroupManagement = () => {
     initializeData();
   }, []);
 
-  // Auto-calculate gas filling cost when relevant fields change
+  // Auto-calculate gas volume when relevant fields change
   useEffect(() => {
-    calculateGasFillingCost();
-  }, [doFormData.gas_volume_m3, doFormData.calculation_method, doFormData.jisdor_rate, currentJisdorRate]);
+    calculateGasVolume();
+  }, [doFormData.gas_filling_cost, doFormData.calculation_method, doFormData.jisdor_rate, currentJisdorRate]);
 
   const fetchDriversAndVehicles = async () => {
     try {
@@ -399,30 +399,31 @@ const DepositGroupManagement = () => {
     });
   };
 
-  // Auto-calculate gas filling cost when gas-related fields change
-  const calculateGasFillingCost = () => {
-    const volume = parseFloat(doFormData.gas_volume_m3);
-    if (!volume) {
-      setDOFormData(prev => ({ ...prev, gas_filling_cost: '' }));
+  // Auto-calculate gas volume when gas filling cost changes
+  const calculateGasVolume = () => {
+    const cost = parseFloat(doFormData.gas_filling_cost);
+    if (!cost) {
+      setDOFormData(prev => ({ ...prev, gas_volume_m3: '' }));
       return;
     }
 
-    let cost = 0;
+    let volume = 0;
     if (doFormData.calculation_method === 'jisdor') {
       // Use current JISDOR rate if available, otherwise use the manually entered rate
       const jisdorRate = doFormData.jisdor_rate ? parseFloat(doFormData.jisdor_rate) : currentJisdorRate;
       if (jisdorRate && !isNaN(jisdorRate)) {
-        // Formula: (volume/27.27) * 12.7 * jisdor_rate
-        cost = (volume / 27.27) * 12.7 * jisdorRate;
+        // Reverse formula: cost / ((1/27.27) * 12.7 * jisdor_rate)
+        // Simplified: cost / (12.7 * jisdor_rate / 27.27)
+        volume = cost / (12.7 * jisdorRate / 27.27);
       }
     } else if (doFormData.calculation_method === 'fixed') {
       // Fixed rate: 7800 IDR per m³
-      cost = volume * 7800;
+      volume = cost / 7800;
     }
 
     setDOFormData(prev => ({ 
       ...prev, 
-      gas_filling_cost: cost > 0 ? cost.toString() : ''
+      gas_volume_m3: volume > 0 ? volume.toFixed(2) : ''
     }));
   };
 
@@ -925,17 +926,16 @@ const DepositGroupManagement = () => {
                   {/* Gas Volume */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Gas Volume (m³) *
+                      Calculated Gas Volume (m³)
                     </label>
                     <input
                       type="number"
                       value={doFormData.gas_volume_m3}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, gas_volume_m3: e.target.value }))}
-                      placeholder="Enter gas volume"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      readOnly
+                      placeholder="Auto-calculated"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-600"
                       min="0"
                       step="0.01"
-                      required
                     />
                     <p className="text-xs text-gray-500 mt-1">This will be used as the actual load quantity</p>
                   </div>
@@ -1009,18 +1009,14 @@ const DepositGroupManagement = () => {
                       type="number"
                       value={doFormData.gas_filling_cost}
                       onChange={(e) => setDOFormData(prev => ({ ...prev, gas_filling_cost: e.target.value }))}
-                      placeholder="Automatically calculated"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                      placeholder="Enter gas filling cost"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       min="0"
                       step="0.01"
                       required
-                      readOnly
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      {doFormData.calculation_method === 'jisdor' 
-                        ? `Formula: (${doFormData.gas_volume_m3 || 'volume'}/27.27) × 12.7 × ${doFormData.jisdor_rate || 'jisdor_rate'}`
-                        : `Formula: ${doFormData.gas_volume_m3 || 'volume'} × 7,800 IDR/m³`
-                      }
+                      Enter the total cost for gas filling
                     </p>
                   </div>
 
