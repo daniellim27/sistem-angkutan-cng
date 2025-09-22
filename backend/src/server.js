@@ -51,7 +51,6 @@ const healthRoutes = require("./routes/health.routes");
 const authRoutes = require("./routes/auth.routes");
 const purchaseOrderRoutes = require("./routes/purchaseOrder.routes");
 const deliveryOrderRoutes = require("./routes/deliveryOrder.routes");
-const bigDeliveryOrderRoutes = require("./routes/bigDeliveryOrder.routes");
 const userRoutes = require("./routes/user.routes");
 const driverExpenseRoutes = require("./routes/driverExpense.routes");
 const instantBudgetRequestRoutes = require("./routes/instantBudgetRequest.routes");
@@ -67,7 +66,6 @@ const webExchangeRateRoutes = require("./routes/web/exchangeRates.routes");
 // === Import Web Routes (NEW) ===
 const webPurchaseOrderRoutes = require("./routes/web/purchaseOrder.routes");
 const webDeliveryOrderRoutes = require("./routes/web/deliveryOrder.routes");
-const webBigDeliveryOrderRoutes = require("./routes/web/bigDeliveryOrder.routes");
 const webVehicleRoutes = require("./routes/web/vehicle.routes");
 const webDriverRoutes = require("./routes/web/driver.routes");
 const webUserRoutes = require("./routes/web/user.routes");
@@ -147,7 +145,6 @@ initializeDatabase().then(() => {
         web: {
           purchase_orders: "/api/web/purchase-orders",
           delivery_orders: "/api/web/delivery-orders",
-          big_delivery_orders: "/api/web/big-delivery-orders",
           vehicles: "/api/web/vehicles",
           users: "/api/web/users",
           stock: "/api/web/stock",
@@ -176,7 +173,6 @@ initializeDatabase().then(() => {
   app.use("/api/vehicles", vehicleRoutes);
   app.use("/api/purchase-orders", purchaseOrderRoutes);
   app.use("/api/delivery-orders", deliveryOrderRoutes);
-  app.use("/api/big-delivery-orders", bigDeliveryOrderRoutes);
   app.use("/api/driver-expenses", driverExpenseRoutes);
   app.use("/api/budget-requests", instantBudgetRequestRoutes);
   app.use("/api/drivers", driverRoutes);
@@ -189,7 +185,6 @@ initializeDatabase().then(() => {
   // === New Web Routes (ADDED) ===
   app.use("/api/web/purchase-orders", webPurchaseOrderRoutes);
   app.use("/api/web/delivery-orders", webDeliveryOrderRoutes);
-  app.use("/api/web/big-delivery-orders", webBigDeliveryOrderRoutes);
   app.use("/api/web/vehicles", webVehicleRoutes);
   app.use("/api/web/drivers", webDriverRoutes);
   app.use("/api/web/users", webUserRoutes);

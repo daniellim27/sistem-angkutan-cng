@@ -9,8 +9,7 @@ interface DeliveryOrder {
   standalone_po_number?: string;
   customer_name: string;
   item_name: string;
-  minimal_load_quantity: number;
-  actual_load_quantity?: number;
+  actual_load_quantity?: number | null;
   unit: string;
   unit_price?: number;
   status: string;
@@ -165,22 +164,12 @@ const TrackingDeliveryCard: React.FC<TrackingDeliveryCardProps> = ({ deliveryOrd
 
         {/* Quantity Information */}
         <div className="border border-gray-200 rounded-lg p-3">
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-500">Target Quantity:</span>
-            <span className="text-sm font-medium text-gray-900">
-              {deliveryOrder.minimal_load_quantity.toLocaleString()} {unitDisplay}
-            </span>
-          </div>
           
           {deliveryOrder.actual_load_quantity && (
-            <div className="flex justify-between items-center mt-1">
+            <div className="flex justify-between items-center">
               <span className="text-sm text-gray-500">Actual Quantity:</span>
-              <span className={`text-sm font-medium ${
-                deliveryOrder.actual_load_quantity >= deliveryOrder.minimal_load_quantity 
-                  ? 'text-green-600' 
-                  : 'text-orange-600'
-              }`}>
-                {deliveryOrder.actual_load_quantity.toLocaleString()} {unitDisplay}
+              <span className="text-sm font-medium text-gray-900">
+                {(deliveryOrder.actual_load_quantity ?? 0).toLocaleString()} {unitDisplay}
               </span>
             </div>
           )}

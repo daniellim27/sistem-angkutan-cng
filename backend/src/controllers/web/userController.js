@@ -115,7 +115,7 @@ exports.getUsers = async (req, res, next) => {
 // Get available drivers (not assigned to any active delivery)
 exports.getAvailableDrivers = async (req, res, next) => {
   try {
-    const { DeliveryOrder, BigDeliveryOrder } = require("../../models");
+    const { DeliveryOrder } = require("../../models"). 
     
     // Find drivers who are not currently assigned to active deliveries
     const activeDeliveries = await DeliveryOrder.findAll({
@@ -132,19 +132,9 @@ exports.getAvailableDrivers = async (req, res, next) => {
       raw: true
     });
 
-    const activeBigDeliveries = await BigDeliveryOrder.findAll({
-      where: {
-        status: {
-          [Op.in]: ["assigned", "in_progress"]
-        }
-      },
-      attributes: ["driver_id"],
-      raw: true
-    });
 
     const busyDriverIds = [
-      ...activeDeliveries.map(d => d.driver_id),
-      ...activeBigDeliveries.map(d => d.driver_id)
+      ...activeDeliveries.map(d => d.driver_id)
     ].filter(Boolean);
 
     let driverWhereClause = { role: "driver" };

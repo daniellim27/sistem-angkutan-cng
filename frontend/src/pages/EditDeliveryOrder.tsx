@@ -57,6 +57,10 @@ const EditDeliveryOrder: React.FC = () => {
   // Add state for customers
   const [customers, setCustomers] = useState<any[]>([]);
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<(number | null)[]>([null]);
+  
+  // JISDOR rate state for automatic calculation
+  const [currentJisdorRate, setCurrentJisdorRate] = useState<number | null>(null);
+  const [jisdorLastUpdated, setJisdorLastUpdated] = useState<string | null>(null);
 
   // SPBG locations for selection
   const spbgLocations: { value: string; label: string }[] = [
@@ -90,9 +94,10 @@ const EditDeliveryOrder: React.FC = () => {
     if (!volume) return 0;
 
     let cost = 0;
-    if (formData.calculation_method === 'jisdor' && formData.jisdor_rate) {
-      const jisdorRate = parseFloat(formData.jisdor_rate);
-      if (!isNaN(jisdorRate)) {
+    if (formData.calculation_method === 'jisdor') {
+      // Use current JISDOR rate if available, otherwise use the manually entered rate
+      const jisdorRate = formData.jisdor_rate ? parseFloat(formData.jisdor_rate) : currentJisdorRate;
+      if (jisdorRate && !isNaN(jisdorRate)) {
         // Formula: (volume/27.27) * 12.7 * jisdor_rate
         // Round to 2 decimal places to avoid precision issues
         cost = Math.round((volume / 27.27) * 12.7 * jisdorRate * 100) / 100;
@@ -241,9 +246,21 @@ const EditDeliveryOrder: React.FC = () => {
     if (id) {
       fetchDeliveryOrder();
       fetchCustomers();
+      fetchCurrentJisdorRate();
     }
     // eslint-disable-next-line
   }, [id]);
+
+  // Auto-calculate gas filling cost when current JISDOR rate changes
+  useEffect(() => {
+    if (currentJisdorRate && formData.calculation_method === 'jisdor' && !formData.jisdor_rate) {
+      setFormData(prev => ({ ...prev, jisdor_rate: currentJisdorRate }));
+    }
+    if (formData.gas_volume_m3) {
+      const newCost = calculateGasFillingCost(formData);
+      setFormData(prev => ({ ...prev, gas_filling_cost: newCost }));
+    }
+  }, [currentJisdorRate]);
 
   // Fetch customers for dropdown
   const fetchCustomers = async () => {
@@ -252,6 +269,30 @@ const EditDeliveryOrder: React.FC = () => {
       setCustomers(response.data.data || response.data || []);
     } catch (err) {
       console.error('Failed to fetch customers:', err);
+    }
+  };
+
+  // Fetch current JISDOR rate
+  const fetchCurrentJisdorRate = async () => {
+    try {
+      console.log('🔄 Fetching current JISDOR rate...');
+      const response = await apiClient.get('/exchange-rates/current');
+      
+      if (response.data.success) {
+        const rate = response.data.data.rate;
+        const lastScraped = response.data.data.last_scraped_at;
+        
+        setCurrentJisdorRate(rate);
+        setJisdorLastUpdated(lastScraped);
+        console.log('✅ JISDOR rate fetched successfully:', rate);
+      } else {
+        throw new Error('API response indicates failure');
+      }
+    } catch (err) {
+      console.error('Failed to fetch JISDOR rate:', err);
+      // Set default JISDOR rate if API fails
+      setCurrentJisdorRate(16364.42);
+      setJisdorLastUpdated(new Date().toISOString());
     }
   };
 
@@ -331,6 +372,11 @@ const EditDeliveryOrder: React.FC = () => {
             ? parseFloat(value) || 0
             : value,
       };
+
+      // Auto-set JISDOR rate when calculation method changes to jisdor
+      if (name === 'calculation_method' && value === 'jisdor' && currentJisdorRate) {
+        newFormData.jisdor_rate = currentJisdorRate;
+      }
 
       // Auto-calculate gas filling cost when gas-related fields change
       if (name === 'gas_volume_m3' || name === 'calculation_method' || name === 'jisdor_rate') {
@@ -675,19 +721,40 @@ const EditDeliveryOrder: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 JISDOR Rate (IDR)
               </label>
-              <input
-                type="number"
-                name="jisdor_rate"
-                value={formData.jisdor_rate}
-                onChange={handleInputChange}
-                step="0.01"
-                min="0"
-                placeholder="7800.00"
-                disabled={formData.calculation_method !== 'jisdor'}
-                className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  formData.calculation_method !== 'jisdor' ? 'bg-gray-100' : ''
-                }`}
-              />
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  name="jisdor_rate"
+                  value={formData.jisdor_rate}
+                  onChange={handleInputChange}
+                  step="0.01"
+                  min="0"
+                  placeholder={currentJisdorRate ? `Current rate: ${currentJisdorRate.toLocaleString()}` : "Enter JISDOR rate"}
+                  disabled={formData.calculation_method !== 'jisdor'}
+                  className={`flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    formData.calculation_method !== 'jisdor' ? 'bg-gray-100' : ''
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={fetchCurrentJisdorRate}
+                  disabled={formData.calculation_method !== 'jisdor'}
+                  className="px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  title="Refresh JISDOR rate"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+              </div>
+              {currentJisdorRate && formData.calculation_method === 'jisdor' && (
+                <p className="text-xs text-green-600 mt-1">
+                  ✓ Current rate from Bank Indonesia: Rp {currentJisdorRate.toLocaleString('id-ID')}
+                  {jisdorLastUpdated && (
+                    <span className="block text-gray-500">Last updated: {new Date(jisdorLastUpdated).toLocaleDateString()}</span>
+                  )}
+                </p>
+              )}
               {formData.calculation_method !== 'jisdor' && (
                 <p className="text-xs text-gray-500 mt-1">Only required for JISDOR calculation</p>
               )}

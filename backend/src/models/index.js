@@ -9,8 +9,6 @@ const setupDriverProfileModel = require("./driverProfile.model");
 const setupAdminProfileModel = require("./adminProfile.model");
 const setupPurchaseOrderModel = require("./purchaseOrder.model");
 const setupDeliveryOrderModel = require("./deliveryOrder.model");
-const setupBigDeliveryOrderModel = require("./bigDeliveryOrder.model");
-const setupBigDoTambahanModel = require("./bigDoTambahan.model");
 const setupDriverExpenseModel = require("./driverExpense.model");
 const setupVehicleServiceModel = require("./vehicleService.model");
 // NEW: Stock and Service Management Models
@@ -98,8 +96,6 @@ db.DriverProfile = setupDriverProfileModel(sequelize);
 db.AdminProfile = setupAdminProfileModel(sequelize);
 db.PurchaseOrder = setupPurchaseOrderModel(sequelize);
 db.DeliveryOrder = setupDeliveryOrderModel(sequelize);
-db.BigDeliveryOrder = setupBigDeliveryOrderModel(sequelize);
-db.BigDoTambahan = setupBigDoTambahanModel(sequelize);
 db.DriverExpense = setupDriverExpenseModel(sequelize);
 db.VehicleService = setupVehicleServiceModel(sequelize);
 
@@ -165,8 +161,6 @@ const {
   AdminProfile,
   PurchaseOrder,
   DeliveryOrder,
-  BigDeliveryOrder,
-  BigDoTambahan,
   Vehicle,
   DriverExpense,
   VehicleService,
@@ -404,38 +398,6 @@ User.hasMany(DeliveryOrderPaymentHistory, {
   as: "paymentHistoryChanges",
 });
 
-// BIG DO ASSOCIATIONS
-BigDeliveryOrder.belongsTo(DeliveryOrder, {
-  foreignKey: "main_delivery_order_id",
-  as: "mainDeliveryOrder",
-});
-
-BigDeliveryOrder.belongsTo(User, {
-  foreignKey: "driver_id",
-  as: "driver",
-});
-
-BigDeliveryOrder.belongsTo(Vehicle, {
-  foreignKey: "vehicle_id",
-  as: "vehicle",
-});
-
-BigDeliveryOrder.hasMany(BigDoTambahan, {
-  foreignKey: "big_delivery_order_id",
-  as: "tambahan",
-});
-
-// Tambahan associations
-BigDoTambahan.belongsTo(BigDeliveryOrder, {
-  foreignKey: "big_delivery_order_id",
-  as: "bigDeliveryOrder",
-});
-
-// Enhanced DO associations (NEW)
-DeliveryOrder.hasOne(BigDeliveryOrder, {
-  foreignKey: "main_delivery_order_id",
-  as: "bigDeliveryOrderAsMain",
-});
 
 // Invoice to Payments relationship
 DeliveryOrderInvoices.hasMany(DeliveryOrderPayments, {

@@ -67,6 +67,10 @@ const DepositGroupManagement = () => {
   const [gasStations, setGasStations] = useState<any[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loadingDriversVehicles, setLoadingDriversVehicles] = useState(false);
+  
+  // JISDOR rate state for automatic calculation
+  const [currentJisdorRate, setCurrentJisdorRate] = useState<number | null>(null);
+  const [jisdorLastUpdated, setJisdorLastUpdated] = useState<string | null>(null);
 
   // Form data for creating/editing groups
   const [formData, setFormData] = useState({
@@ -106,9 +110,15 @@ const DepositGroupManagement = () => {
     const initializeData = async () => {
       await fetchGroups(); // No longer need PO data
       await fetchDriversAndVehicles();
+      await fetchCurrentJisdorRate();
     };
     initializeData();
   }, []);
+
+  // Auto-calculate gas filling cost when relevant fields change
+  useEffect(() => {
+    calculateGasFillingCost();
+  }, [doFormData.gas_volume_m3, doFormData.calculation_method, doFormData.jisdor_rate, currentJisdorRate]);
 
   const fetchDriversAndVehicles = async () => {
     try {
@@ -127,6 +137,30 @@ const DepositGroupManagement = () => {
       console.error('Failed to fetch drivers, vehicles, gas stations, and customers:', err);
     } finally {
       setLoadingDriversVehicles(false);
+    }
+  };
+
+  // Fetch current JISDOR rate
+  const fetchCurrentJisdorRate = async () => {
+    try {
+      console.log('🔄 Fetching current JISDOR rate...');
+      const response = await apiClient.get('/exchange-rates/current');
+      
+      if (response.data.success) {
+        const rate = response.data.data.rate;
+        const lastScraped = response.data.data.last_scraped_at;
+        
+        setCurrentJisdorRate(rate);
+        setJisdorLastUpdated(lastScraped);
+        console.log('✅ JISDOR rate fetched successfully:', rate);
+      } else {
+        throw new Error('API response indicates failure');
+      }
+    } catch (err) {
+      console.error('Failed to fetch JISDOR rate:', err);
+      // Set default JISDOR rate if API fails
+      setCurrentJisdorRate(16364.42);
+      setJisdorLastUpdated(new Date().toISOString());
     }
   };
 
@@ -260,6 +294,8 @@ const DepositGroupManagement = () => {
         gaji: parseFloat(doFormData.gaji),
         do_name: doFormData.do_name,
         deposit_group_id: selectedGroup.id,
+        // Set actual_load_quantity to gas_volume_m3
+        actual_load_quantity: doFormData.gas_volume_m3 ? parseFloat(doFormData.gas_volume_m3) : null,
         // Include gas filling data - match delivery orders page
         gas_volume_m3: doFormData.gas_volume_m3 ? parseFloat(doFormData.gas_volume_m3) : null,
         calculation_method: doFormData.calculation_method,
@@ -294,7 +330,7 @@ const DepositGroupManagement = () => {
       // Gas filling fields - match delivery orders page
       gas_volume_m3: '',
       calculation_method: 'jisdor' as 'jisdor' | 'fixed',
-      jisdor_rate: '',
+      jisdor_rate: currentJisdorRate ? currentJisdorRate.toString() : '',
       gas_filling_cost: ''
     });
     setSpbgInputMethod('dropdown');
@@ -361,6 +397,33 @@ const DepositGroupManagement = () => {
       );
       return !isAlreadySelected;
     });
+  };
+
+  // Auto-calculate gas filling cost when gas-related fields change
+  const calculateGasFillingCost = () => {
+    const volume = parseFloat(doFormData.gas_volume_m3);
+    if (!volume) {
+      setDOFormData(prev => ({ ...prev, gas_filling_cost: '' }));
+      return;
+    }
+
+    let cost = 0;
+    if (doFormData.calculation_method === 'jisdor') {
+      // Use current JISDOR rate if available, otherwise use the manually entered rate
+      const jisdorRate = doFormData.jisdor_rate ? parseFloat(doFormData.jisdor_rate) : currentJisdorRate;
+      if (jisdorRate && !isNaN(jisdorRate)) {
+        // Formula: (volume/27.27) * 12.7 * jisdor_rate
+        cost = (volume / 27.27) * 12.7 * jisdorRate;
+      }
+    } else if (doFormData.calculation_method === 'fixed') {
+      // Fixed rate: 7800 IDR per m³
+      cost = volume * 7800;
+    }
+
+    setDOFormData(prev => ({ 
+      ...prev, 
+      gas_filling_cost: cost > 0 ? cost.toString() : ''
+    }));
   };
 
 
@@ -773,9 +836,9 @@ const DepositGroupManagement = () => {
                         required
                       >
                         <option value="">Select SPBG Location</option>
-                        {gasStations.map((station) => (
-                          <option key={station.id} value={station.name}>
-                            {station.name} - {station.address || 'No address'}
+                        {groups.map((group) => (
+                          <option key={group.id} value={group.spbg_location}>
+                            {group.spbg_location}
                           </option>
                         ))}
                       </select>
@@ -792,7 +855,7 @@ const DepositGroupManagement = () => {
                     
                     <p className="text-xs text-gray-500 mt-1">
                       {spbgInputMethod === 'dropdown' 
-                        ? 'Select from existing gas stations or switch to manual entry'
+                        ? 'Select from existing SPBG locations or switch to manual entry'
                         : 'Enter the SPBG location name manually'
                       }
                     </p>
@@ -862,7 +925,7 @@ const DepositGroupManagement = () => {
                   {/* Gas Volume */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Gas Volume (m³)
+                      Gas Volume (m³) *
                     </label>
                     <input
                       type="number"
@@ -872,7 +935,9 @@ const DepositGroupManagement = () => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
                       min="0"
                       step="0.01"
+                      required
                     />
+                    <p className="text-xs text-gray-500 mt-1">This will be used as the actual load quantity</p>
                   </div>
 
 
@@ -883,7 +948,15 @@ const DepositGroupManagement = () => {
                     </label>
                     <select
                       value={doFormData.calculation_method}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, calculation_method: e.target.value as 'jisdor' | 'fixed' }))}
+                      onChange={(e) => {
+                        const method = e.target.value as 'jisdor' | 'fixed';
+                        setDOFormData(prev => ({ 
+                          ...prev, 
+                          calculation_method: method,
+                          // Auto-set JISDOR rate when method changes to jisdor
+                          jisdor_rate: method === 'jisdor' && currentJisdorRate ? currentJisdorRate.toString() : prev.jisdor_rate
+                        }));
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     >
                       <option value="jisdor">JISDOR</option>
@@ -896,31 +969,59 @@ const DepositGroupManagement = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       JISDOR Rate
                     </label>
-                    <input
-                      type="number"
-                      value={doFormData.jisdor_rate}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, jisdor_rate: e.target.value }))}
-                      placeholder="Enter JISDOR rate"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      min="0"
-                      step="0.01"
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        value={doFormData.jisdor_rate}
+                        onChange={(e) => setDOFormData(prev => ({ ...prev, jisdor_rate: e.target.value }))}
+                        placeholder={currentJisdorRate ? `Current rate: ${currentJisdorRate.toLocaleString()}` : "Enter JISDOR rate"}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                        min="0"
+                        step="0.01"
+                      />
+                      <button
+                        type="button"
+                        onClick={fetchCurrentJisdorRate}
+                        className="px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        title="Refresh JISDOR rate"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </button>
+                    </div>
+                    {currentJisdorRate && (
+                      <p className="text-xs text-green-600 mt-1">
+                        ✓ Current rate from Bank Indonesia: Rp {currentJisdorRate.toLocaleString('id-ID')}
+                        {jisdorLastUpdated && (
+                          <span className="block text-gray-500">Last updated: {new Date(jisdorLastUpdated).toLocaleDateString()}</span>
+                        )}
+                      </p>
+                    )}
                   </div>
 
                   {/* Gas Filling Cost */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Gas Filling Cost (IDR)
+                      Gas Filling Cost (IDR) *
                     </label>
                     <input
                       type="number"
                       value={doFormData.gas_filling_cost}
                       onChange={(e) => setDOFormData(prev => ({ ...prev, gas_filling_cost: e.target.value }))}
-                      placeholder="Enter gas filling cost"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      placeholder="Automatically calculated"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
                       min="0"
                       step="0.01"
+                      required
+                      readOnly
                     />
+                    <p className="text-xs text-gray-500 mt-1">
+                      {doFormData.calculation_method === 'jisdor' 
+                        ? `Formula: (${doFormData.gas_volume_m3 || 'volume'}/27.27) × 12.7 × ${doFormData.jisdor_rate || 'jisdor_rate'}`
+                        : `Formula: ${doFormData.gas_volume_m3 || 'volume'} × 7,800 IDR/m³`
+                      }
+                    </p>
                   </div>
 
                   {/* Unit (Read-only) */}

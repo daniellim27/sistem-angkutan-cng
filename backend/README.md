@@ -22,7 +22,6 @@ backend/
     │   └── angkutan-system-d87e3-ef128576fdb9.json  # Firebase credentials
     ├── controllers/      # Business logic handlers
     │   ├── web/
-    │   │   ├── bigDeliveryOrderController.js
     │   │   ├── bukuKas.controller.js
     │   │   ├── cashController.js
     │   │   ├── deliveryOrderController.js

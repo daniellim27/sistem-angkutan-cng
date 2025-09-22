@@ -5,7 +5,6 @@ const {
   Vehicle,
   DriverProfile,
   User,
-  BigDeliveryOrder,
   DepositGroup,
   DepositGroupMember,
   sequelize,
@@ -912,17 +911,6 @@ exports.createDeliveryOrderFromPO = async (req, res, next) => {
         });
       }
   
-      const existingBigDO = await BigDeliveryOrder.findOne({
-        where: { driver_id, status: { [Op.in]: ["assigned", "in_progress"] } },
-        transaction,
-      });
-      if (existingBigDO) {
-        await transaction.rollback();
-        return res.status(400).json({
-          success: false,
-          message: `Driver is already assigned to Big DO: ${existingBigDO.big_do_number}`,
-        });
-      }
   
       // Enhanced DO number generation (from incoming)
       const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");

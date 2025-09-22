@@ -7,10 +7,8 @@ const {
   Vehicle,
   DriverProfile,
   User,
-  BigDeliveryOrder,
   DeliveryOrderAdjustments,
   DeliveryOrderPayments,
-  BigDoTambahan,
   sequelize,
 } = require("../../models");
 const { Op } = require("sequelize");
@@ -142,22 +140,6 @@ exports.createDeliveryOrder = async (req, res, next) => {
       });
     }
 
-    // Check Big DO conflicts
-    const existingBigDO = await BigDeliveryOrder.findOne({
-      where: {
-        driver_id,
-        status: { [Op.in]: ["assigned", "in_progress"] },
-      },
-      transaction,
-    });
-
-    if (existingBigDO) {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        message: `Driver is already assigned to Big DO: ${existingBigDO.big_do_number}`,
-      });
-    }
 
     // Enhanced DO number generation (100 attempts)
     const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -549,12 +531,6 @@ exports.getAllDeliveryOrders = async (req, res, next) => {
             as: "vehicle",
             attributes: ["license_plate", "type", "capacity"],
           },
-          {
-            model: BigDeliveryOrder,
-            as: "bigDeliveryOrderAsMain",
-            attributes: ["big_do_number", "status", "total_trip_allowance"],
-            required: false,
-          },
         ],
         order: [["created_at", "DESC"]],
         limit: parseInt(limit),
@@ -592,15 +568,6 @@ exports.getAllDeliveryOrders = async (req, res, next) => {
           "N/A",
         vehicle_info:
           `${doData.vehicle?.license_plate} (${doData.vehicle?.type})` || "N/A",
-        big_do_context: dOrder.getBigDOContext() || null,
-        big_do_info: doData.bigDeliveryOrderAsMain
-          ? {
-              big_do_number: doData.bigDeliveryOrderAsMain.big_do_number,
-              big_do_status: doData.bigDeliveryOrderAsMain.status,
-              total_trip_allowance:
-                doData.bigDeliveryOrderAsMain.total_trip_allowance,
-            }
-          : null,
       };
     });
 
@@ -652,18 +619,6 @@ exports.getDeliveryOrderById = async (req, res, next) => {
           include: [{ model: DriverProfile, as: "driverProfile" }],
         },
         { model: Vehicle, as: "vehicle" },
-        {
-          model: BigDeliveryOrder,
-          as: "bigDeliveryOrderAsMain",
-          include: [
-            {
-              model: BigDoTambahan,
-              as: "tambahan",
-              attributes: ["id", "customer_name", "total_amount", "status"],
-            },
-          ],
-          required: false,
-        },
       ],
     });
 
@@ -715,16 +670,6 @@ exports.getDeliveryOrderById = async (req, res, next) => {
             doData.departed_from_unload_location_at,
           completed_at: doData.completed_at,
         },
-        big_do_context: deliveryOrder.getBigDOContext() || null,
-        big_do_info: doData.bigDeliveryOrderAsMain
-          ? {
-              big_do_number: doData.bigDeliveryOrderAsMain.big_do_number,
-              big_do_status: doData.bigDeliveryOrderAsMain.status,
-              tambahan_count:
-                doData.bigDeliveryOrderAsMain.tambahan?.length || 0,
-              tambahan_summary: doData.bigDeliveryOrderAsMain.tambahan || [],
-            }
-          : null,
       },
     });
   } catch (err) {
@@ -910,20 +855,6 @@ exports.cancelDeliveryOrder = async (req, res, next) => {
         .json({ success: false, message: "Delivery Order not found" });
     }
 
-    // Check if DO is part of Big DO
-    const bigDO = await BigDeliveryOrder.findOne({
-      where: { main_delivery_order_id: id },
-      transaction,
-    });
-
-    if (bigDO) {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        message:
-          "Cannot cancel DO that is main DO of Big DO. Cancel the Big DO instead.",
-      });
-    }
 
     // Update delivery order status
     const oldStatus = deliveryOrder.status;

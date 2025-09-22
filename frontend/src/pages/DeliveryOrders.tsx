@@ -112,10 +112,6 @@ const DeliveryOrdersPage = () => {
 
   // Removed fetchPurchaseOrders - DOs are now standalone
 
-  const handleAddDeliveryOrder = () => {
-    // Navigate directly to standalone DO creation
-    navigate('/delivery-orders/create');
-  };
 
   // Export functions
   const handleExportExcel = () => {
@@ -305,14 +301,6 @@ const DeliveryOrdersPage = () => {
             )}
           </div>
           
-          {/* Add Delivery Order Button - Direct Creation */}
-          <button
-            onClick={handleAddDeliveryOrder}
-            className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded flex items-center"
-          >
-            <span className="mr-2">+</span>
-            Add Delivery Order
-          </button>
         </div>
       </div>
 

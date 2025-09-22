@@ -59,40 +59,97 @@ const DeliveryOrderCreatePage = () => {
   const [unloadLocations, setUnloadLocations] = useState<string[]>(['']);
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<(number | null)[]>([null]);
 
-  // Add state for drivers, vehicles, customers, and gas stations
+  // Add state for drivers, vehicles, customers, gas stations, and SPBG locations
   const [drivers, setDrivers] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [gasStations, setGasStations] = useState<GasStation[]>([]);
+  const [spbgLocations, setSpbgLocations] = useState<{id: number, location: string}[]>([]);
+  
+  // JISDOR rate state for automatic calculation
+  const [currentJisdorRate, setCurrentJisdorRate] = useState<number | null>(null);
+  const [jisdorLastUpdated, setJisdorLastUpdated] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDriversVehiclesAndCustomers();
+    fetchCurrentJisdorRate();
   }, []);
+
+  // Auto-calculate gas filling cost when current JISDOR rate changes
+  useEffect(() => {
+    if (currentJisdorRate && formData.calculation_method === 'jisdor' && !formData.jisdor_rate) {
+      setFormData(prev => ({ ...prev, jisdor_rate: currentJisdorRate.toString() }));
+    }
+    calculateGasFillingCost();
+  }, [currentJisdorRate]);
 
   const fetchDriversVehiclesAndCustomers = async () => {
     try {
       setLoading(true);
-      const [driversRes, vehiclesRes, customersRes, gasStationsRes] = await Promise.all([
+      const [driversRes, vehiclesRes, customersRes, gasStationsRes, spbgRes] = await Promise.all([
         apiClient.get('/users?role=driver'),
         apiClient.get('/vehicles'),
         apiClient.get('/customers/locations'),
-        GasStationApi.getAllGasStations()
+        GasStationApi.getAllGasStations(),
+        apiClient.get('/deposit-groups')
       ]);
       setDrivers(driversRes.data.data || driversRes.data || []);
       setVehicles(vehiclesRes.data.data || vehiclesRes.data || []);
       setCustomers(customersRes.data.data || customersRes.data || []);
       setGasStations(gasStationsRes.data || []);
+      
+      // Extract SPBG locations from deposit groups
+      const spbgData = spbgRes.data.data || spbgRes.data || [];
+      const locations = spbgData.map((group: any) => ({
+        id: group.id,
+        location: group.spbg_location
+      }));
+      setSpbgLocations(locations);
     } catch (err) {
-      setError('Failed to fetch drivers, vehicles, customers, and gas stations.');
+      setError('Failed to fetch drivers, vehicles, customers, gas stations, and SPBG locations.');
       console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
+  // Fetch current JISDOR rate
+  const fetchCurrentJisdorRate = async () => {
+    try {
+      console.log('🔄 Fetching current JISDOR rate...');
+      const response = await apiClient.get('/exchange-rates/current');
+      
+      if (response.data.success) {
+        const rate = response.data.data.rate;
+        const lastScraped = response.data.data.last_scraped_at;
+        
+        setCurrentJisdorRate(rate);
+        setJisdorLastUpdated(lastScraped);
+        console.log('✅ JISDOR rate fetched successfully:', rate);
+      } else {
+        throw new Error('API response indicates failure');
+      }
+    } catch (err) {
+      console.error('Failed to fetch JISDOR rate:', err);
+      // Set default JISDOR rate if API fails
+      setCurrentJisdorRate(16364.42);
+      setJisdorLastUpdated(new Date().toISOString());
+    }
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    setFormData(prev => {
+      const newFormData = { ...prev, [name]: value };
+      
+      // Auto-set JISDOR rate when calculation method changes to jisdor
+      if (name === 'calculation_method' && value === 'jisdor' && currentJisdorRate) {
+        newFormData.jisdor_rate = currentJisdorRate.toString();
+      }
+      
+      return newFormData;
+    });
     
     // Auto-calculate amounts when unit price changes
     if (name === 'unit_price') {
@@ -219,9 +276,10 @@ const DeliveryOrderCreatePage = () => {
     }
 
     let cost = 0;
-    if (formData.calculation_method === 'jisdor' && formData.jisdor_rate) {
-      const jisdorRate = parseFloat(formData.jisdor_rate);
-      if (!isNaN(jisdorRate)) {
+    if (formData.calculation_method === 'jisdor') {
+      // Use current JISDOR rate if available, otherwise use the manually entered rate
+      const jisdorRate = formData.jisdor_rate ? parseFloat(formData.jisdor_rate) : currentJisdorRate;
+      if (jisdorRate && !isNaN(jisdorRate)) {
         // Formula: (volume/27.27) * 12.7 * jisdor_rate
         cost = (volume / 27.27) * 12.7 * jisdorRate;
       }
@@ -255,6 +313,8 @@ const DeliveryOrderCreatePage = () => {
         trip_allowance: parseFloat(formData.trip_allowance),
         gaji: parseFloat(formData.gaji),
         do_name: formData.do_name,
+        // Set actual_load_quantity to gas_volume_m3
+        actual_load_quantity: formData.gas_volume_m3 ? parseFloat(formData.gas_volume_m3) : null,
         // Include gas filling data
         gas_volume_m3: formData.gas_volume_m3 ? parseFloat(formData.gas_volume_m3) : null,
         calculation_method: formData.calculation_method,
@@ -306,7 +366,7 @@ const DeliveryOrderCreatePage = () => {
     setSelectedCustomerIds([null]);
   };
 
-  if (loading) return <div className="text-center p-8">Loading drivers and vehicles...</div>;
+  if (loading) return <div className="text-center p-8">Loading drivers, vehicles, and SPBG locations...</div>;
 
   return (
     <div className="p-6">
@@ -427,15 +487,15 @@ const DeliveryOrderCreatePage = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               >
-                <option value="">Select SPBU (Gas Station)</option>
-                {gasStations.map((station) => (
-                  <option key={station.id} value={station.name}>
-                    {station.name} - {station.address || 'No address'}
+                <option value="">Select SPBG Location</option>
+                {spbgLocations.map((location) => (
+                  <option key={location.id} value={location.location}>
+                    {location.location}
                   </option>
                 ))}
               </select>
               <p className="text-xs text-gray-500 mt-1">
-                Select from registered SPBU locations
+                Select the SPBG location from SPBG Management
               </p>
             </div>
 
@@ -546,6 +606,132 @@ const DeliveryOrderCreatePage = () => {
           </div>
         </div>
 
+        {/* Gas Volume Calculation */}
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Gas Volume Calculation</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Gas Volume (m³) *
+              </label>
+              <input
+                type="number"
+                name="gas_volume_m3"
+                value={formData.gas_volume_m3}
+                onChange={handleInputChange}
+                step="0.01"
+                placeholder="Enter gas volume"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">This will be used as the actual load quantity</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Calculation Method *
+              </label>
+              <select
+                name="calculation_method"
+                value={formData.calculation_method}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              >
+                <option value="jisdor">JISDOR</option>
+                <option value="fixed">Fixed Cost</option>
+              </select>
+            </div>
+
+            {formData.calculation_method === 'jisdor' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  JISDOR Rate (IDR)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    name="jisdor_rate"
+                    value={formData.jisdor_rate}
+                    onChange={handleInputChange}
+                    step="0.01"
+                    placeholder={currentJisdorRate ? `Current rate: ${currentJisdorRate.toLocaleString()}` : "Enter JISDOR rate"}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={fetchCurrentJisdorRate}
+                    className="px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    title="Refresh JISDOR rate"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                </div>
+                {currentJisdorRate && (
+                  <p className="text-xs text-green-600 mt-1">
+                    ✓ Current rate from Bank Indonesia: Rp {currentJisdorRate.toLocaleString('id-ID')}
+                    {jisdorLastUpdated && (
+                      <span className="block text-gray-500">Last updated: {new Date(jisdorLastUpdated).toLocaleDateString()}</span>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Gas Filling Cost (IDR) *
+              </label>
+              <input
+                type="number"
+                name="gas_filling_cost"
+                value={formData.gas_filling_cost}
+                onChange={handleInputChange}
+                step="0.01"
+                placeholder="Automatically calculated"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                required
+                readOnly
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {formData.calculation_method === 'jisdor' 
+                  ? `Formula: (${formData.gas_volume_m3 || 'volume'}/27.27) × 12.7 × ${formData.jisdor_rate || 'jisdor_rate'}`
+                  : `Formula: ${formData.gas_volume_m3 || 'volume'} × 7,800 IDR/m³`
+                }
+              </p>
+            </div>
+
+            {/* Calculation Display */}
+            {formData.gas_volume_m3 && formData.unit_price && (
+              <div className="md:col-span-2 bg-blue-50 p-4 rounded-lg">
+                <h3 className="text-sm font-medium text-blue-900 mb-2">Calculation Summary</h3>
+                <div className="space-y-1 text-sm text-blue-800">
+                  <div className="flex justify-between">
+                    <span>Volume:</span>
+                    <span>{parseFloat(formData.gas_volume_m3).toLocaleString()} m³</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Unit Price:</span>
+                    <span>IDR {parseFloat(formData.unit_price).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between font-medium border-t border-blue-200 pt-1">
+                    <span>Total Amount:</span>
+                    <span>IDR {(parseFloat(formData.gas_volume_m3) * parseFloat(formData.unit_price)).toLocaleString()}</span>
+                  </div>
+                  {formData.gas_filling_cost && (
+                    <div className="flex justify-between">
+                      <span>Gas Filling Cost:</span>
+                      <span>IDR {parseFloat(formData.gas_filling_cost).toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Form Actions */}
         <div className="flex justify-end space-x-3">

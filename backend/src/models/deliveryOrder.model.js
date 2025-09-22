@@ -408,23 +408,6 @@ module.exports = (sequelize) => {
     return unitMap[this.unit] || this.unit;
   };
 
-  DeliveryOrder.prototype.isMainDOOfBigDO = function () {
-    return !!this.bigDeliveryOrderAsMain;
-  };
-
-  DeliveryOrder.prototype.getBigDOContext = function () {
-    if (this.bigDeliveryOrderAsMain) {
-      return {
-        type: "big_do_main",
-        message: "Main DO of Big Delivery Order",
-        big_do: this.bigDeliveryOrderAsMain,
-      };
-    }
-    return {
-      type: "standalone",
-      message: "Standalone Delivery Order",
-    };
-  };
 
   return DeliveryOrder;
 };

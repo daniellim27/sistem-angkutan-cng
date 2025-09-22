@@ -12,7 +12,6 @@ interface DeliveryOrder {
   standalone_po_number?: string;
   customer_name: string;
   item_name: string;
-  minimal_load_quantity: number;
   actual_load_quantity?: number;
   unit: string;
   unit_price?: number;
@@ -267,21 +266,11 @@ const TrackDeliveryDetail: React.FC = () => {
                   <dt className="text-sm font-medium text-gray-500">Item:</dt>
                   <dd className="text-sm text-gray-900">{deliveryOrder.item_name}</dd>
                 </div>
-                <div className="flex justify-between">
-                  <dt className="text-sm font-medium text-gray-500">Target Quantity:</dt>
-                  <dd className="text-sm text-gray-900">
-                    {deliveryOrder.minimal_load_quantity.toLocaleString()} {unitDisplay}
-                  </dd>
-                </div>
                 {deliveryOrder.actual_load_quantity && (
                   <div className="flex justify-between">
                     <dt className="text-sm font-medium text-gray-500">Actual Quantity:</dt>
-                    <dd className={`text-sm ${
-                      deliveryOrder.actual_load_quantity >= deliveryOrder.minimal_load_quantity 
-                        ? 'text-green-600' 
-                        : 'text-orange-600'
-                    }`}>
-                      {deliveryOrder.actual_load_quantity.toLocaleString()} {unitDisplay}
+                    <dd className="text-sm text-gray-900">
+                      {(deliveryOrder.actual_load_quantity ?? 0).toLocaleString()} {unitDisplay}
                     </dd>
                   </div>
                 )}
