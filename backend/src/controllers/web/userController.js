@@ -115,7 +115,7 @@ exports.getUsers = async (req, res, next) => {
 // Get available drivers (not assigned to any active delivery)
 exports.getAvailableDrivers = async (req, res, next) => {
   try {
-    const { DeliveryOrder } = require("../../models"). 
+    const { DeliveryOrder } = require("../../models");
     
     // Find drivers who are not currently assigned to active deliveries
     const activeDeliveries = await DeliveryOrder.findAll({
