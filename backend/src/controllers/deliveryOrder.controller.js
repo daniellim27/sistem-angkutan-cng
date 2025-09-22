@@ -1071,7 +1071,7 @@ const updateStatus = async (orderId, driverId, newStatus, timestampField) => {
 
     // Status validation mapping
     const validTransitions = {
-      assigned: ["otw_to_load_location"],
+      assigned: ["otw_to_unload_location"], // Fixed: allow transition to otw_to_unload_location
       otw_to_unload_location: ["at_unload_location"],
       at_unload_location: ["completed"],
       completed: [],
