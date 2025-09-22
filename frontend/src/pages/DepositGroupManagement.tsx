@@ -83,7 +83,7 @@ const DepositGroupManagement = () => {
   const [doFormData, setDOFormData] = useState({
     unit: 'kubik', // DOs always use kubik
     unit_price: '',
-    load_location: '',
+    load_location: '', // Will be auto-set from selectedGroup.spbg_location
     driver_id: '',
     vehicle_id: '',
     trip_allowance: '0',
@@ -97,8 +97,7 @@ const DepositGroupManagement = () => {
     gas_filling_cost: ''
   });
 
-  // State for SPBG location input method
-  const [spbgInputMethod, setSpbgInputMethod] = useState<'dropdown' | 'manual'>('dropdown');
+  // SPBG location is now auto-set from selectedGroup context
 
   // State for customer locations - with dropdown support like delivery orders
   const [customerLocations, setCustomerLocations] = useState<string[]>(['']);
@@ -119,6 +118,16 @@ const DepositGroupManagement = () => {
   useEffect(() => {
     calculateGasVolume();
   }, [doFormData.gas_filling_cost, doFormData.calculation_method, doFormData.jisdor_rate, currentJisdorRate]);
+
+  // Auto-set SPBG location when selectedGroup changes for DO creation
+  useEffect(() => {
+    if (selectedGroup && showDOModal) {
+      setDOFormData(prev => ({
+        ...prev,
+        load_location: selectedGroup.spbg_location
+      }));
+    }
+  }, [selectedGroup, showDOModal]);
 
   const fetchDriversAndVehicles = async () => {
     try {
@@ -320,7 +329,7 @@ const DepositGroupManagement = () => {
     setDOFormData({
       unit: 'kubik',
       unit_price: '',
-      load_location: '',
+      load_location: '', // Will be auto-set from selectedGroup
       driver_id: '',
       vehicle_id: '',
       trip_allowance: '0',
@@ -333,7 +342,6 @@ const DepositGroupManagement = () => {
       jisdor_rate: currentJisdorRate ? currentJisdorRate.toString() : '',
       gas_filling_cost: ''
     });
-    setSpbgInputMethod('dropdown');
   };
 
   const resetCustomerLocations = () => {
@@ -797,68 +805,112 @@ const DepositGroupManagement = () => {
                     />
                   </div>
 
-
-                  {/* SPBG Location */}
+                  {/* Gas Filling Cost */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      SPBG Location *
+                      Gas Filling Cost (IDR) *
                     </label>
-                    
-                    {/* Input method selector */}
-                    <div className="flex gap-4 mb-2">
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          value="dropdown"
-                          checked={spbgInputMethod === 'dropdown'}
-                          onChange={(e) => setSpbgInputMethod(e.target.value as 'dropdown' | 'manual')}
-                          className="mr-2"
-                        />
-                        Select from list
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          value="manual"
-                          checked={spbgInputMethod === 'manual'}
-                          onChange={(e) => setSpbgInputMethod(e.target.value as 'dropdown' | 'manual')}
-                          className="mr-2"
-                        />
-                        Enter manually
-                      </label>
-                    </div>
-
-                    {/* Conditional input based on selected method */}
-                    {spbgInputMethod === 'dropdown' ? (
-                      <select
-                        value={doFormData.load_location}
-                        onChange={(e) => setDOFormData(prev => ({ ...prev, load_location: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        required
-                      >
-                        <option value="">Select SPBG Location</option>
-                        {groups.map((group) => (
-                          <option key={group.id} value={group.spbg_location}>
-                            {group.spbg_location}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        value={doFormData.load_location}
-                        onChange={(e) => setDOFormData(prev => ({ ...prev, load_location: e.target.value }))}
-                        placeholder="Enter SPBG location manually"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        required
-                      />
-                    )}
-                    
+                    <input
+                      type="number"
+                      value={doFormData.gas_filling_cost}
+                      onChange={(e) => setDOFormData(prev => ({ ...prev, gas_filling_cost: e.target.value }))}
+                      placeholder="Enter gas filling cost"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      min="0"
+                      step="0.01"
+                      required
+                    />
                     <p className="text-xs text-gray-500 mt-1">
-                      {spbgInputMethod === 'dropdown' 
-                        ? 'Select from existing SPBG locations or switch to manual entry'
-                        : 'Enter the SPBG location name manually'
-                      }
+                      Enter the total cost for gas filling
+                    </p>
+                  </div>
+
+                  {/* Calculated Gas Volume */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Calculated Gas Volume (m³)
+                    </label>
+                    <input
+                      type="number"
+                      value={doFormData.gas_volume_m3}
+                      readOnly
+                      placeholder="Auto-calculated"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-600"
+                      min="0"
+                      step="0.01"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">This will be used as the actual load quantity</p>
+                  </div>
+
+                  {/* Calculation Method */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Calculation Method
+                    </label>
+                    <select
+                      value={doFormData.calculation_method}
+                      onChange={(e) => {
+                        const method = e.target.value as 'jisdor' | 'fixed';
+                        setDOFormData(prev => ({ 
+                          ...prev, 
+                          calculation_method: method,
+                          // Auto-set JISDOR rate when method changes to jisdor
+                          jisdor_rate: method === 'jisdor' && currentJisdorRate ? currentJisdorRate.toString() : prev.jisdor_rate
+                        }));
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    >
+                      <option value="jisdor">JISDOR</option>
+                      <option value="fixed">Fixed</option>
+                    </select>
+                  </div>
+
+                  {/* JISDOR Rate */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      JISDOR Rate
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        value={doFormData.jisdor_rate}
+                        onChange={(e) => setDOFormData(prev => ({ ...prev, jisdor_rate: e.target.value }))}
+                        placeholder={currentJisdorRate ? `Current rate: ${currentJisdorRate.toLocaleString()}` : "Enter JISDOR rate"}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                        min="0"
+                        step="0.01"
+                      />
+                      <button
+                        type="button"
+                        onClick={fetchCurrentJisdorRate}
+                        className="px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        title="Refresh JISDOR rate"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </button>
+                    </div>
+                    {currentJisdorRate && (
+                      <p className="text-xs text-green-600 mt-1">
+                        ✓ Current rate from Bank Indonesia: Rp {currentJisdorRate.toLocaleString('id-ID')}
+                        {jisdorLastUpdated && (
+                          <span className="block text-gray-500">Last updated: {new Date(jisdorLastUpdated).toLocaleDateString()}</span>
+                        )}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* SPBG Location - Auto-set from context */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      SPBG Location
+                    </label>
+                    <div className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-gray-700">
+                      {selectedGroup?.spbg_location || 'Not selected'}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Automatically set from selected SPBG context
                     </p>
                   </div>
 
@@ -923,102 +975,6 @@ const DepositGroupManagement = () => {
                     </p>
                   </div>
 
-                  {/* Gas Volume */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Calculated Gas Volume (m³)
-                    </label>
-                    <input
-                      type="number"
-                      value={doFormData.gas_volume_m3}
-                      readOnly
-                      placeholder="Auto-calculated"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-600"
-                      min="0"
-                      step="0.01"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">This will be used as the actual load quantity</p>
-                  </div>
-
-
-                  {/* Calculation Method */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Calculation Method
-                    </label>
-                    <select
-                      value={doFormData.calculation_method}
-                      onChange={(e) => {
-                        const method = e.target.value as 'jisdor' | 'fixed';
-                        setDOFormData(prev => ({ 
-                          ...prev, 
-                          calculation_method: method,
-                          // Auto-set JISDOR rate when method changes to jisdor
-                          jisdor_rate: method === 'jisdor' && currentJisdorRate ? currentJisdorRate.toString() : prev.jisdor_rate
-                        }));
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    >
-                      <option value="jisdor">JISDOR</option>
-                      <option value="fixed">Fixed</option>
-                    </select>
-                  </div>
-
-                  {/* JISDOR Rate */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      JISDOR Rate
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        value={doFormData.jisdor_rate}
-                        onChange={(e) => setDOFormData(prev => ({ ...prev, jisdor_rate: e.target.value }))}
-                        placeholder={currentJisdorRate ? `Current rate: ${currentJisdorRate.toLocaleString()}` : "Enter JISDOR rate"}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
-                        min="0"
-                        step="0.01"
-                      />
-                      <button
-                        type="button"
-                        onClick={fetchCurrentJisdorRate}
-                        className="px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        title="Refresh JISDOR rate"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                      </button>
-                    </div>
-                    {currentJisdorRate && (
-                      <p className="text-xs text-green-600 mt-1">
-                        ✓ Current rate from Bank Indonesia: Rp {currentJisdorRate.toLocaleString('id-ID')}
-                        {jisdorLastUpdated && (
-                          <span className="block text-gray-500">Last updated: {new Date(jisdorLastUpdated).toLocaleDateString()}</span>
-                        )}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Gas Filling Cost */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Gas Filling Cost (IDR) *
-                    </label>
-                    <input
-                      type="number"
-                      value={doFormData.gas_filling_cost}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, gas_filling_cost: e.target.value }))}
-                      placeholder="Enter gas filling cost"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      min="0"
-                      step="0.01"
-                      required
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Enter the total cost for gas filling
-                    </p>
-                  </div>
 
                   {/* Unit (Read-only) */}
                   <div>

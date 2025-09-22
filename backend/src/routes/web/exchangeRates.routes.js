@@ -2,7 +2,16 @@
 const express = require('express');
 const router = express.Router();
 const exchangeRateController = require('../../controllers/web/exchangeRate.controller');
-const { checkRole } = require('../../middlewares/auth.middleware');
+const { verifyToken, checkRole } = require('../../middlewares/auth.middleware');
+
+/**
+ * @route   GET /api/web/exchange-rates/test
+ * @desc    Test endpoint
+ * @access  Public
+ */
+router.get('/test', (req, res) => {
+  res.json({ message: 'Exchange rates endpoint is working!', timestamp: new Date() });
+});
 
 /**
  * @route   GET /api/web/exchange-rates/current
@@ -30,6 +39,6 @@ router.get('/history', exchangeRateController.getHistory);
  * @desc    Manually trigger rate update (admin only)
  * @access  Admin/Owner only
  */
-router.get('/manual-update', checkRole(['admin', 'owner']), exchangeRateController.manualUpdate);
+router.get('/manual-update', verifyToken, checkRole(['admin', 'owner']), exchangeRateController.manualUpdate);
 
 module.exports = router;

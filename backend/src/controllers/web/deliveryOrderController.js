@@ -66,6 +66,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
       deposit_group_id, // Add deposit group support
       customer_name,
       customer_location,
+      actual_load_quantity, // Add actual_load_quantity for deposit group
       // Gas filling fields
       gas_volume_m3,
       calculation_method,
@@ -276,6 +277,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
       additional_unload_locations: processedAdditionalUnloadLocations, // Include processed additional unload locations with coordinates
       payment_status,
       status,
+      actual_load_quantity: actual_load_quantity ? parseFloat(actual_load_quantity) : null,
       // Gas filling fields
       gas_volume_m3: gas_volume_m3 ? parseFloat(gas_volume_m3) : null,
       calculation_method,
@@ -297,10 +299,12 @@ exports.createDeliveryOrder = async (req, res, next) => {
       }
 
       // Create deposit group member entry
+      // Use actual_load_quantity or gas_volume_m3 since minimal_load_quantity is no longer used
+      const quantity = actual_load_quantity || gas_volume_m3 || 0;
       await DepositGroupMember.create({
         group_id: deposit_group_id,
         delivery_order_id: deliveryOrder.id,
-        quantity: minimal_load_quantity
+        quantity: quantity
       }, { transaction });
 
       console.log(`✅ Added DO ${deliveryOrder.do_number} to deposit group ${depositGroup.group_name}`);
@@ -374,7 +378,6 @@ exports.createDeliveryOrder = async (req, res, next) => {
         ...deliveryOrder.toJSON(),
         unit_display: deliveryOrder.getUnitDisplay() || "N/A",
         financial_summary: deliveryOrder.getFinancialSummary() || {},
-        big_do_context: deliveryOrder.getBigDOContext() || null,
         scraping_in_progress: backgroundScrapingData ? true : false,
       },
     });
@@ -1002,8 +1005,9 @@ exports.completeDeliveryOrder = async (req, res, next) => {
       console.log(`✅ Updated deposit group: remaining ${grp.remaining_quantity}, balance Rp ${grp.balance.toLocaleString('id-ID')}`);
 
       // Handle excess quantities (selisih)
-      const minimalQuantity = parseFloat(deliveryOrder.minimal_load_quantity);
-      const excess = qtyUsed - minimalQuantity;
+      // Since minimal_load_quantity is no longer used, use actual_load_quantity as baseline
+      const baselineQuantity = parseFloat(deliveryOrder.actual_load_quantity) || 0;
+      const excess = qtyUsed - baselineQuantity;
       
       if (excess > 0) {
         const excessAmount = excess * unitPrice;
