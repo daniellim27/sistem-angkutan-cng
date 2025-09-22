@@ -29,7 +29,6 @@ const MainLayout = () => {
     if (path === "/") return "CNG Dashboard";
     if (path.startsWith("/delivery-orders")) return "Delivery Orders";
     if (path.startsWith("/ocr-processing")) return "OCR Processing";
-    if (path.startsWith("/big-dos")) return "Big Delivery Orders";
     if (path.startsWith("/live-tracking")) return "Live GPS Tracking";
     if (path.startsWith("/vehicles/tires")) return "Tire Management";
     if (path.startsWith("/vehicles")) return "Fleet Management";
@@ -231,12 +230,6 @@ const MainLayout = () => {
                   icon: "🔍",
                   label: "OCR Processing"
                 },
-                {
-                  to: "/big-dos",
-                  title: "Big Delivery Orders",
-                  icon: "🚛",
-                  label: "Big DOs"
-                }
               ]}
               sidebarMinimized={sidebarMinimized}
               isOpen={dropdownStates.operations}
