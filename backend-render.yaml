@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: backend-angkutan
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: HOST
+        value: 0.0.0.0
+      - key: DB_HOST
+        value: dpg-d39e18p5pdvs7397k5ng-a
+      - key: DB_PORT
+        value: 5432
+      - key: DB_NAME
+        value: database_angkutan
+      - key: DB_USER
+        value: database_angkutan_user
+      - key: DB_PASSWORD
+        value: p0ri2hCma2hz0IADGALv8EXfeCVyXq6R
+      - key: JWT_SECRET
+        value: your_super_secret_jwt_key_here_make_it_long_and_complex
+      - key: BASE_URL
+        value: https://backend-angkutan.onrender.com
+      - key: CLOUDINARY_CLOUD_NAME
+        value: dvfxozwnt
+      - key: CLOUDINARY_API_KEY
+        value: 587735263442828
+      - key: CLOUDINARY_API_SECRET
+        value: mL-6CD2443SJgsDrIdTGBtNePgk
+      - key: FIREBASE_PROJECT_ID
+        value: angkutan-system
+      - key: OPENAI_API_KEY
+        value: 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
+      - key: AUTO_MIGRATE
+        value: "true"

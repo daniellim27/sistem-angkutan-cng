@@ -37,7 +37,7 @@ const minimist = require("minimist");
 
 const admin = require("./services/firebase");
 const argv = minimist(process.argv.slice(2));
-const host = argv.host || process.env.HOST || (process.env.NODE_ENV === 'development' ? '0.0.0.0' : 'localhost');
+const host = argv.host || process.env.HOST || '0.0.0.0';
 
 const express = require("express");
 const setupMiddleware = require("./middlewares/setup.middleware");

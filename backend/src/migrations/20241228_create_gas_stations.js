@@ -96,22 +96,65 @@ module.exports = {
       }
     });
 
-    // Create indexes for performance
-    await queryInterface.addIndex('gas_stations', ['latitude', 'longitude'], {
-      name: 'idx_gas_stations_coordinates'
-    });
+    // Create indexes for performance (only if they don't exist)
+    try {
+      await queryInterface.addIndex('gas_stations', ['latitude', 'longitude'], {
+        name: 'idx_gas_stations_coordinates'
+      });
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+    }
 
-    await queryInterface.addIndex('gas_stations', ['station_type'], {
-      name: 'idx_gas_stations_type'
-    });
+    try {
+      await queryInterface.addIndex('gas_stations', ['station_type'], {
+        name: 'idx_gas_stations_type'
+      });
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+    }
 
-    await queryInterface.addIndex('gas_stations', ['is_active'], {
-      name: 'idx_gas_stations_active'
-    });
+    try {
+      await queryInterface.addIndex('gas_stations', ['is_active'], {
+        name: 'idx_gas_stations_active'
+      });
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+    }
 
-    await queryInterface.addIndex('gas_stations', ['created_by'], {
-      name: 'idx_gas_stations_created_by'
-    });
+    try {
+      await queryInterface.addIndex('gas_stations', ['created_by'], {
+        name: 'idx_gas_stations_created_by'
+      });
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        throw error;
+      }
+    }
+
+    // First, ensure there's an admin user
+    const [users] = await queryInterface.sequelize.query(
+      'SELECT id FROM users WHERE role = \'admin\' LIMIT 1'
+    );
+    
+    let adminUserId = 1;
+    if (users.length === 0) {
+      // Create admin user if none exists
+      await queryInterface.bulkInsert('users', [{
+        username: 'admin',
+        password_hash: '$2b$10$rQZ8K9vL8mN7pQ6rS5tT.uVwXyZ1A2B3C4D5E6F7G8H9I0J1K2L3M4N5O6P',
+        role: 'admin',
+        created_at: new Date()
+      }]);
+      adminUserId = 1;
+    } else {
+      adminUserId = users[0].id;
+    }
 
     // Insert sample gas stations for testing
     await queryInterface.bulkInsert('gas_stations', [
@@ -129,7 +172,7 @@ module.exports = {
         amenities: JSON.stringify(['ATM', 'RestRoom', 'WiFi']),
         is_active: true,
         notes: 'Main CNG station in central Jakarta',
-        created_by: 1,
+        created_by: adminUserId,
         created_at: new Date(),
         updated_at: new Date()
       },
@@ -149,7 +192,7 @@ module.exports = {
         amenities: JSON.stringify(['ATM', 'RestRoom', 'Minimarket']),
         is_active: true,
         notes: 'Full service station with multiple fuel types',
-        created_by: 1,
+        created_by: adminUserId,
         created_at: new Date(),
         updated_at: new Date()
       }
