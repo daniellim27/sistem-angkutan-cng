@@ -308,6 +308,12 @@ router.patch(
   doController.completeDeliveryOrder
 );
 
+router.patch(
+  "/:id/cancel",
+  checkRole(["driver"]),
+  doController.cancelDeliveryOrder
+);
+
 router.get(
   "/:id/load-status",
   checkRole(["driver", "admin", "owner"]),

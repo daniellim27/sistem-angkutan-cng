@@ -1043,7 +1043,14 @@ exports.completeDeliveryOrder = async (req, res, next) => {
       }
     }
 
-    // Free up vehicle for another trip
+    // Free up driver and vehicle for another trip
+    if (deliveryOrder.driver_id) {
+      await DriverProfile.update(
+        { status: "available" },
+        { where: { user_id: deliveryOrder.driver_id }, transaction }
+      );
+    }
+    
     if (deliveryOrder.vehicle_id) {
       await Vehicle.update(
         { status: "available" },

@@ -620,6 +620,60 @@ exports.startReturnToBase = (req, res, next) => {
     .catch(next);
 };
 
+// PATCH /api/delivery-orders/:id/cancel
+exports.cancelDeliveryOrder = async (req, res, next) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const { cancellation_reason } = req.body || {}; 
+    const driverId = req.user.id;
+
+    const order = await DeliveryOrder.findOne({
+      where: { id: id, driver_id: driverId },
+      transaction: transaction,
+    });
+
+    if (!order) {
+      await transaction.rollback();
+      return res.status(404).json({ message: "Delivery Order not found or not assigned to you." });
+    }
+
+    // Only allow cancellation if delivery is not already completed
+    if (order.status === "completed") {
+      await transaction.rollback();
+      return res.status(400).json({
+        message: "Cannot cancel a completed delivery order.",
+      });
+    }
+
+    // Update delivery order status to cancelled
+    await order.update({
+      status: "cancelled",
+    }, { transaction: transaction });
+
+    // Free up driver and vehicle
+    await DriverProfile.update(
+      { status: "available" },
+      { where: { user_id: driverId }, transaction: transaction }
+    );
+    await Vehicle.update(
+      { status: "available" },
+      { where: { id: order.vehicle_id }, transaction: transaction }
+    );
+
+    await transaction.commit();
+
+    res.json({
+      message: "Delivery Order cancelled successfully!",
+      status_text: "Dibatalkan",
+    });
+  } catch (err) {
+    await transaction.rollback();
+    console.error("Error cancelling delivery order from mobile:", err);
+    next(err);
+  }
+};
+
 // PATCH /api/delivery-orders/:id/complete
 exports.completeDeliveryOrder = async (req, res, next) => {
   const transaction = await sequelize.transaction();
@@ -1092,6 +1146,21 @@ const updateStatus = async (orderId, driverId, newStatus, timestampField) => {
     };
 
     await order.update(updateData);
+
+    // Update driver and vehicle status when delivery is completed or cancelled
+    if (newStatus === "completed" || newStatus === "cancelled") {
+      // Free up driver
+      await DriverProfile.update(
+        { status: "available" },
+        { where: { user_id: driverId } }
+      );
+      
+      // Free up vehicle
+      await Vehicle.update(
+        { status: "available" },
+        { where: { id: order.vehicle_id } }
+      );
+    }
 
     return order;
   } catch (error) {
