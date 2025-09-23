@@ -805,17 +805,21 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
             <span className="text-gray-500">Loading gas stations...</span>
           )}
 
-          <label className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              checked={showRoute}
-              onChange={(e) => setShowRoute(e.target.checked)}
-              className="rounded"
-            />
-            <span>Show Delivery Route</span>
-          </label>
+          {/* Only show delivery route checkbox when tracking a specific delivery order */}
+          {deliveryOrderId && (
+            <label className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={showRoute}
+                onChange={(e) => setShowRoute(e.target.checked)}
+                className="rounded"
+              />
+              <span>Show Delivery Route</span>
+            </label>
+          )}
 
-          {showRoute && routeInfo && (
+          {/* Only show route info when tracking a specific delivery order and route is enabled */}
+          {deliveryOrderId && showRoute && routeInfo && (
             <div className="flex items-center space-x-4 text-xs bg-blue-50 px-3 py-1 rounded">
               <span className="font-medium text-blue-800">
                 📏 {(routeInfo.distance / 1000).toFixed(1)} km

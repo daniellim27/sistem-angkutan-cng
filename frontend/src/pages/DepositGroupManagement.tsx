@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../api/axiosConfig';
 import { GasStationApi } from '../api/gasStationApi';
+import { convertMoneyToVolume, formatVolume } from '../utils/volumeConversionUtils';
 
 interface DeliveryOrder {
   id: number;
@@ -39,6 +40,7 @@ interface DepositGroupWithMembers extends DepositGroup {
   delivery_orders: DeliveryOrder[];
   total_deposits: number;
   total_balance: number;
+  total_completed_amount: number;
   do_count: number;
 }
 
@@ -196,6 +198,7 @@ const DepositGroupManagement = () => {
           delivery_orders: deliveryOrders, // Use DOs from backend response
           total_deposits: depositedAmount,
           total_balance: calculatedBalance,
+          total_completed_amount: totalDOAmount,
           do_count: deliveryOrders.length
         };
       });
@@ -507,13 +510,47 @@ const DepositGroupManagement = () => {
               <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
                 <h4 className="text-sm font-medium text-gray-900 mb-2">Group Details</h4>
                 <div className="space-y-1 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-700 font-medium">Completed:</span>
-                    <span className="text-gray-900">{group.completed_quantity || '0'} {getUnitLabel(group.unit)}</span>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-700 font-medium">Completed:</span>
+                    </div>
+                    {group.total_completed_amount > 0 && (
+                      <div className="ml-4 space-y-1 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">JISDOR:</span>
+                          <span className="text-blue-600 font-medium">
+                            {formatVolume(convertMoneyToVolume(group.total_completed_amount, currentJisdorRate).jisdorVolume)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">Fixed Rate:</span>
+                          <span className="text-green-600 font-medium">
+                            {formatVolume(convertMoneyToVolume(group.total_completed_amount, currentJisdorRate).fixedRateVolume)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-700 font-medium">Remaining:</span>
-                    <span className="text-gray-900">{group.remaining_quantity} {getUnitLabel(group.unit)}</span>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-700 font-medium">Remaining:</span>
+                    </div>
+                    {group.total_balance > 0 && (
+                      <div className="ml-4 space-y-1 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">JISDOR:</span>
+                          <span className="text-blue-600 font-medium">
+                            {formatVolume(convertMoneyToVolume(group.total_balance, currentJisdorRate).jisdorVolume)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">Fixed Rate:</span>
+                          <span className="text-green-600 font-medium">
+                            {formatVolume(convertMoneyToVolume(group.total_balance, currentJisdorRate).fixedRateVolume)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-700 font-medium">Unit:</span>
@@ -536,6 +573,16 @@ const DepositGroupManagement = () => {
                     {formatCurrency(group.total_balance)}
                   </div>
                   <div className="text-xs text-gray-500">Current Balance</div>
+                  {group.total_balance > 0 && (
+                    <div className="mt-2 space-y-1 text-xs">
+                      <div className="text-blue-600">
+                        {formatVolume(convertMoneyToVolume(group.total_balance, currentJisdorRate).jisdorVolume)} (JISDOR)
+                      </div>
+                      <div className="text-green-600">
+                        {formatVolume(convertMoneyToVolume(group.total_balance, currentJisdorRate).fixedRateVolume)} (Fixed Rate)
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
