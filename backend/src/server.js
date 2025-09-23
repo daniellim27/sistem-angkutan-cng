@@ -120,9 +120,14 @@ async function initializeDatabase() {
     
     // Check and run migrations automatically
     if (process.env.AUTO_MIGRATE !== 'false') {
+      console.log("🔄 Starting database migrations...");
       const migrationRunner = new MigrationRunner();
       try {
         await migrationRunner.runMigrations();
+        console.log("✅ Database migrations completed successfully.");
+      } catch (migrationError) {
+        console.error("⚠️ Migration failed, but continuing with server startup:", migrationError.message);
+        // Don't exit, just log the error and continue
       } finally {
         await migrationRunner.close();
       }
@@ -131,10 +136,19 @@ async function initializeDatabase() {
     }
   } catch (err) {
     console.error("❌ Database initialization failed:", err);
-    console.log("💡 Try running 'npm run migrate' manually to fix database issues");
-    process.exit(1);
+    console.log("💡 Server will start anyway, but database features may not work properly");
+    // Don't exit, let the server start anyway
   }
 }
+
+// Basic health check route (works even if database fails)
+app.get("/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
 
 // Initialize database before starting server
 initializeDatabase().then(() => {
@@ -236,6 +250,15 @@ initializeDatabase().then(() => {
   app.use(errorHandler);
 
   // Start HTTP server
+  startServer();
+}).catch(err => {
+  console.error("💥 Database initialization failed, but starting server anyway:", err);
+  // Don't exit, start the server even if database fails
+  startServer();
+});
+
+// Function to start the server
+function startServer() {
   app.listen(PORT, host, () => {
     console.log(`🚀 Server running on http://${host}:${PORT}`);
     console.log(`📋 Environment: PORT=${process.env.PORT || 'not set'}, Using port: ${PORT}`);
@@ -258,10 +281,7 @@ initializeDatabase().then(() => {
       console.log("⚠️ GPS tracking service not started - missing Inovatracks credentials");
     }
   });
-}).catch(err => {
-  console.error("💥 Server startup failed:", err);
-  process.exit(1);
-});
+}
 
 // Add process-level error handlers to prevent crashes
 process.on('unhandledRejection', (reason, promise) => {
