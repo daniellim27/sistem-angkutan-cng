@@ -47,6 +47,9 @@ services:
       FIREBASE_PROJECT_ID: angkutan-system
       OPENAI_API_KEY:
       AUTO_MIGRATE: "true"
+      CLOUDINARY_CLOUD_NAME: dvfxozwnt
+      CLOUDINARY_API_KEY: 587735263442828
+      CLOUDINARY_API_SECRET: mL-6CD2443SJgsDrIdTGBtNePgk
     ports:
       - "3000:3000"
     volumes:

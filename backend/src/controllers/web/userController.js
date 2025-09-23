@@ -122,7 +122,7 @@ exports.getAvailableDrivers = async (req, res, next) => {
       where: {
         status: {
           [Op.in]: [
-            "assigned",
+            "at_spbu",
             "otw_to_unload_location",
             "at_unload_location"
           ]

@@ -61,7 +61,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
       unload_longitude,
       additional_unload_locations, // New field for multiple unload locations
       payment_status = "proses_tagihan",
-      status = "assigned",
+      status = "at_spbu",
       do_name,
       deposit_group_id, // Add deposit group support
       customer_name,
@@ -111,7 +111,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
         driver_id,
         status: {
           [Op.in]: [
-            "assigned",
+            "at_spbu",
             "otw_to_unload_location",
             "at_unload_location",
           ],
@@ -134,7 +134,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
         vehicle_id,
         status: {
           [Op.in]: [
-            "assigned",
+            "at_spbu",
             "otw_to_unload_location",
             "at_unload_location",
           ],
@@ -471,13 +471,13 @@ exports.getAllDeliveryOrders = async (req, res, next) => {
     const fullWhere = { ...whereClause };
     const statsPromises = [
       DeliveryOrder.count({ where: fullWhere }),
-      DeliveryOrder.count({ where: { ...fullWhere, status: "assigned" } }),
+      DeliveryOrder.count({ where: { ...fullWhere, status: "at_spbu" } }),
       DeliveryOrder.count({
         where: {
           ...fullWhere,
           status: {
             [Op.in]: [
-              "assigned",
+              "at_spbu",
               "otw_to_unload_location",
               "at_unload_location",
             ],
@@ -1211,7 +1211,7 @@ const updateDriverAndVehicleStatus = async (deliveryOrder, oldStatus, newStatus,
     // Define status mappings for driver and vehicle
     const getDriverStatus = (doStatus) => {
       switch (doStatus) {
-        case 'assigned':
+        case 'at_spbu':
         case 'otw_to_unload_location':
         case 'at_unload_location':
           return 'busy';
@@ -1225,7 +1225,7 @@ const updateDriverAndVehicleStatus = async (deliveryOrder, oldStatus, newStatus,
 
     const getVehicleStatus = (doStatus) => {
       switch (doStatus) {
-        case 'assigned':
+        case 'at_spbu':
         case 'otw_to_unload_location':
         case 'at_unload_location':
           return 'in_use';

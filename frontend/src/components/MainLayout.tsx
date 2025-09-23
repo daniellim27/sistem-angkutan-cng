@@ -29,6 +29,8 @@ const MainLayout = () => {
     if (path === "/") return "CNG Dashboard";
     if (path.startsWith("/delivery-orders")) return "Delivery Orders";
     if (path.startsWith("/ocr-processing")) return "OCR Processing";
+    if (path.startsWith("/operations/nota-kecil")) return "Nota Kecil Management";
+    if (path.startsWith("/operations/nota-besar")) return "Nota Besar Management";
     if (path.startsWith("/live-tracking")) return "Live GPS Tracking";
     if (path.startsWith("/vehicles/tires")) return "Tire Management";
     if (path.startsWith("/vehicles")) return "Fleet Management";
@@ -229,6 +231,18 @@ const MainLayout = () => {
                   title: "OCR Processing",
                   icon: "🔍",
                   label: "OCR Processing"
+                },
+                {
+                  to: "/operations/nota-kecil",
+                  title: "Nota Kecil",
+                  icon: "📄",
+                  label: "Nota Kecil"
+                },
+                {
+                  to: "/operations/nota-besar",
+                  title: "Nota Besar",
+                  icon: "📋",
+                  label: "Nota Besar"
                 },
               ]}
               sidebarMinimized={sidebarMinimized}

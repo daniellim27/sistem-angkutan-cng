@@ -655,7 +655,7 @@ exports.deletePurchaseOrder = async (req, res, next) => {
         purchase_order_id: id,
         status: {
           [Op.in]: [
-            "assigned",
+            "at_spbu",
             "otw_to_unload_location",
             "at_unload_location",
           ],
@@ -868,9 +868,7 @@ exports.createDeliveryOrderFromPO = async (req, res, next) => {
           driver_id,
           status: {
             [Op.in]: [
-              "assigned",
-              "otw_to_load_location",
-              "at_load_location",
+              "at_spbu",
               "otw_to_unload_location",
               "at_unload_location",
               "otw_to_base",
@@ -892,9 +890,7 @@ exports.createDeliveryOrderFromPO = async (req, res, next) => {
           vehicle_id,
           status: {
             [Op.in]: [
-              "assigned",
-              "otw_to_load_location",
-              "at_load_location",
+              "at_spbu",
               "otw_to_unload_location",
               "at_unload_location",
               "otw_to_base",
@@ -971,7 +967,7 @@ exports.createDeliveryOrderFromPO = async (req, res, next) => {
         unload_latitude: unload_latitude || po.unload_latitude,
         unload_longitude: unload_longitude || po.unload_longitude,
         payment_status: "proses_tagihan",
-        status: "assigned",
+        status: "at_spbu",
         do_name: do_name,
       });
   

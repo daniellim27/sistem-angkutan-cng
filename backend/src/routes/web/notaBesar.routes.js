@@ -1,24 +1,10 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const notaBesarController = require('../controllers/notaBesar.controller');
-const { verifyToken, checkRole } = require('../middlewares/auth.middleware');
+const notaBesarController = require("../../controllers/notaBesar.controller");
+const { verifyToken, checkRole } = require("../../middlewares/auth.middleware");
 
 // Apply authentication to all routes
 router.use(verifyToken);
-
-// Calculate and create nota besar from selected nota kecils
-router.post(
-  '/delivery-orders/:id/nota-besar/calculate',
-  checkRole(['admin', 'owner']), // Only admin and owner can create nota besar
-  notaBesarController.calculateNotaBesar
-);
-
-// Get all nota besars for a delivery order
-router.get(
-  '/delivery-orders/:id/nota-besars',
-  checkRole(['admin', 'owner', 'driver']),
-  notaBesarController.getNotaBesars
-);
 
 // Get all nota besars
 router.get(
@@ -32,6 +18,20 @@ router.get(
   '/nota-besars/:id',
   checkRole(['admin', 'owner', 'driver']),
   notaBesarController.getNotaBesarDetail
+);
+
+// Calculate and create nota besar from selected nota kecils
+router.post(
+  '/delivery-orders/:id/nota-besar/calculate',
+  checkRole(['admin', 'owner']), // Only admin and owner can create nota besar
+  notaBesarController.calculateNotaBesar
+);
+
+// Get all nota besars for a delivery order
+router.get(
+  '/delivery-orders/:id/nota-besars',
+  checkRole(['admin', 'owner', 'driver']),
+  notaBesarController.getNotaBesars
 );
 
 // Update nota besar status
@@ -49,3 +49,4 @@ router.delete(
 );
 
 module.exports = router;
+

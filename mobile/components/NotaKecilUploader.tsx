@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { processNotaKecilOCR, confirmNotaKecil as confirmNotaKecilAPI, processIndividualPhotoOCR } from '../src/services/api';
+import { processNotaKecilOCR, confirmNotaKecil as confirmNotaKecilAPI, processIndividualPhotoOCR, uploadNotaKecilImagesToGoogleDrive } from '../src/services/api';
 
 interface NotaKecilUploaderProps {
   deliveryOrderId: string;
@@ -535,7 +535,40 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
     }
 
     try {
-      // Call the real confirmation API
+      setIsProcessing(true);
+      
+      // Step 1: Upload images to Google Drive
+      console.log('Uploading images to Google Drive...');
+      const uploadResponse = await uploadNotaKecilImagesToGoogleDrive(
+        deliveryOrderId,
+        editedValues.customer_name || customerName,
+        customerLocationIndex,
+        photos
+      );
+      
+      console.log('Google Drive upload response:', uploadResponse);
+      console.log('Upload response success:', uploadResponse.success);
+      console.log('Upload response data:', uploadResponse.data);
+      console.log('Upload response data structure:', JSON.stringify(uploadResponse, null, 2));
+      
+      // Check if upload was successful
+      if (!uploadResponse.success) {
+        throw new Error('Image upload failed: ' + uploadResponse.message);
+      }
+      
+      // Safely extract uploadedImages with fallback
+      const uploadedImages = uploadResponse.data?.data?.uploadedImages || 
+                           uploadResponse.data?.uploadedImages || 
+                           {
+                             pressure_bar: [],
+                             temperature: [],
+                             stan_awal: [],
+                             stan_akhir: [],
+                           };
+      
+      console.log('Extracted uploadedImages:', uploadedImages);
+      
+      // Step 2: Create nota kecil record with Google Drive URLs
       const confirmedValues = {
         stan_awal: parseFloat(editedValues.stan_awal),
         stan_akhir: parseFloat(editedValues.stan_akhir),
@@ -545,17 +578,13 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
         customer_location_index: customerLocationIndex,
         customer_name: editedValues.customer_name,
         customer_address: editedValues.customer_address,
-        // Send photo URLs from OCR processing
-        photos: {
-          pressure_bar: photoUrls.pressure_bar ? [photoUrls.pressure_bar] : [],
-          temperature: photoUrls.temperature ? [photoUrls.temperature] : [],
-          stan_awal: photoUrls.stan_awal ? [photoUrls.stan_awal] : [],
-          stan_akhir: photoUrls.stan_akhir ? [photoUrls.stan_akhir] : [],
-        },
+        // Use Google Drive URLs from upload response
+        photos: uploadedImages,
         ocr_results: ocrResults, // Include OCR results
       };
 
       console.log('Confirming nota kecil with values:', confirmedValues);
+      console.log('About to call confirmNotaKecilAPI...');
       
       // Call the confirm API to create the nota kecil record
       const response = await confirmNotaKecilAPI(deliveryOrderId, confirmedValues);
@@ -565,6 +594,11 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
 
       onNotaKecilCreated(notaKecil);
       setShowReviewModal(false);
+      
+      // Close the main modal if onClose callback is provided
+      if (onClose) {
+        onClose();
+      }
       
       // Reset form
       setPhotos({
@@ -596,13 +630,15 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
         stan_akhir: null,
       });
 
-      Alert.alert('Success', 'Nota Kecil created successfully!');
+      Alert.alert('Success', 'Nota Kecil created successfully with Google Drive images!');
     } catch (error) {
       console.error('Error creating nota kecil:', error);
       Alert.alert(
         'Error', 
         `Failed to create nota kecil: ${error.message}\n\nPlease try again.`
       );
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -913,11 +949,21 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
             </TouchableOpacity>
             
             <TouchableOpacity
-              style={styles.confirmButton}
+              style={[styles.confirmButton, isProcessing && styles.confirmButtonDisabled]}
               onPress={confirmNotaKecil}
+              disabled={isProcessing}
             >
-              <FontAwesome5 name="check" size={20} color="#fff" />
-              <Text style={styles.confirmButtonText}>Confirm & Save</Text>
+              {isProcessing ? (
+                <>
+                  <ActivityIndicator size="small" color="#fff" />
+                  <Text style={styles.confirmButtonText}>Uploading to Google Drive...</Text>
+                </>
+              ) : (
+                <>
+                  <FontAwesome5 name="check" size={20} color="#fff" />
+                  <Text style={styles.confirmButtonText}>Confirm & Save</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -1317,6 +1363,10 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  confirmButtonDisabled: {
+    backgroundColor: '#9ca3af',
+    opacity: 0.7,
   },
 
   // OCR Overlay Styles

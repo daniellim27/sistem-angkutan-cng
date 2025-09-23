@@ -1769,10 +1769,53 @@ exports.confirmNotaKecil = async (req, res, next) => {
       driver_notes: driver_notes || null
     });
 
+    // Create optimized response structure
+    const optimizedResponse = {
+      id: notaKecil.id,
+      delivery_order_id: notaKecil.delivery_order_id,
+      customer_location_index: notaKecil.customer_location_index,
+      customer_name: notaKecil.customer_name,
+      customer_address: notaKecil.customer_address,
+      stan_awal: notaKecil.stan_awal,
+      stan_akhir: notaKecil.stan_akhir,
+      tekanan_operasi: notaKecil.tekanan_operasi,
+      temperatur_operasi: notaKecil.temperatur_operasi,
+      Vt: notaKecil.Vt,
+      k: notaKecil.k,
+      V: notaKecil.V,
+      created_at: notaKecil.created_at,
+      driver_notes: notaKecil.driver_notes
+    };
+
+    // Add optimized photos structure (just URLs)
+    if (photos && Object.keys(photos).length > 0) {
+      optimizedResponse.photos = {
+        pressure_bar: photos.pressure_bar?.map(photo => 
+          typeof photo === 'string' ? photo : photo.url
+        ) || [],
+        temperature: photos.temperature?.map(photo => 
+          typeof photo === 'string' ? photo : photo.url
+        ) || [],
+        stan_awal: photos.stan_awal?.map(photo => 
+          typeof photo === 'string' ? photo : photo.url
+        ) || [],
+        stan_akhir: photos.stan_akhir?.map(photo => 
+          typeof photo === 'string' ? photo : photo.url
+        ) || []
+      };
+    }
+
+    // Add optimized OCR results structure
+    if (ocr_results && Object.keys(ocr_results).length > 0) {
+      optimizedResponse.ocr_results = ocr_results;
+    }
+
+    console.log('📊 Optimized response:', JSON.stringify(optimizedResponse, null, 2));
+
     res.status(201).json({
       success: true,
       message: "Nota kecil confirmed successfully",
-      data: notaKecil
+      data: optimizedResponse
     });
 
   } catch (error) {
@@ -1812,9 +1855,75 @@ exports.getNotaKecils = async (req, res, next) => {
       order: [['created_at', 'DESC']]
     });
 
+    // Optimize response structure for consistency with confirmNotaKecil
+    const optimizedNotaKecils = notaKecils.map(nota => {
+      const optimized = {
+        id: nota.id,
+        delivery_order_id: nota.delivery_order_id,
+        customer_location_index: nota.customer_location_index,
+        customer_name: nota.customer_name,
+        customer_address: nota.customer_address,
+        stan_awal: nota.stan_awal,
+        stan_akhir: nota.stan_akhir,
+        tekanan_operasi: nota.tekanan_operasi,
+        temperatur_operasi: nota.temperatur_operasi,
+        Vt: nota.Vt,
+        k: nota.k,
+        V: nota.V,
+        created_at: nota.created_at,
+        driver_notes: nota.driver_notes
+      };
+
+      // Convert old photo format to optimized format
+      const photos = {};
+      
+      // Helper function to extract URLs from both old and new formats
+      const extractUrls = (photoArray) => {
+        if (!photoArray || !Array.isArray(photoArray)) return [];
+        
+        return photoArray.map(photoGroup => {
+          if (Array.isArray(photoGroup)) {
+            // Handle nested arrays (old format)
+            return photoGroup.map(photo => {
+              if (typeof photo === 'string') return photo;
+              if (photo && photo.url) return photo.url;
+              return null;
+            }).filter(url => url !== null);
+          } else if (typeof photoGroup === 'object' && photoGroup.url) {
+            // Handle direct objects (new format)
+            return photoGroup.url;
+          } else if (typeof photoGroup === 'string') {
+            // Handle direct strings
+            return photoGroup;
+          }
+          return null;
+        }).filter(url => url !== null);
+      };
+
+      // Convert each photo type - check both old and new format fields
+      photos.pressure_bar = extractUrls(nota.pressure_bar_photos) || extractUrls(nota.pressure_bar_photos_urls);
+      photos.temperature = extractUrls(nota.temperature_photos) || extractUrls(nota.temperature_photos_urls);
+      photos.stan_awal = extractUrls(nota.stan_awal_photos) || extractUrls(nota.stan_awal_photos_urls);
+      photos.stan_akhir = extractUrls(nota.stan_akhir_photos) || extractUrls(nota.stan_akhir_photos_urls);
+
+
+      // Only add photos if there are any
+      if (photos.pressure_bar.length > 0 || photos.temperature.length > 0 || 
+          photos.stan_awal.length > 0 || photos.stan_akhir.length > 0) {
+        optimized.photos = photos;
+      }
+
+      // Add OCR results if available
+      if (nota.ocr_confidence_scores) {
+        optimized.ocr_results = nota.ocr_confidence_scores;
+      }
+
+      return optimized;
+    });
+
     res.status(200).json({
       success: true,
-      data: notaKecils
+      data: optimizedNotaKecils
     });
 
   } catch (error) {

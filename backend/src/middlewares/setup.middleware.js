@@ -38,4 +38,18 @@ module.exports = (app) => {
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+  
+  // Global error handler for JSON parsing errors
+  app.use((error, req, res, next) => {
+    if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
+      console.error('❌ Invalid JSON received:', error.body);
+      console.error('❌ JSON Error:', error.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid JSON format',
+        details: error.message
+      });
+    }
+    next(error);
+  });
 };

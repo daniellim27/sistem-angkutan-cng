@@ -9,7 +9,7 @@ import Constants from 'expo-constants';
 // Try to get API URL from environment or app config
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 
                      Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL || 
-                     'http://192.168.1.202:3000/api';
+                     'http://192.168.100.27:3000/api';
 
 // Create a dedicated axios instance
 const apiClient = axios.create({
@@ -101,6 +101,7 @@ const appendFileToFormData = async (formData, fieldName, fileData) => {
       console.warn("No fileUri for fileData:", fileData);
       return;
     }
+    // For React Native, append the file object correctly for multer
     formData.append(fieldName, {
       uri: fileUri,
       name: fileData.fileName || `file.${ext}`,
@@ -708,6 +709,186 @@ export const processIndividualPhotoOCR = async (doId, photoType, customerLocatio
       message: error.message,
       stack: error.stack,
       response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+// Simple single-image upload to Google Drive for Nota Kecil
+export const uploadNotaKecilImageToGoogleDrive = async (deliveryOrderId, customerName, customerLocationIndex, photoType, photo, notaKecilId = null) => {
+  try {
+    console.log("uploadNotaKecilImageToGoogleDrive called with:", {
+      deliveryOrderId,
+      customerName,
+      customerLocationIndex,
+      photoType,
+      hasPhoto: !!photo,
+      notaKecilId
+    });
+
+    if (!photo || !photo.uri) {
+      throw new Error(`No photo provided for ${photoType}`);
+    }
+
+    const formData = new FormData();
+    
+    // Add required fields for Google Drive upload
+    formData.append('deliveryOrderId', deliveryOrderId.toString());
+    formData.append('customerName', customerName);
+    formData.append('locationIndex', customerLocationIndex.toString());
+    formData.append('photoType', photoType);
+    
+    if (notaKecilId) {
+      formData.append('notaKecilId', notaKecilId.toString());
+    }
+    
+    // Add the single photo
+    const ext = photo.uri.split(".").pop() || "jpg";
+    console.log(`Adding ${photoType} photo to FormData:`, {
+      uri: photo.uri,
+      fileName: photo.fileName || `${photoType}_${customerLocationIndex}.${ext}`,
+      mimeType: photo.mimeType || "image/jpeg"
+    });
+
+    await appendFileToFormData(
+      formData,
+      "image",
+      {
+        uri: photo.uri,
+        fileName: photo.fileName || `${photoType}_${customerLocationIndex}.${ext}`,
+        mimeType: photo.mimeType || "image/jpeg"
+      }
+    );
+
+    console.log("Sending single photo to Google Drive upload endpoint...");
+    console.log("FormData contents:", {
+      deliveryOrderId: formData._parts?.find(p => p[0] === 'deliveryOrderId')?.[1],
+      customerName: formData._parts?.find(p => p[0] === 'customerName')?.[1],
+      locationIndex: formData._parts?.find(p => p[0] === 'locationIndex')?.[1],
+      photoType: formData._parts?.find(p => p[0] === 'photoType')?.[1],
+      hasImage: !!formData._parts?.find(p => p[0] === 'image')
+    });
+    
+    return await apiClient.post('/simple-upload/nota-image', formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      timeout: 60000, // 1 minute for single image upload
+    });
+  } catch (error) {
+    console.error("Error in uploadNotaKecilImageToGoogleDrive API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+// Upload multiple nota kecil images one by one (NEW APPROACH)
+export const uploadNotaKecilImagesToGoogleDrive = async (deliveryOrderId, customerName, customerLocationIndex, photos, notaKecilId = null) => {
+  try {
+    console.log("uploadNotaKecilImagesToGoogleDrive (NEW) called with:", {
+      deliveryOrderId,
+      customerName,
+      customerLocationIndex,
+      photos,
+      notaKecilId
+    });
+
+    const results = [];
+    const photoTypes = [
+      { key: 'pressure_bar', photo: photos.pressure_bar },
+      { key: 'temperature', photo: photos.temperature },
+      { key: 'stan_awal', photo: photos.stan_awal },
+      { key: 'stan_akhir', photo: photos.stan_akhir }
+    ];
+
+    // Upload each photo individually
+    for (const { key, photo } of photoTypes) {
+      if (photo && photo.uri) {
+        try {
+          console.log(`📸 Uploading ${key} photo...`);
+          const result = await uploadNotaKecilImageToGoogleDrive(
+            deliveryOrderId,
+            customerName,
+            customerLocationIndex,
+            key,
+            photo,
+            notaKecilId
+          );
+          
+          results.push({
+            type: key,
+            success: true,
+            data: result.data,
+            url: result.data.data.imageData.url
+          });
+          
+          console.log(`✅ Successfully uploaded ${key} photo`);
+        } catch (error) {
+          console.error(`❌ Failed to upload ${key} photo:`, error.message);
+          results.push({
+            type: key,
+            success: false,
+            error: error.message
+          });
+        }
+      } else {
+        console.log(`⏭️ Skipping ${key} photo (no photo provided)`);
+        results.push({
+          type: key,
+          success: true,
+          skipped: true
+        });
+      }
+    }
+
+    // Count successful uploads
+    const successfulUploads = results.filter(r => r.success && !r.skipped).length;
+    const totalPhotos = photoTypes.filter(p => p.photo && p.photo.uri).length;
+
+    console.log(`📊 Upload Summary: ${successfulUploads}/${totalPhotos} photos uploaded successfully`);
+    console.log('📊 Upload results:', results);
+
+    // Transform results to the expected format
+    const uploadedImages = {
+      pressure_bar: [],
+      temperature: [],
+      stan_awal: [],
+      stan_akhir: []
+    };
+
+    // Group results by photo type
+    results.forEach(result => {
+      if (result.success && !result.skipped && result.url) {
+        uploadedImages[result.type].push({
+          url: result.url,
+          filename: result.data?.data?.imageData?.filename || `${result.type}.jpg`,
+          fileId: result.data?.data?.imageData?.fileId || result.data?.data?.imageData?.publicId,
+          uploadedAt: result.data?.data?.imageData?.uploadedAt || new Date().toISOString()
+        });
+      }
+    });
+
+    const finalResponse = {
+      success: successfulUploads > 0,
+      message: `Uploaded ${successfulUploads}/${totalPhotos} photos successfully`,
+      data: {
+        uploadedImages,
+        results,
+        successfulUploads,
+        totalPhotos
+      }
+    };
+
+    console.log('📊 Final upload response:', JSON.stringify(finalResponse, null, 2));
+    return finalResponse;
+
+  } catch (error) {
+    console.error("Error in uploadNotaKecilImagesToGoogleDrive (NEW) API call:", {
+      message: error.message,
+      stack: error.stack,
     });
     throw error;
   }

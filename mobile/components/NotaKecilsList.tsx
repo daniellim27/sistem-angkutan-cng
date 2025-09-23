@@ -28,6 +28,14 @@ interface NotaKecil {
   driver_confirmed_at: string;
   driver_notes?: string;
   created_at: string;
+  // New optimized photo format
+  photos?: {
+    pressure_bar: string[];
+    temperature: string[];
+    stan_awal: string[];
+    stan_akhir: string[];
+  };
+  // Legacy photo format (for backward compatibility)
   pressure_bar_photos?: string[];
   temperature_photos?: string[];
   stan_awal_photos?: string[];
@@ -142,35 +150,77 @@ const NotaKecilsList: React.FC<NotaKecilsListProps> = ({
     });
   };
 
-  const viewPhotos = (notaKecil: NotaKecil, photoType: string) => {
+  const getRealPhotos = (notaKecil: NotaKecil, photoType: string): string[] => {
     let photos: string[] = [];
+
+    // Try new optimized format first, fallback to legacy format
+    if (notaKecil.photos) {
+      switch (photoType) {
+        case 'pressure_bar':
+          photos = notaKecil.photos.pressure_bar || [];
+          break;
+        case 'temperature':
+          photos = notaKecil.photos.temperature || [];
+          break;
+        case 'stan_awal':
+          photos = notaKecil.photos.stan_awal || [];
+          break;
+        case 'stan_akhir':
+          photos = notaKecil.photos.stan_akhir || [];
+          break;
+      }
+    } else {
+      // Fallback to legacy format for backward compatibility
+      switch (photoType) {
+        case 'pressure_bar':
+          photos = notaKecil.pressure_bar_photos || [];
+          break;
+        case 'temperature':
+          photos = notaKecil.temperature_photos || [];
+          break;
+        case 'stan_awal':
+          photos = notaKecil.stan_awal_photos || [];
+          break;
+        case 'stan_akhir':
+          photos = notaKecil.stan_akhir_photos || [];
+          break;
+      }
+    }
+
+    // Filter out fake example URLs and return only real photos
+    return photos.filter(url => 
+      url && 
+      !url.includes('example.com') && 
+      !url.includes('placeholder') &&
+      (url.includes('cloudinary.com') || url.includes('res.cloudinary.com'))
+    );
+  };
+
+  const viewPhotos = (notaKecil: NotaKecil, photoType: string) => {
+    const realPhotos = getRealPhotos(notaKecil, photoType);
     let title = '';
 
     switch (photoType) {
       case 'pressure_bar':
-        photos = notaKecil.pressure_bar_photos || [];
         title = 'Pressure Bar Photos';
         break;
       case 'temperature':
-        photos = notaKecil.temperature_photos || [];
         title = 'Temperature Photos';
         break;
       case 'stan_awal':
-        photos = notaKecil.stan_awal_photos || [];
         title = 'Stan Awal Photos';
         break;
       case 'stan_akhir':
-        photos = notaKecil.stan_akhir_photos || [];
         title = 'Stan Akhir Photos';
         break;
     }
 
-    if (photos.length > 0) {
-      setSelectedPhotos(photos);
+    if (realPhotos.length > 0) {
+      setSelectedPhotos(realPhotos);
       setPhotoModalTitle(title);
       setShowPhotoModal(true);
     } else {
-      Alert.alert('No Photos', `No ${photoType} photos available for this nota kecil.`);
+      Alert.alert('No Photos', `No real ${photoType} photos available for this nota kecil.`);
     }
   };
 
@@ -179,17 +229,17 @@ const NotaKecilsList: React.FC<NotaKecilsListProps> = ({
       <View style={styles.cardHeader}>
         <Text style={styles.cardTitle}>Nota Kecil #{notaKecils.length - index}</Text>
         <View style={styles.statusBadge}>
-          <FontAwesome5 
+          {/* <FontAwesome5 
             name={notaKecil.driver_confirmed ? "check-circle" : "clock"} 
             size={12} 
             color={notaKecil.driver_confirmed ? "#059669" : "#f59e0b"} 
-          />
-          <Text style={[
+          /> */}
+          {/* <Text style={[
             styles.statusText,
             { color: notaKecil.driver_confirmed ? "#059669" : "#f59e0b" }
           ]}>
             {notaKecil.driver_confirmed ? "Confirmed" : "Pending"}
-          </Text>
+          </Text> */}
         </View>
       </View>
 
@@ -199,8 +249,8 @@ const NotaKecilsList: React.FC<NotaKecilsListProps> = ({
         </Text>
 
         <View style={styles.customerInfo}>
-          <Text style={styles.customerName}>{notaKecil.customer_name}</Text>
-          <Text style={styles.customerLocation}>Location #{notaKecil.customer_location_index}</Text>
+          <Text style={styles.customerName}>Customer Name: {notaKecil.customer_name}</Text>
+          <Text style={styles.customerLocation}>Customer Address: {notaKecil.customer_address}</Text>
         </View>
 
         <View style={styles.valuesGrid}>
@@ -253,35 +303,75 @@ const NotaKecilsList: React.FC<NotaKecilsListProps> = ({
           <Text style={styles.photosLabel}>Photos:</Text>
           <View style={styles.photoButtons}>
             <TouchableOpacity
-              style={styles.photoButton}
+              style={[
+                styles.photoButton,
+                getRealPhotos(notaKecil, 'pressure_bar').length === 0 && styles.photoButtonDisabled
+              ]}
               onPress={() => viewPhotos(notaKecil, 'pressure_bar')}
             >
-              <FontAwesome5 name="tachometer-alt" size={16} color="#3b82f6" />
-              <Text style={styles.photoButtonText}>Pressure</Text>
+              <FontAwesome5 
+                name="tachometer-alt" 
+                size={16} 
+                color={getRealPhotos(notaKecil, 'pressure_bar').length > 0 ? "#3b82f6" : "#9ca3af"} 
+              />
+              <Text style={[
+                styles.photoButtonText,
+                getRealPhotos(notaKecil, 'pressure_bar').length === 0 && styles.photoButtonTextDisabled
+              ]}>Pressure</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
-              style={styles.photoButton}
+              style={[
+                styles.photoButton,
+                getRealPhotos(notaKecil, 'temperature').length === 0 && styles.photoButtonDisabled
+              ]}
               onPress={() => viewPhotos(notaKecil, 'temperature')}
             >
-              <FontAwesome5 name="thermometer-half" size={16} color="#3b82f6" />
-              <Text style={styles.photoButtonText}>Temperature</Text>
+              <FontAwesome5 
+                name="thermometer-half" 
+                size={16} 
+                color={getRealPhotos(notaKecil, 'temperature').length > 0 ? "#3b82f6" : "#9ca3af"} 
+              />
+              <Text style={[
+                styles.photoButtonText,
+                getRealPhotos(notaKecil, 'temperature').length === 0 && styles.photoButtonTextDisabled
+              ]}>Temperature</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
-              style={styles.photoButton}
+              style={[
+                styles.photoButton,
+                getRealPhotos(notaKecil, 'stan_awal').length === 0 && styles.photoButtonDisabled
+              ]}
               onPress={() => viewPhotos(notaKecil, 'stan_awal')}
             >
-              <FontAwesome5 name="play" size={16} color="#3b82f6" />
-              <Text style={styles.photoButtonText}>Stan Awal</Text>
+              <FontAwesome5 
+                name="play" 
+                size={16} 
+                color={getRealPhotos(notaKecil, 'stan_awal').length > 0 ? "#3b82f6" : "#9ca3af"} 
+              />
+              <Text style={[
+                styles.photoButtonText,
+                getRealPhotos(notaKecil, 'stan_awal').length === 0 && styles.photoButtonTextDisabled
+              ]}>Stan Awal</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
-              style={styles.photoButton}
+              style={[
+                styles.photoButton,
+                getRealPhotos(notaKecil, 'stan_akhir').length === 0 && styles.photoButtonDisabled
+              ]}
               onPress={() => viewPhotos(notaKecil, 'stan_akhir')}
             >
-              <FontAwesome5 name="stop" size={16} color="#3b82f6" />
-              <Text style={styles.photoButtonText}>Stan Akhir</Text>
+              <FontAwesome5 
+                name="stop" 
+                size={16} 
+                color={getRealPhotos(notaKecil, 'stan_akhir').length > 0 ? "#3b82f6" : "#9ca3af"} 
+              />
+              <Text style={[
+                styles.photoButtonText,
+                getRealPhotos(notaKecil, 'stan_akhir').length === 0 && styles.photoButtonTextDisabled
+              ]}>Stan Akhir</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -563,6 +653,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#3b82f6',
     fontWeight: '500',
+  },
+  photoButtonDisabled: {
+    backgroundColor: '#f9fafb',
+    opacity: 0.6,
+  },
+  photoButtonTextDisabled: {
+    color: '#9ca3af',
   },
   photoModalContainer: {
     flex: 1,

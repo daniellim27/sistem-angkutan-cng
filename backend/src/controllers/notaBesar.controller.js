@@ -3,6 +3,71 @@ const billingCalculationService = require('../services/billingCalculationService
 const { Op } = require('sequelize');
 
 /**
+ * Get all nota besars across all delivery orders
+ */
+exports.getAllNotaBesars = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 50, search, status, delivery_order_id } = req.query;
+    const offset = (page - 1) * limit;
+
+    // Build where clause
+    const whereClause = {};
+    
+    if (delivery_order_id) {
+      whereClause.delivery_order_id = delivery_order_id;
+    }
+
+    if (status) {
+      whereClause.status = status;
+    }
+
+    if (search) {
+      whereClause[Op.or] = [
+        { '$deliveryOrder.do_number$': { [Op.iLike]: `%${search}%` } },
+        { notes: { [Op.iLike]: `%${search}%` } }
+      ];
+    }
+
+    const { count, rows: notaBesars } = await NotaBesar.findAndCountAll({
+      where: whereClause,
+      include: [
+        {
+          model: DeliveryOrder,
+          as: 'deliveryOrder',
+          attributes: ['id', 'do_number']
+        },
+        {
+          model: User,
+          as: 'creator',
+          attributes: ['id', 'username']
+        }
+      ],
+      order: [['created_at', 'DESC']],
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+
+    res.json({
+      success: true,
+      data: notaBesars,
+      pagination: {
+        total: count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(count / limit)
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching nota besars:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch nota besars",
+      error: error.message
+    });
+  }
+};
+
+/**
  * Calculate and create a new nota besar from selected nota kecils
  */
 exports.calculateNotaBesar = async (req, res, next) => {

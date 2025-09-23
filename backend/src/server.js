@@ -59,6 +59,12 @@ const driverRoutes = require("./routes/driver.routes");
 const ocrRoutes = require("./routes/ocr.routes");
 const webOcrRoutes = require("./routes/web/ocr.routes");
 const notaBesarRoutes = require("./routes/notaBesar.routes");
+const notaKecilRoutes = require("./routes/notaKecil.routes");
+const webNotaKecilRoutes = require("./routes/web/notaKecil.routes");
+const webNotaBesarRoutes = require("./routes/web/notaBesar.routes");
+const imageUploadRoutes = require("./routes/imageUpload.routes");
+const webImageUploadRoutes = require("./routes/web/imageUpload.routes");
+const simpleImageUploadRoutes = require("./routes/simpleImageUpload.routes");
 
 // === Import Exchange Rate Routes ===
 const webExchangeRateRoutes = require("./routes/web/exchangeRates.routes");
@@ -178,6 +184,9 @@ initializeDatabase().then(() => {
   app.use("/api/drivers", driverRoutes);
   app.use("/api/ocr", ocrRoutes);
   app.use("/api", notaBesarRoutes);
+  app.use("/api", notaKecilRoutes);
+  app.use("/api/image-upload", imageUploadRoutes);
+  app.use("/api/simple-upload", simpleImageUploadRoutes);
 
   // Static uploads
   app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
@@ -217,6 +226,9 @@ initializeDatabase().then(() => {
   // Add customer routes
   app.use("/api/customers", customerRoutes);
   app.use("/api/web/customers", customerRoutes);
+  app.use("/api/web/nota-kecils", webNotaKecilRoutes);
+  app.use("/api/web", webNotaBesarRoutes);
+  app.use("/api/web/image-upload", webImageUploadRoutes);
 
   app.use("/api/utils", utilsRoutes);
 
@@ -249,4 +261,25 @@ initializeDatabase().then(() => {
 }).catch(err => {
   console.error("💥 Server startup failed:", err);
   process.exit(1);
+});
+
+// Add process-level error handlers to prevent crashes
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit the process, just log the error
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  // Don't exit the process, just log the error
+});
+
+// Handle busboy errors specifically
+process.on('uncaughtException', (error) => {
+  if (error.message && error.message.includes('Unexpected end of form')) {
+    console.error('📸 Busboy error caught at process level:', error.message);
+    // Don't exit, this is a known issue
+    return;
+  }
+  console.error('❌ Uncaught Exception:', error);
 });

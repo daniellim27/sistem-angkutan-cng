@@ -72,30 +72,56 @@ module.exports = (sequelize) => {
     comment: 'Final Volume Gas (m³): Vt * k'
   },
   
-  // Photos (JSONB array of URLs)
+  // Photos (JSONB array of URLs) - Local storage
   pressure_bar_photos: {
     type: DataTypes.JSONB,
     allowNull: true,
     defaultValue: [],
-    comment: 'Array of pressure bar photo URLs'
+    comment: 'Array of pressure bar photo URLs (local storage)'
   },
   temperature_photos: {
     type: DataTypes.JSONB,
     allowNull: true,
     defaultValue: [],
-    comment: 'Array of temperature photo URLs'
+    comment: 'Array of temperature photo URLs (local storage)'
   },
   stan_awal_photos: {
     type: DataTypes.JSONB,
     allowNull: true,
     defaultValue: [],
-    comment: 'Array of stan awal photo URLs'
+    comment: 'Array of stan awal photo URLs (local storage)'
   },
   stan_akhir_photos: {
     type: DataTypes.JSONB,
     allowNull: true,
     defaultValue: [],
-    comment: 'Array of stan akhir photo URLs'
+    comment: 'Array of stan akhir photo URLs (local storage)'
+  },
+  
+  // Cloudinary Photos (JSONB array of URLs with metadata)
+  pressure_bar_photos_urls: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: [],
+    comment: 'Array of Cloudinary URLs for pressure bar photos with metadata'
+  },
+  temperature_photos_urls: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: [],
+    comment: 'Array of Cloudinary URLs for temperature photos with metadata'
+  },
+  stan_awal_photos_urls: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: [],
+    comment: 'Array of Cloudinary URLs for stan awal photos with metadata'
+  },
+  stan_akhir_photos_urls: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: [],
+    comment: 'Array of Cloudinary URLs for stan akhir photos with metadata'
   },
   
   // OCR Metadata
