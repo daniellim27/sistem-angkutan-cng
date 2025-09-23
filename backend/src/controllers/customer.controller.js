@@ -21,11 +21,12 @@ const getCustomers = async (req, res) => {
       whereConditions[Op.or] = [
         { customer_name: { [Op.iLike]: `%${search}%` } },
         { location: { [Op.iLike]: `%${search}%` } },
+        { phone: { [Op.iLike]: `%${search}%` } },
       ];
     }
 
     // Validate sort fields
-    const allowedSortFields = ["customer_name", "location", "nota_besar", "nota_kecil", "created_at"];
+    const allowedSortFields = ["customer_name", "location", "phone", "nota_besar", "nota_kecil", "created_at"];
     const validSortBy = allowedSortFields.includes(sortBy) ? sortBy : "created_at";
     const validSortOrder = ["ASC", "DESC"].includes(sortOrder.toUpperCase()) 
       ? sortOrder.toUpperCase() 
@@ -101,7 +102,7 @@ const getCustomerById = async (req, res) => {
 // POST /api/customers - Create new customer
 const createCustomer = async (req, res) => {
   try {
-    const { customer_name, location, nota_besar = 0, nota_kecil = 0 } = req.body;
+    const { customer_name, location, phone, nota_besar = 0, nota_kecil = 0 } = req.body;
 
     // Validation
     if (!customer_name || !location) {
@@ -145,6 +146,7 @@ const createCustomer = async (req, res) => {
     const customer = await Customer.create({
       customer_name: customer_name.trim(),
       location: location.trim(),
+      phone: phone ? phone.trim() : null,
       nota_besar: parsedNotaBesar,
       nota_kecil: parsedNotaKecil,
     });
@@ -181,7 +183,7 @@ const createCustomer = async (req, res) => {
 const updateCustomer = async (req, res) => {
   try {
     const { id } = req.params;
-    const { customer_name, location, nota_besar, nota_kecil } = req.body;
+    const { customer_name, location, phone, nota_besar, nota_kecil } = req.body;
 
     const customer = await Customer.findByPk(id);
 
@@ -236,6 +238,7 @@ const updateCustomer = async (req, res) => {
     await customer.update({
       customer_name: customer_name.trim(),
       location: location.trim(),
+      phone: phone ? phone.trim() : null,
       nota_besar: parsedNotaBesar,
       nota_kecil: parsedNotaKecil,
     });

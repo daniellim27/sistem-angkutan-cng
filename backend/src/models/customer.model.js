@@ -31,6 +31,23 @@ module.exports = (sequelize) => {
         }
       },
 
+      phone: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        comment: "Customer phone number (optional)",
+        validate: {
+          isIndonesianPhone(value) {
+            if (value && value.trim() !== '') {
+              const cleanPhone = value.replace(/\s|-/g, '');
+              const phoneRegex = /^(\+62|62|0)[0-9]{8,13}$/;
+              if (!phoneRegex.test(cleanPhone)) {
+                throw new Error('Invalid Indonesian phone number format');
+              }
+            }
+          }
+        }
+      },
+
       // === NOTA FIELDS ===
       nota_besar: {
         type: DataTypes.DECIMAL(15, 2),
@@ -104,6 +121,18 @@ module.exports = (sequelize) => {
       style: 'currency',
       currency: 'IDR'
     }).format(this.getTotalNota());
+  };
+
+  Customer.prototype.getFormattedPhone = function () {
+    if (!this.phone) return null;
+    
+    const phone = this.phone.replace(/\s|-/g, '');
+    if (phone.startsWith('62')) {
+      return '+' + phone;
+    } else if (phone.startsWith('0')) {
+      return '+62' + phone.substring(1);
+    }
+    return phone;
   };
 
   // === STATIC METHODS ===

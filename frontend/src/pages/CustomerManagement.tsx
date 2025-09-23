@@ -7,6 +7,7 @@ interface Customer {
   id: number;
   customer_name: string;
   location: string;
+  phone?: string;
   nota_besar: number;
   nota_kecil: number;
   created_at: string;
@@ -16,6 +17,7 @@ interface Customer {
 interface CustomerFormData {
   customer_name: string;
   location: string;
+  phone: string;
 }
 
 interface CustomerResponse {
@@ -50,6 +52,7 @@ const CustomerManagement: React.FC = () => {
   const [formData, setFormData] = useState<CustomerFormData>({
     customer_name: "",
     location: "",
+    phone: "",
   });
 
   // Fetch customers
@@ -117,6 +120,7 @@ const CustomerManagement: React.FC = () => {
         body: JSON.stringify({
           customer_name: formData.customer_name,
           location: formData.location,
+          phone: formData.phone,
         }),
       });
 
@@ -179,6 +183,7 @@ const CustomerManagement: React.FC = () => {
     setFormData({
       customer_name: customer.customer_name,
       location: customer.location,
+      phone: customer.phone || "",
     });
     setShowForm(true);
   };
@@ -198,6 +203,7 @@ const CustomerManagement: React.FC = () => {
     setFormData({
       customer_name: "",
       location: "",
+      phone: "",
     });
     setEditingCustomer(null);
   };
@@ -333,6 +339,24 @@ const CustomerManagement: React.FC = () => {
                   placeholder="Enter customer location"
                 />
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter phone number (optional)"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Indonesian format: +62, 62, or 0 followed by 8-13 digits
+                </p>
+              </div>
             </div>
 
             <div className="flex gap-4 pt-4">
@@ -384,6 +408,9 @@ const CustomerManagement: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Location
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Phone
+                </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Nota Besar
                 </th>
@@ -413,6 +440,13 @@ const CustomerManagement: React.FC = () => {
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900 max-w-xs truncate">
                         {customer.location}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        {customer.phone || (
+                          <span className="text-gray-400 italic">No phone</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
