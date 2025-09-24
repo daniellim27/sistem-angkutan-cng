@@ -36,8 +36,7 @@ interface DeliveryOrder {
   actual_load_quantity?: number;
   status:
     | "assigned"
-    | "otw_to_load_location"
-    | "at_load_location"
+    | "at_spbu"
     | "otw_to_unload_location"
     | "at_unload_location"
     | "completed"
@@ -454,15 +453,7 @@ const DriverDashboard = () => {
           color: "#3498db",
           disabled: isUpdating,
         };
-      case "otw_to_load_location":
-        return {
-          action: "arrive_at_spbu",
-          label: "Tiba di SPBU",
-          icon: "map-marker-alt",
-          color: "#f39c12",
-          disabled: isUpdating,
-        };
-      case "at_load_location":
+      case "at_spbu":
         return {
           action: "navigate_to_confirm",
           label: "Konfirmasi Muatan & Berangkat",
@@ -585,10 +576,8 @@ const DriverDashboard = () => {
     switch (status) {
       case "assigned":
         return { backgroundColor: "#6c757d" };
-      case "otw_to_load_location":
+      case "at_spbu":
         return { backgroundColor: "#3498db" };
-      case "at_load_location":
-        return { backgroundColor: "#f39c12" };
       case "otw_to_unload_location":
         return { backgroundColor: "#e67e22" };
       case "at_unload_location":
@@ -607,10 +596,8 @@ const DriverDashboard = () => {
     switch (status) {
       case "assigned":
         return "DITUGASKAN";
-      case "otw_to_load_location":
-        return "MENUJU MUAT";
-      case "at_load_location":
-        return "DI LOK. MUAT";
+      case "at_spbu":
+        return "DI SPBU";
       case "otw_to_unload_location":
         return "MENUJU BONGKAR";
       case "at_unload_location":

@@ -73,8 +73,8 @@ const TrackingDeliveryList: React.FC<TrackingDeliveryListProps> = ({ className =
       };
 
       if (statusFilter === 'active') {
-        // Get only trackable delivery orders (in transit, not assigned/completed/cancelled)
-        params.status = 'otw_to_load_location,at_load_location,otw_to_unload_location,at_unload_location,otw_to_base';
+        // Get only trackable delivery orders (in transit, not completed/cancelled)
+        params.status = 'at_spbu,otw_to_unload_location,at_unload_location';
       } else if (statusFilter !== 'all') {
         params.status = statusFilter;
       }
@@ -177,11 +177,9 @@ const TrackingDeliveryList: React.FC<TrackingDeliveryListProps> = ({ className =
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="active">Trackable Deliveries</option>
-              <option value="otw_to_load_location">On the way to SPBU</option>
-              <option value="at_load_location">At SPBU Location</option>
+              <option value="at_spbu">At SPBU</option>
               <option value="otw_to_unload_location">On the way to Customer</option>
               <option value="at_unload_location">At Customer</option>
-              <option value="otw_to_base">Returning to Base</option>
             </select>
           </div>
 

@@ -232,11 +232,9 @@ module.exports = (sequelize) => {
       status: {
         type: DataTypes.ENUM(
           "assigned",
-          "otw_to_load_location",
-          "at_load_location",
+          "at_spbu",
           "otw_to_unload_location",
           "at_unload_location",
-          "otw_to_base",
           "completed",
           "cancelled"
         ),
@@ -340,11 +338,9 @@ module.exports = (sequelize) => {
   DeliveryOrder.prototype.getStatusText = function () {
     const statusMap = {
       assigned: "Ditugaskan",
-      otw_to_load_location: "Menuju Lokasi Muat",
-      at_load_location: "Di Lokasi Muat",
+      at_spbu: "Di SPBU",
       otw_to_unload_location: "Menuju Lokasi Bongkar",
       at_unload_location: "Di Lokasi Bongkar",
-      otw_to_base: "Kembali ke Base",
       completed: "Selesai",
       cancelled: "Dibatalkan",
     };

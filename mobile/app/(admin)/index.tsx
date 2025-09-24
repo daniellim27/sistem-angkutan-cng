@@ -74,11 +74,9 @@ export default function AdminIndex() {
   const getStatusColor = (status: string) => {
     const colors = {
       assigned: "#6c757d",
-      otw_to_load_location: "#3498db",
-      at_load_location: "#f39c12",
+      at_spbu: "#3498db",
       otw_to_unload_location: "#e67e22",
       at_unload_location: "#9b59b6",
-      otw_to_base: "#1abc9c",
       completed: "#27ae60",
       cancelled: "#e74c3c",
     };
@@ -88,11 +86,9 @@ export default function AdminIndex() {
   const formatStatus = (status: string) => {
     const statusMap = {
       assigned: "ASSIGNED",
-      otw_to_load_location: "OTW TO LOAD",
-      at_load_location: "AT LOAD LOCATION"  ,
+      at_spbu: "AT SPBU",
       otw_to_unload_location: "OTW TO CUSTOMER",
       at_unload_location: "AT CUSTOMER",
-      otw_to_base: "OTW TO POOL",
       completed: "COMPLETED",
       cancelled: "CANCELLED",
     };

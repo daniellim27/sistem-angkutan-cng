@@ -9,7 +9,7 @@ import Constants from 'expo-constants';
 // Try to get API URL from environment or app config
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 
                      Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL || 
-                     'http://192.168.100.27:3000/api';
+                     'http://192.168.100.27:3000/api'; // Updated to use port 3000 (backend port)
 
 // Create a dedicated axios instance
 const apiClient = axios.create({

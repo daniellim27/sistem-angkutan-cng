@@ -125,11 +125,9 @@ const DODetailScreen = () => {
   const getStatusColor = (status: string) => {
     const colors = {
       assigned: "#6c757d",
-      otw_to_load_location: "#3498db",
-      at_load_location: "#f39c12",
+      at_spbu: "#3498db",
       otw_to_unload_location: "#e67e22",
       at_unload_location: "#9b59b6",
-      otw_to_base: "#1abc9c",
       completed: "#27ae60",
       cancelled: "#e74c3c",
     };
@@ -139,11 +137,9 @@ const DODetailScreen = () => {
   const getStatusText = (status: string) => {
     const statusMap = {
       assigned: "Ditugaskan",
-      otw_to_load_location: "Menuju Lokasi Muat",
-      at_load_location: "Di Lokasi Muat",
+      at_spbu: "Di SPBU",
       otw_to_unload_location: "Menuju Lokasi Bongkar",
       at_unload_location: "Di Lokasi Bongkar",
-      otw_to_base: "Perjalanan Pulang",
       completed: "Selesai",
       cancelled: "Dibatalkan",
     };

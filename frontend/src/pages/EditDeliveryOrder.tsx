@@ -32,8 +32,7 @@ interface DeliveryOrderData {
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'assigned', label: 'Assigned' },
-  { value: 'otw_to_load_location', label: 'On the way to SPBU Location' },
-  { value: 'at_load_location', label: 'At SPBU Location' },
+  { value: 'at_spbu', label: 'At SPBU' },
   { value: 'otw_to_unload_location', label: 'On the way to Customer' },
   { value: 'at_unload_location', label: 'At Customer' },
   { value: 'completed', label: 'Completed' },

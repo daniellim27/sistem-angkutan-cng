@@ -329,8 +329,7 @@ const DeliveryOrdersPage = () => {
           >
             <option value="all">All Statuses</option>
             <option value="assigned">Assigned</option>
-            <option value="otw_to_load_location">On Way to SPBU</option>
-            <option value="at_load_location">At SPBU Location</option>
+            <option value="at_spbu">At SPBU</option>
             <option value="otw_to_unload_location">On Way to Unload</option>
             <option value="at_unload_location">At Customer</option>
             <option value="completed">Completed</option>

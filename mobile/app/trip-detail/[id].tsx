@@ -992,14 +992,13 @@ const TripDetailScreen = () => {
     // Smart routing based on DO status
     switch (trip.status) {
       case "assigned":
-      case "otw_to_load_location":
+      case "at_spbu":
         return {
           latitude: loadLat,
           longitude: loadLng,
           address: trip.load_location,
           type: "load",
         };
-      case "at_load_location":
       case "otw_to_unload_location":
       case "at_unload_location":
         // Use current customer location instead of primary unload location
@@ -1597,7 +1596,7 @@ const TripDetailScreen = () => {
     if (!trip) return null;
 
     switch (trip.status) {
-      case "at_load_location":
+      case "at_spbu":
         return (
           <TouchableOpacity
             style={[styles.statusActionButton, { backgroundColor: "#e67e22" }]}
@@ -1931,7 +1930,7 @@ const TripDetailScreen = () => {
         </View>
 
         {/* SURAT JALAN PHOTOS SECTION */}
-        {trip.status !== "assigned" && trip.status !== "otw_to_load_location" && trip.status !== "at_load_location" && (
+        {trip.status !== "assigned" && trip.status !== "at_spbu" && (
           <View style={styles.detailCard}>
             <Text style={styles.cardTitle}>📄 Foto Surat Jalan</Text>
             
@@ -1973,7 +1972,7 @@ const TripDetailScreen = () => {
         )}
 
         {/* NOTA KECIL SECTION */}
-        {trip.status !== "assigned" && trip.status !== "otw_to_load_location" && trip.status !== "at_load_location" && (
+        {trip.status !== "assigned" && trip.status !== "at_spbu" && (
           <View style={styles.detailCard}>
             <Text style={styles.cardTitle}>📋 Nota Kecil per Lokasi</Text>
             
@@ -2898,8 +2897,7 @@ const TripDetailScreen = () => {
 const getStatusColor = (status: string) => {
   const colorMap: { [key: string]: string } = {
     assigned: "#6c757d",
-    otw_to_load_location: "#3498db",
-    at_load_location: "#9b59b6",
+    at_spbu: "#3498db",
     otw_to_unload_location: "#e67e22",
     at_unload_location: "#f39c12",
     completed: "#28a745",
@@ -2911,8 +2909,7 @@ const getStatusColor = (status: string) => {
 const getStatusText = (status: string) => {
   const statusMap = {
     assigned: "Ditugaskan",
-    otw_to_load_location: "Menuju SPBU",
-    at_load_location: "Di SPBU",
+    at_spbu: "Di SPBU",
     otw_to_unload_location: "Menuju Lokasi Bongkar",
     at_unload_location: "Di Lokasi Bongkar",
     completed: "Selesai",
@@ -2924,8 +2921,7 @@ const getStatusText = (status: string) => {
 const getStatusStyle = (status: string) => {
   const styleMap = {
     assigned: { backgroundColor: "#6c757d" },
-    otw_to_load_location: { backgroundColor: "#3498db" },
-    at_load_location: { backgroundColor: "#9b59b6" },
+    at_spbu: { backgroundColor: "#3498db" },
     otw_to_unload_location: { backgroundColor: "#e67e22" },
     at_unload_location: { backgroundColor: "#f39c12" },
     completed: { backgroundColor: "#28a745" },

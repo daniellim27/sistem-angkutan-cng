@@ -141,13 +141,51 @@ async function initializeDatabase() {
   }
 }
 
-// Basic health check route (works even if database fails)
+  // Basic health check route (works even if database fails)
 app.get("/health", (req, res) => {
   res.json({ 
     status: "ok", 
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
+});
+
+// Admin user creation endpoint
+app.post("/api/admin/create-admin", async (req, res) => {
+  try {
+    const bcrypt = require('bcrypt');
+    const { User } = require('./models');
+    
+    // Check if admin already exists
+    const existingAdmin = await User.findOne({ where: { role: 'admin' } });
+    if (existingAdmin) {
+      return res.json({ 
+        success: true, 
+        message: 'Admin user already exists',
+        adminId: existingAdmin.id 
+      });
+    }
+    
+    // Create admin user
+    const hashedPassword = await bcrypt.hash('awak1234', 10);
+    const adminUser = await User.create({
+      username: 'admin',
+      password_hash: hashedPassword,
+      role: 'admin'
+    });
+    
+    res.json({ 
+      success: true, 
+      message: 'Admin user created successfully',
+      adminId: adminUser.id 
+    });
+  } catch (error) {
+    console.error('Error creating admin user:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
 });
 
 // Initialize database before starting server

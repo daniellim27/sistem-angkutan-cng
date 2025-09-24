@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: angkutan-mobile-frontend
+    env: node
+    buildCommand: npm install && npx expo export --platform web
+    startCommand: npx serve dist
+    envVars:
+      - key: EXPO_PUBLIC_API_URL
+        value: https://cinda-lemonish-unhatingly.ngrok-free.dev/api
+    staticPublishPath: ./dist
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=0, must-revalidate
