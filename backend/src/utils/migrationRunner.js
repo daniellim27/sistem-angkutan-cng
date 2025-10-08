@@ -12,7 +12,10 @@ class MigrationRunner {
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
-      max: 5
+      max: 5,
+      ssl: {
+        rejectUnauthorized: false
+      }
     });
     
     // Initialize Sequelize for JS migrations
@@ -23,7 +26,13 @@ class MigrationRunner {
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
       dialect: 'postgres',
-      logging: false
+      logging: false,
+      dialectOptions: {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false
+        }
+      }
     });
     
     this.migrationsDir = path.join(__dirname, '../migrations');

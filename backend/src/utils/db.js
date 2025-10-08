@@ -8,6 +8,10 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   max: 20,
+  ssl: {
+    require: true,
+    rejectUnauthorized: false
+  }
 });
 
 // Event listeners for pool error handling
