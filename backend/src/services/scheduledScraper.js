@@ -115,9 +115,17 @@ class ScheduledScrapingService {
       
       // Clean up browser resources if error occurred
       try {
+        console.log('🧹 Performing cleanup after scraping failure...');
         await this.scraper.cleanup();
       } catch (cleanupError) {
-        console.error('Error during cleanup:', cleanupError);
+        console.error('❌ Error during cleanup:', cleanupError.message);
+      }
+
+      // If we've had multiple consecutive failures, increase delay before next attempt
+      if (this.stats.failedRuns >= 3 && this.stats.successfulRuns === 0) {
+        console.log('⚠️ Multiple consecutive failures detected, extending next run delay...');
+        const intervalMinutes = Math.max(5, parseInt(process.env.INOVATRACKS_SCRAPE_INTERVAL) / 60000 || 1);
+        this.updateNextRunTime(intervalMinutes * 2); // Double the delay
       }
 
     } finally {

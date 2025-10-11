@@ -33,6 +33,9 @@ class InovatracksScraper {
         enableConcurrent: process.env.ENABLE_CONCURRENT_SCRAPING
       });
       
+      // Clean up any existing browser first
+      await this.cleanup();
+      
       this.browser = await chromium.launch({
         headless: process.env.NODE_ENV === 'production', // Show browser in development
         slowMo: 100, // Slow down actions for stability
@@ -45,7 +48,9 @@ class InovatracksScraper {
           '--no-zygote',
           '--disable-gpu',
           '--disable-web-security',
-          '--disable-features=VizDisplayCompositor'
+          '--disable-features=VizDisplayCompositor',
+          '--memory-pressure-off', // Prevent memory pressure events
+          '--max_old_space_size=2048' // Increase Node.js memory limit
         ]
       });
 
@@ -56,6 +61,16 @@ class InovatracksScraper {
       });
 
       this.page = await this.context.newPage();
+      
+      // Set up page error handlers
+      this.page.on('error', (error) => {
+        console.error('❌ Page error:', error.message);
+      });
+      
+      this.page.on('close', () => {
+        console.log('⚠️ Page was closed unexpectedly');
+        this.page = null;
+      });
       
       console.log('✅ Browser initialized successfully');
       return true;
@@ -70,8 +85,97 @@ class InovatracksScraper {
         message: error.message,
         stack: error.stack?.substring(0, 500)
       });
+      await this.cleanup();
       throw error;
     }
+  }
+
+  /**
+   * Ensure browser and page are still active
+   */
+  async ensureBrowserActive() {
+    try {
+      if (!this.browser || !this.browser.isConnected()) {
+        console.log('🔄 Browser disconnected, reinitializing...');
+        await this.initialize();
+        return;
+      }
+      
+      if (!this.page || this.page.isClosed()) {
+        console.log('🔄 Page closed, creating new page...');
+        this.page = await this.context.newPage();
+        this.isLoggedIn = false; // Need to login again
+      }
+      
+      // Test if page is responsive
+      try {
+        await this.page.evaluate(() => document.title);
+      } catch (error) {
+        console.log('🔄 Page unresponsive, creating new page...');
+        if (this.page && !this.page.isClosed()) {
+          await this.page.close();
+        }
+        this.page = await this.context.newPage();
+        this.isLoggedIn = false;
+      }
+    } catch (error) {
+      console.error('❌ Error ensuring browser active:', error);
+      await this.initialize(); // Full reinitialize as fallback
+    }
+  }
+
+  /**
+   * Safe page wrapper with browser validation
+   */
+  get safePage() {
+    const page = this.page;
+    return {
+      async waitForTimeout(timeout) {
+        if (!page || page.isClosed()) {
+          throw new Error('Page is closed or invalid');
+        }
+        return await page.waitForTimeout(timeout);
+      },
+      async goto(url, options) {
+        if (!page || page.isClosed()) {
+          throw new Error('Page is closed or invalid');
+        }
+        return await page.goto(url, options);
+      },
+      async waitForSelector(selector, options) {
+        if (!page || page.isClosed()) {
+          throw new Error('Page is closed or invalid');
+        }
+        return await page.waitForSelector(selector, options);
+      },
+      async $(selector) {
+        if (!page || page.isClosed()) {
+          throw new Error('Page is closed or invalid');
+        }
+        return await page.$(selector);
+      },
+      async $$(selector) {
+        if (!page || page.isClosed()) {
+          throw new Error('Page is closed or invalid');
+        }
+        return await page.$$(selector);
+      },
+      async evaluate(fn) {
+        if (!page || page.isClosed()) {
+          throw new Error('Page is closed or invalid');
+        }
+        return await page.evaluate(fn);
+      },
+      url() {
+        if (!page || page.isClosed()) {
+          return 'about:blank';
+        }
+        return page.url();
+      },
+      isClosed() {
+        return !page || page.isClosed();
+      }
+    };
   }
 
   /**
@@ -554,8 +658,9 @@ class InovatracksScraper {
         console.log('✅ Already on Map page');
       }
       
-      // Wait for map and vehicle list to load
-      await this.page.waitForTimeout(3000); // Give map time to initialize
+      // Wait for map and vehicle list to load with browser validation
+      await this.ensureBrowserActive();
+      await this.safePage.waitForTimeout(3000); // Give map time to initialize
       
       let vehicleRows = []; // Declare outside the try block
       
@@ -898,8 +1003,11 @@ class InovatracksScraper {
     try {
       console.log(`🔄 Starting scraping cycle... (${useConcurrent ? 'concurrent' : 'sequential'} mode)`);
       
+      // Ensure browser is initialized and active
       if (!this.browser) {
         await this.initialize();
+      } else {
+        await this.ensureBrowserActive();
       }
       
       // Use concurrent or sequential processing based on parameter
@@ -913,7 +1021,28 @@ class InovatracksScraper {
       return gpsData;
       
     } catch (error) {
-      console.error('❌ Scraping cycle failed:', error);
+      console.error('❌ Scraping cycle failed:', error.message);
+      
+      // If browser-related error, cleanup and retry once
+      if (error.message.includes('browser') || error.message.includes('page') || error.message.includes('closed')) {
+        console.log('🔄 Browser-related error detected, attempting recovery and retry...');
+        try {
+          await this.cleanup();
+          await this.initialize();
+          
+          // Retry with sequential mode for stability
+          console.log('🔄 Retrying scraping in sequential mode...');
+          const gpsData = await this.scrapeGPSData();
+          await this.saveGPSData(gpsData);
+          console.log(`✅ Recovery successful with ${gpsData.length} records`);
+          return gpsData;
+          
+        } catch (retryError) {
+          console.error('❌ Recovery attempt failed:', retryError.message);
+          throw retryError;
+        }
+      }
+      
       throw error;
     }
   }
@@ -923,18 +1052,46 @@ class InovatracksScraper {
    */
   async cleanup() {
     try {
-      if (this.page) {
-        await this.page.close();
+      console.log('🧹 Starting browser cleanup...');
+      
+      if (this.page && !this.page.isClosed()) {
+        try {
+          await this.page.close();
+        } catch (error) {
+          console.log('⚠️ Error closing page:', error.message);
+        }
       }
+      
       if (this.context) {
-        await this.context.close();
+        try {
+          await this.context.close();
+        } catch (error) {
+          console.log('⚠️ Error closing context:', error.message);
+        }
       }
-      if (this.browser) {
-        await this.browser.close();
+      
+      if (this.browser && this.browser.isConnected()) {
+        try {
+          await this.browser.close();
+        } catch (error) {
+          console.log('⚠️ Error closing browser:', error.message);
+        }
       }
+      
+      // Reset instance variables
+      this.page = null;
+      this.context = null;
+      this.browser = null;
+      this.isLoggedIn = false;
+      
       console.log('🧹 Browser cleanup completed');
     } catch (error) {
-      console.error('Error during cleanup:', error);
+      console.error('❌ Error during cleanup:', error.message);
+      // Force reset even if cleanup fails
+      this.page = null;
+      this.context = null;
+      this.browser = null;
+      this.isLoggedIn = false;
     }
   }
 
