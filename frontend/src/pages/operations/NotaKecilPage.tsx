@@ -71,6 +71,13 @@ interface NotaKecil {
   };
 }
 
+interface Customer {
+  id: number;
+  customer_name: string;
+  location: string;
+  display_name: string;
+}
+
 const NotaKecilPage: React.FC = () => {
   const navigate = useNavigate();
   const [notaKecils, setNotaKecils] = useState<NotaKecil[]>([]);
@@ -83,6 +90,7 @@ const NotaKecilPage: React.FC = () => {
   const [filterCustomer, setFilterCustomer] = useState<string>('');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [availableDOs, setAvailableDOs] = useState<{id: number, do_number: string}[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   
@@ -93,6 +101,7 @@ const NotaKecilPage: React.FC = () => {
 
   useEffect(() => {
     fetchAllNotaKecils();
+    fetchCustomers();
   }, []);
 
   // Reset to page 1 when filters change
@@ -140,6 +149,15 @@ const NotaKecilPage: React.FC = () => {
       setError('Failed to fetch nota kecils');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCustomers = async () => {
+    try {
+      const response = await apiClient.get('/customers/locations');
+      setCustomers(response.data.data || response.data || []);
+    } catch (err) {
+      console.error('Failed to fetch customers:', err);
     }
   };
 
@@ -377,19 +395,69 @@ const NotaKecilPage: React.FC = () => {
   const getCustomersForSelectedDO = () => {
     if (!filterDO) return [];
     
-    const customersInDO = notaKecils
+    // Get unique customer names from the nota kecils for the selected DO
+    const customerNamesInDO = notaKecils
       .filter(nota => nota.deliveryOrder.id.toString() === filterDO)
-      .map(nota => ({
-        customer_name: nota.customer_name,
-        customer_address: nota.customer_address || ''
-      }));
+      .map(nota => nota.customer_name || 'Unknown Customer');
     
-    // Remove duplicates and sort
+    const uniqueCustomerNames = Array.from(new Set(customerNamesInDO));
+    
+    // Try to find matching customers from the customers table
+    const customersWithProperNames = uniqueCustomerNames.map(customerNameOrLocation => {
+      // First try to find by exact customer name
+      let matchedCustomer = customers.find(c => c.customer_name === customerNameOrLocation);
+      
+      // If not found, try to find by location (in case customer_name contains location)
+      if (!matchedCustomer) {
+        matchedCustomer = customers.find(c => c.location === customerNameOrLocation);
+      }
+      
+      if (matchedCustomer) {
+        return {
+          customer_name: matchedCustomer.customer_name,
+          customer_address: matchedCustomer.location
+        };
+      } else {
+        // If no match found, use the original data (fallback)
+        return {
+          customer_name: customerNameOrLocation,
+          customer_address: ''
+        };
+      }
+    });
+    
+    // Remove duplicates based on customer_name and sort
     const uniqueCustomers = Array.from(
-      new Map(customersInDO.map(customer => [customer.customer_name, customer])).values()
+      new Map(customersWithProperNames.map(customer => [customer.customer_name, customer])).values()
     ).sort((a, b) => a.customer_name.localeCompare(b.customer_name));
     
     return uniqueCustomers;
+  };
+
+  // Helper function to get proper customer information for display
+  const getCustomerInfo = (notaKecil: NotaKecil) => {
+    const customerNameOrLocation = notaKecil.customer_name || 'Unknown Customer';
+    
+    // First try to find by exact customer name
+    let matchedCustomer = customers.find(c => c.customer_name === customerNameOrLocation);
+    
+    // If not found, try to find by location (in case customer_name contains location)
+    if (!matchedCustomer) {
+      matchedCustomer = customers.find(c => c.location === customerNameOrLocation);
+    }
+    
+    if (matchedCustomer) {
+      return {
+        customer_name: matchedCustomer.customer_name,
+        customer_location: matchedCustomer.location
+      };
+    } else {
+      // If no match found, use the original data (fallback)
+      return {
+        customer_name: customerNameOrLocation,
+        customer_location: notaKecil.customer_address || ''
+      };
+    }
   };
 
   // Filter nota kecils based on search criteria
@@ -475,7 +543,7 @@ const NotaKecilPage: React.FC = () => {
               <option value="">All Customers</option>
               {getCustomersForSelectedDO().map((customer, index) => (
                 <option key={index} value={customer.customer_name}>
-                  {customer.customer_name} {customer.customer_address ? `- ${customer.customer_address}` : ''}
+                  {customer.customer_name}
                 </option>
               ))}
             </select>
@@ -628,6 +696,7 @@ const NotaKecilPage: React.FC = () => {
                   </th>
                 </tr>
                 <tr>
+                  {isSelectionMode && <th></th>}
                   <th></th>
                   <th></th>
                   <th></th>
@@ -692,8 +761,18 @@ const NotaKecilPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         <div>
-                          <div className="font-medium">{notaKecil.customer_name}</div>
-                          <div className="text-xs text-gray-500">{notaKecil.customer_address}</div>
+                          <div className="font-medium text-gray-900">
+                            {(() => {
+                              const customerInfo = getCustomerInfo(notaKecil);
+                              return customerInfo.customer_name;
+                            })()}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {(() => {
+                              const customerInfo = getCustomerInfo(notaKecil);
+                              return customerInfo.customer_location || 'Location not available';
+                            })()}
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">

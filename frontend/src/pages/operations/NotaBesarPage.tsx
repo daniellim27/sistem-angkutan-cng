@@ -2,6 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authClient } from '../../api/axiosConfig';
+import apiClient from '../../api/axiosConfig';
+
+interface Customer {
+  id: number;
+  customer_name: string;
+  location: string;
+  display_name: string;
+}
 
 interface NotaBesar {
   id: number;
@@ -45,9 +53,11 @@ const NotaBesarPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filterDO, setFilterDO] = useState<string>('');
   const [filterCustomer, setFilterCustomer] = useState<string>('');
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
   useEffect(() => {
     fetchAllNotaBesars();
+    fetchCustomers();
   }, []);
 
   const fetchAllNotaBesars = async () => {
@@ -82,6 +92,15 @@ const NotaBesarPage: React.FC = () => {
       setError('Failed to fetch nota besars');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCustomers = async () => {
+    try {
+      const response = await apiClient.get('/customers/locations');
+      setCustomers(response.data.data || response.data || []);
+    } catch (err) {
+      console.error('Failed to fetch customers:', err);
     }
   };
 
@@ -124,17 +143,42 @@ const NotaBesarPage: React.FC = () => {
 
   // Get unique customers from nota besars
   const getUniqueCustomers = () => {
-    const customers = new Set<string>();
+    // Get unique customer names from the nota besars
+    const customerNamesOrLocations = new Set<string>();
     notaBesars.forEach(notaBesar => {
       if (notaBesar.items) {
         notaBesar.items.forEach(item => {
           if (item.notaKecil.customer_name) {
-            customers.add(item.notaKecil.customer_name);
+            customerNamesOrLocations.add(item.notaKecil.customer_name);
           }
         });
       }
     });
-    return Array.from(customers).sort();
+
+    const uniqueCustomerNames = Array.from(customerNamesOrLocations);
+    
+    // Try to find matching customers from the customers table
+    const customersWithProperNames = uniqueCustomerNames.map(customerNameOrLocation => {
+      // First try to find by exact customer name
+      let matchedCustomer = customers.find(c => c.customer_name === customerNameOrLocation);
+      
+      // If not found, try to find by location (in case customer_name contains location)
+      if (!matchedCustomer) {
+        matchedCustomer = customers.find(c => c.location === customerNameOrLocation);
+      }
+      
+      if (matchedCustomer) {
+        return matchedCustomer.customer_name;
+      } else {
+        // If no match found, use the original data (fallback)
+        return customerNameOrLocation;
+      }
+    });
+    
+    // Remove duplicates and sort
+    const uniqueCustomers = Array.from(new Set(customersWithProperNames)).sort();
+    
+    return uniqueCustomers;
   };
 
   // Filter nota besars based on search criteria

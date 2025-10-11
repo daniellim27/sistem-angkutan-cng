@@ -2867,7 +2867,7 @@ const TripDetailScreen = () => {
         <NotaKecilUploader
           deliveryOrderId={trip?.id?.toString() || ''}
           customerLocationIndex={currentLocationIndex}
-          customerName={getAllCustomerLocations()[currentLocationIndex]?.location || 'Customer'}
+          customerName={trip?.customer_name || 'Customer'}
           customerAddress={getAllCustomerLocations()[currentLocationIndex]?.location || ''}
           onNotaKecilCreated={handleNotaKecilCreated}
           onClose={() => setShowNotaKecilModal(false)}
@@ -2884,7 +2884,7 @@ const TripDetailScreen = () => {
         <NotaKecilsList
           deliveryOrderId={trip?.id?.toString() || ''}
           customerLocationIndex={currentLocationIndex}
-          customerName={getAllCustomerLocations()[currentLocationIndex]?.location || 'Customer'}
+          customerName={trip?.customer_name || 'Customer'}
           onNotaKecilAdded={handleNotaKecilCreated}
           onClose={() => setShowNotaKecilListModal(false)}
         />

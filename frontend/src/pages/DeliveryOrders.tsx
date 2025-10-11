@@ -456,19 +456,18 @@ const DeliveryOrdersPage = () => {
                     {/* Customer */}
                     <td className="px-4 py-4">
                       <div>
-                        {dOrder.customer_name && (
+                        {dOrder.customer_name ? (
                           <div className="text-sm font-medium text-gray-900 leading-tight">
                             {dOrder.customer_name}
+                          </div>
+                        ) : (
+                          <div className="text-sm font-medium text-gray-500 leading-tight">
+                            No Customer
                           </div>
                         )}
                         {dOrder.item_name && (
                           <div className="text-xs text-gray-500 mt-0.5">
                             {dOrder.item_name}
-                          </div>
-                        )}
-                        {!dOrder.customer_name && !dOrder.item_name && (
-                          <div className="text-sm font-medium text-gray-900 leading-tight">
-                            {dOrder.do_name || dOrder.do_number}
                           </div>
                         )}
                       </div>

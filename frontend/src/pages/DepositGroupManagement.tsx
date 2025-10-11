@@ -292,6 +292,17 @@ const DepositGroupManagement = () => {
     if (!selectedGroup) return;
 
     try {
+      // Get the proper customer name from the customers array using the selected customer ID
+      const primaryCustomerId = selectedCustomerIds[0];
+      let customerName = doFormData.do_name || 'SPBG Customer';
+      
+      if (primaryCustomerId) {
+        const selectedCustomer = customers.find(c => c.id === primaryCustomerId);
+        if (selectedCustomer) {
+          customerName = selectedCustomer.customer_name;
+        }
+      }
+
       const payload = {
         unit: 'kubik', // Force kubik for DOs
         unit_price: parseFloat(doFormData.unit_price),
@@ -299,7 +310,7 @@ const DepositGroupManagement = () => {
         vehicle_id: parseInt(doFormData.vehicle_id),
         load_location: doFormData.load_location,
         unload_location: customerLocations[0] || '', // First customer location as primary
-        customer_name: '', // Will be filled from the location
+        customer_name: customerName, // Use proper customer name from customers table
         customer_location: customerLocations[0] || '', // First customer location
         additional_unload_locations: customerLocations.slice(1).filter(loc => loc.trim() !== ''), // Additional locations
         trip_allowance: parseFloat(doFormData.trip_allowance),
