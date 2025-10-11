@@ -24,10 +24,29 @@ class InovatracksScraper {
   async initialize() {
     try {
       console.log('🚀 Initializing Inovatracks scraper...');
+      console.log('📊 Environment check:', {
+        NODE_ENV: process.env.NODE_ENV,
+        username: this.username ? 'SET' : 'MISSING',
+        password: this.password ? 'SET' : 'MISSING',
+        memberCode: this.memberCode ? 'SET' : 'MISSING',
+        maxConcurrentTabs: this.maxConcurrentTabs,
+        enableConcurrent: process.env.ENABLE_CONCURRENT_SCRAPING
+      });
       
       this.browser = await chromium.launch({
         headless: process.env.NODE_ENV === 'production', // Show browser in development
         slowMo: 100, // Slow down actions for stability
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu',
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor'
+        ]
       });
 
       // Create browser context with user agent
@@ -42,6 +61,15 @@ class InovatracksScraper {
       return true;
     } catch (error) {
       console.error('❌ Failed to initialize browser:', error);
+      console.error('💡 Common issues:');
+      console.error('   - Missing Playwright browsers (run: npx playwright install chromium)');
+      console.error('   - Missing system dependencies in Docker');
+      console.error('   - Insufficient memory or resources');
+      console.error('   - Network connectivity issues');
+      console.error('🔧 Error details:', {
+        message: error.message,
+        stack: error.stack?.substring(0, 500)
+      });
       throw error;
     }
   }
