@@ -1704,7 +1704,7 @@ const TripDetailScreen = () => {
         {/* KARTU DETAIL TRIP */}
         <View style={styles.detailCard}>
           <Text style={styles.cardTitle}>Detail Perjalanan</Text>
-          <Text style={styles.detailText}>DO: {trip.do_number}</Text>
+          <Text style={styles.detailText}>Tugas: {trip.do_number}</Text>
           <Text style={styles.detailText}>Customer: {trip.customer_name}</Text>
           <Text style={styles.detailText}>
             Rute: {trip.load_location} → {getCurrentCustomerLocation()?.location || trip.unload_location}
@@ -1987,7 +1987,7 @@ const TripDetailScreen = () => {
                         onPress={handleCreateNotaKecil}
                       >
                         <FontAwesome5 name="receipt" size={16} color="#fff" />
-                        <Text style={styles.notaKecilButtonText}>Create Nota Kecil</Text>
+                        <Text style={styles.notaKecilButtonText}>Buat Nota Kecil</Text>
                       </TouchableOpacity>
 
                       {notaKecils.length > 0 && (

@@ -81,7 +81,6 @@ const NotaKecilPage: React.FC = () => {
   const [gasPricePerM3, setGasPricePerM3] = useState<number>(15000);
   const [filterDO, setFilterDO] = useState<string>('');
   const [filterCustomer, setFilterCustomer] = useState<string>('');
-  const [filterLocation, setFilterLocation] = useState<string>('');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [availableDOs, setAvailableDOs] = useState<{id: number, do_number: string}[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -99,12 +98,11 @@ const NotaKecilPage: React.FC = () => {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterDO, filterCustomer, filterLocation]);
+  }, [filterDO, filterCustomer]);
 
-  // Reset customer and location filters when DO changes
+  // Reset customer filter when DO changes
   useEffect(() => {
     setFilterCustomer('');
-    setFilterLocation('');
   }, [filterDO]);
 
   const fetchAllNotaKecils = async () => {
@@ -394,28 +392,11 @@ const NotaKecilPage: React.FC = () => {
     return uniqueCustomers;
   };
 
-  // Get locations for the selected DO
-  const getLocationsForSelectedDO = () => {
-    if (!filterDO) return [];
-    
-    const locationsInDO = notaKecils
-      .filter(nota => nota.deliveryOrder.id.toString() === filterDO)
-      .map(nota => nota.customer_address || '')
-      .filter(address => address.trim() !== '');
-    
-    // Remove duplicates and sort
-    const uniqueLocations = Array.from(new Set(locationsInDO))
-      .sort((a, b) => a.localeCompare(b));
-    
-    return uniqueLocations;
-  };
-
   // Filter nota kecils based on search criteria
   const filteredNotaKecils = notaKecils.filter(nota => {
     const matchesDO = !filterDO || nota.deliveryOrder.id.toString() === filterDO;
     const matchesCustomer = !filterCustomer || nota.customer_name === filterCustomer;
-    const matchesLocation = !filterLocation || (nota.customer_address || '') === filterLocation;
-    return matchesDO && matchesCustomer && matchesLocation;
+    return matchesDO && matchesCustomer;
   });
 
   // Pagination logic
@@ -468,7 +449,7 @@ const NotaKecilPage: React.FC = () => {
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Select Delivery Order</label>
             <select
@@ -495,22 +476,6 @@ const NotaKecilPage: React.FC = () => {
               {getCustomersForSelectedDO().map((customer, index) => (
                 <option key={index} value={customer.customer_name}>
                   {customer.customer_name} {customer.customer_address ? `- ${customer.customer_address}` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Location</label>
-            <select
-              value={filterLocation}
-              onChange={(e) => setFilterLocation(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={!filterDO}
-            >
-              <option value="">All Locations</option>
-              {getLocationsForSelectedDO().map((location, index) => (
-                <option key={index} value={location}>
-                  {location}
                 </option>
               ))}
             </select>

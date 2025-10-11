@@ -3,7 +3,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 
 const TIMELINE_CONFIG = [
-  { key: "created_at", label: "DO Created" },
+  { key: "created_at", label: "Tugas Dibuat" },
   { key: "departed_to_load_location_at", label: "Berangkat ke Lokasi Muat" },
   { key: "arrived_at_load_location_at", label: "Tiba di Lokasi Muat" },
   {

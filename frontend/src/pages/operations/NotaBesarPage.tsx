@@ -45,7 +45,6 @@ const NotaBesarPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filterDO, setFilterDO] = useState<string>('');
   const [filterCustomer, setFilterCustomer] = useState<string>('');
-  const [filterAddress, setFilterAddress] = useState<string>('');
 
   useEffect(() => {
     fetchAllNotaBesars();
@@ -109,6 +108,20 @@ const NotaBesarPage: React.FC = () => {
     navigate(`/operations/nota-besar/${notaBesar.id}`);
   };
 
+  // Get unique delivery orders from nota besars
+  const getUniqueDeliveryOrders = () => {
+    const deliveryOrders = new Map<number, {id: number, do_number: string}>();
+    notaBesars.forEach(notaBesar => {
+      if (!deliveryOrders.has(notaBesar.deliveryOrder.id)) {
+        deliveryOrders.set(notaBesar.deliveryOrder.id, {
+          id: notaBesar.deliveryOrder.id,
+          do_number: notaBesar.deliveryOrder.do_number
+        });
+      }
+    });
+    return Array.from(deliveryOrders.values()).sort((a, b) => a.do_number.localeCompare(b.do_number));
+  };
+
   // Get unique customers from nota besars
   const getUniqueCustomers = () => {
     const customers = new Set<string>();
@@ -124,36 +137,16 @@ const NotaBesarPage: React.FC = () => {
     return Array.from(customers).sort();
   };
 
-  // Get unique addresses from nota besars
-  const getUniqueAddresses = () => {
-    const addresses = new Set<string>();
-    notaBesars.forEach(notaBesar => {
-      if (notaBesar.items) {
-        notaBesar.items.forEach(item => {
-          if (item.notaKecil.customer_address) {
-            addresses.add(item.notaKecil.customer_address);
-          }
-        });
-      }
-    });
-    return Array.from(addresses).sort();
-  };
-
   // Filter nota besars based on search criteria
   const filteredNotaBesars = notaBesars.filter(notaBesar => {
-    const matchesDO = !filterDO || notaBesar.deliveryOrder.do_number.toLowerCase().includes(filterDO.toLowerCase());
+    const matchesDO = !filterDO || notaBesar.deliveryOrder.id.toString() === filterDO;
     
     // Check if any nota kecil in this nota besar matches the customer filter
     const matchesCustomer = !filterCustomer || (notaBesar.items && notaBesar.items.some(item => 
-      item.notaKecil.customer_name.toLowerCase().includes(filterCustomer.toLowerCase())
+      item.notaKecil.customer_name === filterCustomer
     ));
     
-    // Check if any nota kecil in this nota besar matches the address filter
-    const matchesAddress = !filterAddress || (notaBesar.items && notaBesar.items.some(item => 
-      item.notaKecil.customer_address && item.notaKecil.customer_address.toLowerCase().includes(filterAddress.toLowerCase())
-    ));
-    
-    return matchesDO && matchesCustomer && matchesAddress;
+    return matchesDO && matchesCustomer;
   });
 
   if (loading) {
@@ -205,16 +198,21 @@ const NotaBesarPage: React.FC = () => {
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Filter by DO Number</label>
-            <input
-              type="text"
+            <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Delivery Order</label>
+            <select
               value={filterDO}
               onChange={(e) => setFilterDO(e.target.value)}
-              placeholder="Search DO number..."
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            >
+              <option value="">All Delivery Orders</option>
+              {getUniqueDeliveryOrders().map((deliveryOrder) => (
+                <option key={deliveryOrder.id} value={deliveryOrder.id.toString()}>
+                  {deliveryOrder.do_number}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Customer</label>
@@ -227,21 +225,6 @@ const NotaBesarPage: React.FC = () => {
               {getUniqueCustomers().map((customer, index) => (
                 <option key={index} value={customer}>
                   {customer}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Address</label>
-            <select
-              value={filterAddress}
-              onChange={(e) => setFilterAddress(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Addresses</option>
-              {getUniqueAddresses().map((address, index) => (
-                <option key={index} value={address}>
-                  {address}
                 </option>
               ))}
             </select>
@@ -370,7 +353,7 @@ const NotaBesarPage: React.FC = () => {
           </svg>
           <p className="text-gray-500 text-lg">No nota besars found</p>
           <p className="text-gray-400 text-sm mt-2">
-            {filterDO || filterCustomer || filterAddress ? 'Try adjusting your filters' : 'Create nota besars by selecting nota kecils and clicking "Create Nota Besar"'}
+            {filterDO || filterCustomer ? 'Try adjusting your filters' : 'Create nota besars by selecting nota kecils and clicking "Create Nota Besar"'}
           </p>
           <button
             onClick={() => navigate('/operations/nota-kecil')}

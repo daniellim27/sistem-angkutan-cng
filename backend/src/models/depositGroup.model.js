@@ -29,7 +29,7 @@ module.exports = (sequelize) => {
       },
       deposited_amount: {
         type: DataTypes.DECIMAL(15, 2),
-        allowNull: false,
+        allowNull: true,
         defaultValue: 0,
         comment: "Amount deposited by customer",
       },

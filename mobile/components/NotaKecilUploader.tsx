@@ -84,15 +84,11 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
     stan_akhir: string;
     tekanan_operasi: string;
     temperatur_operasi: string;
-    customer_name: string;
-    customer_address: string;
   }>({
     stan_awal: '',
     stan_akhir: '',
     tekanan_operasi: '',
     temperatur_operasi: '',
-    customer_name: '',
-    customer_address: '',
   });
 
   const [calculatedValues, setCalculatedValues] = useState<{
@@ -541,7 +537,7 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
       console.log('Uploading images to Google Drive...');
       const uploadResponse = await uploadNotaKecilImagesToGoogleDrive(
         deliveryOrderId,
-        editedValues.customer_name || customerName,
+        customerName, // Use prop directly
         customerLocationIndex,
         photos
       );
@@ -576,8 +572,8 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
         temperatur_operasi: parseFloat(editedValues.temperatur_operasi),
         driver_notes: driverNotes,
         customer_location_index: customerLocationIndex,
-        customer_name: editedValues.customer_name,
-        customer_address: editedValues.customer_address,
+        customer_name: customerName, // Use prop directly
+        customer_address: customerAddress, // Use prop directly
         // Use Google Drive URLs from upload response
         photos: uploadedImages,
         ocr_results: ocrResults, // Include OCR results
@@ -618,8 +614,6 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
         stan_akhir: '',
         tekanan_operasi: '',
         temperatur_operasi: '',
-        customer_name: '',
-        customer_address: '',
       });
       setCalculatedValues(null);
       setDriverNotes('');
@@ -725,7 +719,7 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <Text style={styles.title}>📋 Create Nota Kecil</Text>
+          <Text style={styles.title}>📋 Buat Nota Kecil</Text>
           {onClose && (
             <TouchableOpacity
               onPress={onClose}
@@ -736,23 +730,8 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
           )}
         </View>
         <View style={styles.customerInfo}>
-          <Text style={styles.customerLabel}>Customer Name:</Text>
-          <TextInput
-            style={styles.customerInput}
-            value={editedValues.customer_name}
-            onChangeText={(value) => handleValueChange('customer_name', value)}
-            placeholder="Enter customer name"
-          />
-          
-          <Text style={styles.customerLabel}>Customer Address:</Text>
-          <TextInput
-            style={styles.customerInput}
-            value={editedValues.customer_address}
-            onChangeText={(value) => handleValueChange('customer_address', value)}
-            placeholder="Enter customer address"
-            multiline
-            numberOfLines={2}
-          />
+          <Text style={styles.customerLabel}>Pelanggan: {customerName}</Text>
+          <Text style={styles.customerLabel}>Alamat: {customerAddress}</Text>
         </View>
       </View>
       

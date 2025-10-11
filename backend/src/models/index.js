@@ -78,14 +78,14 @@ const sequelize = new Sequelize(
     pool: {
       max: 5,
       min: 0,
-      acquire: 30000,
+      acquire: 60000,  // Increased timeout for slow connections
       idle: 10000,
     },
     dialectOptions: {
-      ssl: {
+      ssl: process.env.DB_SSL === 'true' ? {
         require: true,
         rejectUnauthorized: false
-      }
+      } : false
     }
   }
 );

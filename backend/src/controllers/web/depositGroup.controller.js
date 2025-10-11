@@ -72,16 +72,19 @@ module.exports = {
       // Force unit to always be 'kubik' for deposit groups
       const finalUnit = 'kubik';
       
+      // Handle optional deposited_amount
+      const finalDepositedAmount = deposited_amount ? parseFloat(deposited_amount) : 0;
+      
       // *** FIX STARTS HERE ***
       // The initial balance of the group should be the amount that was deposited.
-      const balance = deposited_amount; 
+      const balance = finalDepositedAmount; 
       const remaining_quantity = 0; // Initial remaining = 0
       const completed_quantity = 0; // Initial completed = 0
       
       const group = await DepositGroup.create({
         spbg_location, 
         balance, // Use the deposited amount as the starting balance
-        deposited_amount, 
+        deposited_amount: finalDepositedAmount, 
         remaining_quantity, 
         completed_quantity,
         unit: finalUnit, // Always kubik

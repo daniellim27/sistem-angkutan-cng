@@ -79,10 +79,10 @@ exports.confirmLoad = async (req, res, next) => {
       });
     }
 
-    // Verifikasi status
-    if (deliveryOrder.status !== "at_unload_location") {
+    // Verifikasi status - Driver should be able to confirm load when at SPBU
+    if (deliveryOrder.status !== "at_spbu") {
       return res.status(400).json({
-        message: `Tidak dapat konfirmasi muatan. Status saat ini: ${deliveryOrder.status}`,
+        message: `Tidak dapat konfirmasi muatan. Status saat ini: ${deliveryOrder.status}. Anda harus berada di SPBU untuk konfirmasi muatan.`,
       });
     }
 
@@ -276,7 +276,7 @@ exports.getLoadStatus = async (req, res, next) => {
       surat_jalan_photo_url: deliveryOrder.surat_jalan_photo_url,
       departed_from_spbu_at:
         deliveryOrder.departed_from_spbu_at,
-      can_confirm_load: deliveryOrder.status === "at_unload_location",
+      can_confirm_load: deliveryOrder.status === "at_spbu",
     };
 
     if (

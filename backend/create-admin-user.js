@@ -1,8 +1,21 @@
+// Load environment variables
+require('dotenv').config();
+
 const bcrypt = require('bcrypt');
 const { sequelize } = require('./src/models');
 
 async function createAdminUser() {
   try {
+    // Debug: Show connection info
+    console.log('🔍 Database connection config:');
+    console.log(`   Host: ${process.env.DB_HOST}`);
+    console.log(`   Port: ${process.env.DB_PORT}`);
+    console.log(`   Database: ${process.env.DB_NAME}`);
+    console.log(`   User: ${process.env.DB_USER}`);
+    console.log(`   SSL: ${process.env.DB_SSL}`);
+    console.log('');
+    
+    console.log('🔗 Attempting to connect to database...');
     await sequelize.authenticate();
     console.log('✅ Database connected');
 

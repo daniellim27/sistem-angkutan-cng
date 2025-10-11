@@ -38,15 +38,15 @@ const CreateDepositGroup = () => {
     setError(null);
 
     try {
-      // Validate required fields
-      if (!formData.group_name || !formData.target_quantity || !formData.deposited_amount) {
+      // Validate required fields (excluding deposited_amount)
+      if (!formData.group_name || !formData.target_quantity) {
         throw new Error('Please fill in all required fields');
       }
 
       const payload = {
         ...formData,
         target_quantity: parseFloat(formData.target_quantity),
-        deposited_amount: parseFloat(formData.deposited_amount),
+        deposited_amount: formData.deposited_amount ? parseFloat(formData.deposited_amount) : 0,
         remaining_quantity: parseFloat(formData.target_quantity), // Initially same as target
         status: 'active'
       };
@@ -140,7 +140,7 @@ const CreateDepositGroup = () => {
 
         <div className="mb-6">
           <label className="block text-gray-700 text-sm font-bold mb-2">
-            Deposited Amount (Rp) *
+            Deposited Amount (Rp)
           </label>
           <input
             type="number"
@@ -148,11 +148,13 @@ const CreateDepositGroup = () => {
             value={formData.deposited_amount}
             onChange={handleInputChange}
             className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-            placeholder="Enter deposited amount"
+            placeholder="Enter deposited amount (optional)"
             min="0"
             step="0.01"
-            required
           />
+          <p className="text-xs text-gray-500 mt-1">
+            Leave empty if no initial deposit is made
+          </p>
         </div>
 
         <div className="flex items-center justify-between">

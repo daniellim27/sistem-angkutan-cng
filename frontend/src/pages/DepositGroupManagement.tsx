@@ -188,7 +188,7 @@ const DepositGroupManagement = () => {
       
       const transformedGroups = groupsData.map((group: DepositGroup) => {
         // Calculate balance based on DO amounts (no longer use PO data)
-        const depositedAmount = parseFloat(group.deposited_amount);
+        const depositedAmount = parseFloat(group.deposited_amount) || 0; // Handle null/empty values gracefully
         const deliveryOrders = group.delivery_orders || [];
         const totalDOAmount = deliveryOrders.reduce((sum, do_item) => sum + parseFloat(do_item.total_amount), 0);
         const calculatedBalance = depositedAmount - totalDOAmount;
@@ -217,7 +217,7 @@ const DepositGroupManagement = () => {
     try {
       const payload = {
         ...formData,
-        deposited_amount: parseFloat(formData.deposited_amount),
+        deposited_amount: formData.deposited_amount ? parseFloat(formData.deposited_amount) : 0,
         status: 'active'
       };
 
@@ -241,7 +241,7 @@ const DepositGroupManagement = () => {
     setEditingGroup(group);
     setFormData({
       spbg_location: group.spbg_location,
-      deposited_amount: group.deposited_amount,
+      deposited_amount: group.deposited_amount || '', // Handle null/empty values
       unit: group.unit
     });
     setShowCreateModal(true);
@@ -562,7 +562,7 @@ const DepositGroupManagement = () => {
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-600">
-                    {formatCurrency(group.total_deposits)}
+                    {formatCurrency(group.total_deposits || 0)}
                   </div>
                   <div className="text-xs text-gray-500">Deposited Amount</div>
                 </div>
@@ -700,18 +700,20 @@ const DepositGroupManagement = () => {
                 {/* Deposited Amount */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Deposited Amount (Rp) *
+                    Deposited Amount (Rp)
                   </label>
                   <input
                     type="number"
                     value={formData.deposited_amount}
                     onChange={(e) => setFormData(prev => ({ ...prev, deposited_amount: e.target.value }))}
-                    placeholder="Enter deposited amount"
+                    placeholder="Enter deposited amount (optional)"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     min="0"
                     step="0.01"
-                    required
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Leave empty if no initial deposit is made
+                  </p>
                 </div>
 
                 <div className="flex justify-end space-x-3 pt-4">
