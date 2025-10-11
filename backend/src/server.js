@@ -98,16 +98,64 @@ const scheduledScrapingService = require("./services/scheduledScraper");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// CORS: Allow all origins for debugging
+// CORS: Allow specific origins and all origins for development
+const allowedOrigins = [
+  'http://localhost:3001',
+  'http://localhost:3000', 
+  'https://frontend-angkutan.onrender.com',
+  'https://backend-angkutan.onrender.com'
+];
+
 app.use(
   cors({
-    origin: "*",
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, Postman, etc.)
+      if (!origin) return callback(null, true);
+      
+      // Allow all origins in development
+      if (process.env.NODE_ENV === 'development') {
+        return callback(null, true);
+      }
+      
+      // Check allowed origins in production
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      
+      // Allow all origins for now (can be restricted later)
+      return callback(null, true);
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: [
+      'Origin',
+      'X-Requested-With', 
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'ngrok-skip-browser-warning'
+    ],
+    exposedHeaders: ['X-Total-Count', 'Content-Range']
   })
 );
 
-// Setup middleware (cors, json, etc)
-setupMiddleware(app);
+// Setup middleware (json parsing, etc - but skip CORS since we handle it above)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Global error handler for JSON parsing errors
+app.use((error, req, res, next) => {
+  if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
+    console.error('❌ Invalid JSON received:', error.body);
+    console.error('❌ JSON Error:', error.message);
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid JSON format',
+      details: error.message
+    });
+  }
+  next(error);
+});
 
 // Test database connection and run migrations
 const MigrationRunner = require('./utils/migrationRunner');
@@ -222,6 +270,17 @@ initializeDatabase().then(() => {
         web: "/api/web/tracking",
       },
     })
+  });
+
+  // Test endpoint for CORS debugging
+  app.get("/api/test-cors", (req, res) => {
+    res.json({
+      success: true,
+      message: "CORS is working!",
+      origin: req.headers.origin,
+      headers: req.headers,
+      timestamp: new Date().toISOString()
+    });
   });
 
   // === Existing Mobile Routes (UNCHANGED) ===
