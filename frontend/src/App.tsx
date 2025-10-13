@@ -34,8 +34,7 @@ import ServiceEditPage from "./pages/ServiceEdit";
 import CustomerManagement from "./pages/CustomerManagement";
 import NotaBesarManagement from "./pages/NotaBesarManagement";
 import NotaKecilManagement from "./pages/NotaKecilManagement";
-import NotaKecilPage from "./pages/operations/NotaKecilPage";
-import NotaBesarPage from "./pages/operations/NotaBesarPage";
+import NotaManagementPage from "./pages/operations/NotaManagementPage";
 import NotaBesarDetailPage from "./pages/operations/NotaBesarDetailPage";
 import RitaseDashboard from "./pages/Ritase/RitaseDashboard";
 // Removed POPaymentDetail - payment aggregation is now DO-based
@@ -136,8 +135,7 @@ function App() {
           <Route path="ocr-processing" element={<OCRProcessingPage />} />
 
           {/* Operations Routes */}
-          <Route path="operations/nota-kecil" element={<NotaKecilPage />} />
-          <Route path="operations/nota-besar" element={<NotaBesarPage />} />
+          <Route path="operations/nota-management" element={<NotaManagementPage />} />
           <Route path="operations/nota-besar/:id" element={<NotaBesarDetailPage />} />
 
           {/* Stock Management Routes */}
