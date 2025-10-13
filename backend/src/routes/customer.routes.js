@@ -9,6 +9,8 @@ const {
   deleteCustomer,
   searchCustomers,
   getCustomerLocations,
+  getCustomerLocationsWithCoords,
+  updateCustomerCoordinates,
   getCustomerSummary,
 } = require("../controllers/customer.controller");
 const { verifyToken } = require("../middlewares/auth.middleware");
@@ -18,6 +20,12 @@ router.use(verifyToken);
 
 // GET /api/customers/summary - Get customer summary statistics
 router.get("/summary", getCustomerSummary);
+
+// GET /api/customers/locations-with-coords - Get customer locations with coordinates for map display
+router.get("/locations-with-coords", getCustomerLocationsWithCoords);
+
+// POST /api/customers/update-coordinates - Update customers without coordinates using geocoding  
+router.post("/update-coordinates", updateCustomerCoordinates);
 
 // GET /api/customers/locations - Get customer locations for dropdown
 router.get("/locations", getCustomerLocations);

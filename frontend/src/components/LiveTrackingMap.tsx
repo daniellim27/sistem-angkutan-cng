@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import apiClient from '../api/axiosConfig';
 import GasStationToolbar from './GasStationToolbar';
 import { GasStationApi, GasStation } from '../api/gasStationApi';
+import { getCustomerLocationsWithCoords, CustomerLocation } from '../api/customerApi';
 import StaticRouteDisplay from './StaticRouteDisplay';
 import DistanceComplianceCard from './DistanceComplianceCard';
 import { useDistanceTracking } from '../hooks/useDistanceTracking';
@@ -64,6 +65,59 @@ const createLocationIcon = (type: 'spbu' | 'unload' | 'additional_unload') => {
     iconSize: [32, 32],
     iconAnchor: [16, 16],
     popupAnchor: [0, -16],
+  });
+};
+
+// Custom icons for customer and SPBG locations (moved outside component to avoid recreation)
+const createCustomerIcon = () => {
+  return L.divIcon({
+    html: `
+      <div style="
+        background-color: #2563eb;
+        color: white;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        border: 2px solid white;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      ">
+        👤
+      </div>
+    `,
+    className: 'custom-customer-icon',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -14],
+  });
+};
+
+const createSPBGIcon = () => {
+  return L.divIcon({
+    html: `
+      <div style="
+        background-color: #dc2626;
+        color: white;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        border: 2px solid white;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      ">
+        ⛽
+      </div>
+    `,
+    className: 'custom-spbg-icon',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -14],
   });
 };
 
@@ -195,6 +249,24 @@ const createVehicleIcon = (status: string, heading?: number, licensePlate?: stri
   });
 };
 
+interface SPBGLocation {
+  id: number;
+  name: string;
+  location: string;
+  latitude: number;
+  longitude: number;
+  type: string;
+  display_name: string;
+}
+
+// Union type for both gas stations and SPBG locations
+type LocationMarker = GasStation | SPBGLocation;
+
+// Type guard to check if it's an SPBG location
+const isSPBGLocation = (item: LocationMarker): item is SPBGLocation => {
+  return 'type' in item && 'location' in item && !('station_type' in item);
+};
+
 interface DriverLocation {
   id: number;
   latitude: number;
@@ -296,8 +368,16 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
   const [loadingTrails, setLoadingTrails] = useState(false);
   
   // Gas Station state
-  const [gasStations, setGasStations] = useState<GasStation[]>([]);
+  const [gasStations, setGasStations] = useState<LocationMarker[]>([]);
   const [loadingGasStations, setLoadingGasStations] = useState(false);
+  
+  // Customer locations state
+  const [customerLocations, setCustomerLocations] = useState<CustomerLocation[]>([]);
+  const [loadingCustomerLocations, setLoadingCustomerLocations] = useState(false);
+  
+  // Show/hide toggles
+  const [showCustomerLocations, setShowCustomerLocations] = useState(false);
+  const [showSPBGLocations, setShowSPBGLocations] = useState(false);
   
   // Delivery Order location markers state
   const [deliveryOrderData, setDeliveryOrderData] = useState<any>(null);
@@ -398,18 +478,37 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     }, 1000); // 1 second debounce
   }, [showTrails, fetchTrailData, onTrailsUpdate]);
 
-  // Gas Station fetching function
+  // Gas Station (SPBG) fetching function
   const fetchGasStations = useCallback(async () => {
     try {
       setLoadingGasStations(true);
-      const response = await GasStationApi.getAllGasStations();
-      if (response.success) {
-        setGasStations(response.data);
+      
+      // Use the new endpoint that gets SPBG locations from deposit groups and geocodes them
+      const response = await apiClient.get('/deposit-groups/spbg-locations-with-coords');
+      
+      if (response.data && response.data.success && response.data.data) {
+        setGasStations(response.data.data);
+      } else {
+        console.error('❌ API response not successful:', response.data);
+        setGasStations([]);
       }
     } catch (err: any) {
-      console.error('Error fetching gas stations:', err);
+      console.error('❌ Error fetching SPBG locations:', err);
     } finally {
       setLoadingGasStations(false);
+    }
+  }, []);
+
+  // Customer locations fetching function
+  const fetchCustomerLocations = useCallback(async () => {
+    try {
+      setLoadingCustomerLocations(true);
+      const locations = await getCustomerLocationsWithCoords();
+      setCustomerLocations(locations);
+    } catch (err: any) {
+      console.error('❌ Error fetching customer locations:', err);
+    } finally {
+      setLoadingCustomerLocations(false);
     }
   }, []);
 
@@ -694,6 +793,20 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     fetchGasStations();
   }, [fetchGasStations]);
 
+  // Effect for gas stations when SPBG toggle is enabled
+  useEffect(() => {
+    if (showSPBGLocations) {
+      fetchGasStations();
+    }
+  }, [showSPBGLocations, fetchGasStations]);
+
+  // Effect for customer locations
+  useEffect(() => {
+    if (showCustomerLocations) {
+      fetchCustomerLocations();
+    }
+  }, [showCustomerLocations, fetchCustomerLocations]);
+
   // Effect for delivery order locations
   useEffect(() => {
     fetchDeliveryOrderLocations();
@@ -797,8 +910,37 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
             </label>
           )}
 
+          {/* Customer and SPBG Location Controls */}
+          <label className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              checked={showCustomerLocations}
+              onChange={(e) => setShowCustomerLocations(e.target.checked)}
+              className="rounded"
+            />
+            <span>Show Customer Locations</span>
+          </label>
+          
+          <label className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              checked={showSPBGLocations}
+              onChange={(e) => setShowSPBGLocations(e.target.checked)}
+              className="rounded"
+            />
+            <span>Show SPBG Locations</span>
+          </label>
+
           {showTrails && loadingTrails && (
             <span className="text-gray-500">Loading trails...</span>
+          )}
+
+          {showCustomerLocations && loadingCustomerLocations && (
+            <span className="text-gray-500">Loading customer locations...</span>
+          )}
+
+          {showSPBGLocations && loadingGasStations && (
+            <span className="text-gray-500">Loading SPBG locations...</span>
           )}
 
           {loadingGasStations && (
@@ -994,7 +1136,7 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
           ))}
 
           {/* Delivery Order Location Markers */}
-          {locationMarkers.map((marker, index) => (
+          {locationMarkers && locationMarkers.map((marker, index) => (
             <Marker
               key={`location-${marker.type}-${index}`}
               position={marker.position}
@@ -1038,6 +1180,67 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
             </Marker>
           ))}
 
+          {/* Customer Location Markers */}
+          {showCustomerLocations && customerLocations && customerLocations.map((customer) => (
+            <Marker
+              key={`customer-${customer.id}`}
+              position={[customer.latitude, customer.longitude]}
+              icon={createCustomerIcon()}
+            >
+              <Popup>
+                <div className="p-2 min-w-[200px]">
+                  <h4 className="font-semibold text-blue-600 mb-2">
+                    Customer Location
+                  </h4>
+                  <div className="space-y-1">
+                    <p><strong>Name:</strong> {customer.customer_name}</p>
+                    <p><strong>Address:</strong> {customer.location}</p>
+                    <p className="text-xs text-gray-500">
+                      {customer.latitude.toFixed(6)}, {customer.longitude.toFixed(6)}
+                    </p>
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+
+          {/* SPBG (Gas Station) Location Markers */}
+          {showSPBGLocations && gasStations && gasStations.length > 0 ? (
+            gasStations.map((locationItem) => (
+              <Marker
+                key={`spbg-${locationItem.id}`}
+                position={[locationItem.latitude, locationItem.longitude]}
+                icon={createSPBGIcon()}
+              >
+                <Popup>
+                  <div className="p-2 min-w-[200px]">
+                    <h4 className="font-semibold text-red-600 mb-2">
+                      SPBG Location
+                    </h4>
+                    <div className="space-y-1">
+                      <p><strong>Name:</strong> {locationItem.name}</p>
+                      {isSPBGLocation(locationItem) ? (
+                        <>
+                          <p><strong>Type:</strong> {locationItem.type}</p>
+                          <p><strong>Location:</strong> {locationItem.location}</p>
+                        </>
+                      ) : (
+                        <>
+                          <p><strong>Type:</strong> {locationItem.station_type}</p>
+                          {locationItem.address && <p><strong>Address:</strong> {locationItem.address}</p>}
+                          {locationItem.operating_hours && <p><strong>Hours:</strong> {locationItem.operating_hours}</p>}
+                        </>
+                      )}
+                      <p className="text-xs text-gray-500">
+                        {locationItem.latitude.toFixed(6)}, {locationItem.longitude.toFixed(6)}
+                      </p>
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
+            ))
+          ) : null}
+
           {/* Delivery Route - Static route calculated once */}
           {showRoute && routeWaypoints.length >= 2 && (
             <StaticRouteDisplay
@@ -1049,11 +1252,15 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
             />
           )}
 
-          {/* Gas Station Toolbar - Only render when not loading */}
-          {!loading && (
+          {/* Gas Station Toolbar - Disabled since we're using SPBG deposit group locations */}
+          {false && !loading && (
             <GasStationToolbar
-              gasStations={gasStations}
-              onGasStationsUpdate={setGasStations}
+              gasStations={gasStations.filter(item => !isSPBGLocation(item)) as GasStation[]}
+              onGasStationsUpdate={(stations: GasStation[]) => {
+                // Merge with existing SPBG locations
+                const spbgLocations = gasStations.filter(isSPBGLocation);
+                setGasStations([...stations, ...spbgLocations]);
+              }}
               onMarkerAdded={(gasStation) => {
                 console.log('Gas station added:', gasStation);
               }}

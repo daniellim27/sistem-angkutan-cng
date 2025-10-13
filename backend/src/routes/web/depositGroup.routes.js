@@ -18,6 +18,12 @@ router.get(
   depositGroupController.getAllGroups
 );
 
+// GET /api/web/deposit-groups/spbg-locations-with-coords - Get SPBG locations with coordinates for map
+router.get(
+  "/spbg-locations-with-coords",
+  depositGroupController.getSPBGLocationsWithCoords
+);
+
 router.get(
   "/:id",
   checkRole(["admin", "owner"]),

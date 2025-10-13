@@ -31,6 +31,26 @@ module.exports = (sequelize) => {
         }
       },
 
+      // === LOCATION COORDINATES ===
+      latitude: {
+        type: DataTypes.DECIMAL(10, 8),
+        allowNull: true,
+        validate: {
+          min: -90,
+          max: 90,
+        },
+        comment: "GPS latitude coordinate for customer location",
+      },
+      longitude: {
+        type: DataTypes.DECIMAL(11, 8),
+        allowNull: true,
+        validate: {
+          min: -180,
+          max: 180,
+        },
+        comment: "GPS longitude coordinate for customer location",
+      },
+
       phone: {
         type: DataTypes.STRING(20),
         allowNull: true,

@@ -358,6 +358,75 @@ const getCustomerLocations = async (req, res) => {
   }
 };
 
+// GET /api/customers/locations-with-coords - Get customer locations with coordinates for map display
+const getCustomerLocationsWithCoords = async (req, res) => {
+  try {
+    const customers = await Customer.findAll({
+      attributes: ['id', 'customer_name', 'location', 'latitude', 'longitude'],
+      where: {
+        latitude: { [Op.not]: null },
+        longitude: { [Op.not]: null }
+      },
+      order: [['customer_name', 'ASC']]
+    });
+
+    const locations = customers.map(customer => ({
+      id: customer.id,
+      customer_name: customer.customer_name,
+      location: customer.location,
+      latitude: parseFloat(customer.latitude),
+      longitude: parseFloat(customer.longitude),
+      display_name: `${customer.customer_name} - ${customer.location}`
+    }));
+
+    res.json({
+      success: true,
+      data: locations,
+      count: locations.length
+    });
+  } catch (error) {
+    console.error("Error fetching customer locations with coordinates:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch customer locations with coordinates",
+      error: error.message,
+    });
+  }
+};
+
+// POST /api/customers/update-coordinates - Update customers without coordinates using geocoding
+const updateCustomerCoordinates = async (req, res) => {
+  try {
+    const { updateCustomersWithCoordinates } = require('../../scripts/update_customer_coordinates');
+    const result = await updateCustomersWithCoordinates();
+    
+    if (result.success) {
+      res.json({
+        success: true,
+        message: result.message,
+        data: {
+          total: result.total,
+          updated: result.updated,
+          failed: result.failed
+        }
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: "Failed to update customer coordinates",
+        error: result.error
+      });
+    }
+  } catch (error) {
+    console.error("Error updating customer coordinates:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update customer coordinates",
+      error: error.message,
+    });
+  }
+};
+
 // GET /api/customers/summary - Get customer summary statistics
 const getCustomerSummary = async (req, res) => {
   try {
@@ -405,5 +474,7 @@ module.exports = {
   deleteCustomer,
   searchCustomers,
   getCustomerLocations,
+  getCustomerLocationsWithCoords,
+  updateCustomerCoordinates,
   getCustomerSummary,
 };

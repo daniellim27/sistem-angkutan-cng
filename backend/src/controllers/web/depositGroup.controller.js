@@ -750,7 +750,71 @@ async linkPOToGroup(req, res) {
     console.error('Error linking PO to group:', error);
     res.status(500).json({ error: 'Failed to link PO to deposit group' });
   }
-}
+},
 
+  // Get deposit groups as SPBG locations with coordinates for map display
+  async getSPBGLocationsWithCoords(req, res) {
+    try {
+      console.log('🔍 Fetching SPBG locations from deposit groups...');
+      
+      // Get all active deposit groups with unique locations
+      const groups = await DepositGroup.findAll({
+        attributes: ['id', 'spbg_location'],
+        where: { 
+          status: ['active', 'fulfilled', 'overdrawn', 'pending_selisih'] // Include active statuses
+        },
+        group: ['id', 'spbg_location'], // Get unique locations
+        order: [['spbg_location', 'ASC']]
+      });
+
+      console.log(`📊 Found ${groups.length} SPBG locations to geocode`);
+
+      const { scrapeLocationCoordinates } = require('../../utils/locationScraper');
+      const locationsWithCoords = [];
+
+      // Convert each location to coordinates using existing geocoding system
+      for (const group of groups) {
+        try {
+          console.log(`🔍 Geocoding SPBG location: ${group.spbg_location}`);
+          const coords = await scrapeLocationCoordinates(group.spbg_location);
+          
+          if (coords && coords.lat && coords.lng) {
+            locationsWithCoords.push({
+              id: group.id,
+              name: group.spbg_location,
+              location: group.spbg_location, 
+              latitude: coords.lat,
+              longitude: coords.lng,
+              type: 'SPBG',
+              display_name: `SPBG - ${group.spbg_location}`
+            });
+            console.log(`✅ Geocoded ${group.spbg_location}: ${coords.lat}, ${coords.lng}`);
+          } else {
+            console.log(`❌ No coordinates found for ${group.spbg_location}`);
+          }
+          
+          // Add delay to be respectful to the geocoding service
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (error) {
+          console.error(`❌ Error geocoding ${group.spbg_location}:`, error.message);
+        }
+      }
+
+      console.log(`🎯 Successfully geocoded ${locationsWithCoords.length}/${groups.length} SPBG locations`);
+
+      res.json({
+        success: true,
+        data: locationsWithCoords,
+        count: locationsWithCoords.length
+      });
+    } catch (error) {
+      console.error("Error fetching SPBG locations with coordinates:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch SPBG locations with coordinates",
+        error: error.message,
+      });
+    }
+  }
 
 };
