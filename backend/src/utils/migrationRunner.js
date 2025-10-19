@@ -68,6 +68,7 @@ class MigrationRunner {
       '20250122_add_departed_from_spbu_at_column.js',
       '20250113_add_coordinates_to_customers.js',
       '20250115_add_phone_to_customers.js',
+      '20250120_add_surat_jalan_ocr_fields.js',
       '20250123_add_gdrive_image_urls_to_nota_kecils.js'
     ];
   }

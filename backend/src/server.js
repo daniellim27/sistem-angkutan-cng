@@ -341,6 +341,12 @@ initializeDatabase().then(() => {
   app.use("/api/web", webNotaBesarRoutes);
   app.use("/api/web/image-upload", webImageUploadRoutes);
 
+  // Test routes (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    const ocrTestRoutes = require("./routes/test/ocrTest.routes");
+    app.use("/api/test/ocr", ocrTestRoutes);
+  }
+
   app.use("/api/utils", utilsRoutes);
 
   // Error handling middleware

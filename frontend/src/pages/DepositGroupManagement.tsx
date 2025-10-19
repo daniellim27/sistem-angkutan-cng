@@ -60,8 +60,10 @@ const DepositGroupManagement = () => {
   const [showDOModal, setShowDOModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [showTopUpModal, setShowTopUpModal] = useState(false);
+  const [showTagihanModal, setShowTagihanModal] = useState(false);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<DepositGroupWithMembers | null>(null);
-  const [editingGroup, setEditingGroup] = useState<DepositGroup | null>(null);
+  const [selectedDOPhotos, setSelectedDOPhotos] = useState<{do_number: string, photos: string[]} | null>(null);
   // Removed PO dependencies - system no longer relies on purchase orders
   // const [allPurchaseOrders, setAllPurchaseOrders] = useState<PurchaseOrder[]>([]);
   // const [loadingPOs, setLoadingPOs] = useState(false);
@@ -84,6 +86,14 @@ const DepositGroupManagement = () => {
 
   // Form data for top up
   const [topUpAmount, setTopUpAmount] = useState('');
+
+  // Inline editing state
+  const [editingLocationId, setEditingLocationId] = useState<number | null>(null);
+  const [editingLocationName, setEditingLocationName] = useState('');
+
+  // Tagihan state
+  const [tagihanData, setTagihanData] = useState<any>(null);
+  const [loadingTagihan, setLoadingTagihan] = useState(false);
 
   // Form data for creating DOs - match delivery orders page structure
   const [doFormData, setDOFormData] = useState({
@@ -225,30 +235,15 @@ const DepositGroupManagement = () => {
         status: 'active'
       };
 
-      if (editingGroup) {
-        await apiClient.put(`/deposit-groups/${editingGroup.id}`, payload);
-      } else {
-        await apiClient.post('/deposit-groups', payload);
-      }
+      await apiClient.post('/deposit-groups', payload);
       
       setShowCreateModal(false);
-      setEditingGroup(null);
       resetForm();
       fetchGroups();
     } catch (err) {
-      setError('Failed to save deposit group.');
+      setError('Failed to create deposit group.');
       console.error(err);
     }
-  };
-
-  const handleEdit = (group: DepositGroup) => {
-    setEditingGroup(group);
-    setFormData({
-      spbg_location: group.spbg_location,
-      deposited_amount: group.deposited_amount || '', // Handle null/empty values
-      unit: group.unit
-    });
-    setShowCreateModal(true);
   };
 
   const handleDelete = async (id: number) => {
@@ -275,7 +270,6 @@ const DepositGroupManagement = () => {
 
   const openCreateModal = () => {
     resetForm();
-    setEditingGroup(null);
     setShowCreateModal(true);
   };
 
@@ -294,6 +288,60 @@ const DepositGroupManagement = () => {
     setSelectedGroup(group);
     setTopUpAmount('');
     setShowTopUpModal(true);
+  };
+
+  const openTagihanModal = async (group: DepositGroupWithMembers) => {
+    setSelectedGroup(group);
+    setShowTagihanModal(true);
+    setLoadingTagihan(true);
+    
+    try {
+      const response = await apiClient.get(`/deposit-groups/${group.id}/tagihan`);
+      console.log('Tagihan API Response:', response.data);
+      
+      // Handle both intercepted and non-intercepted response structures
+      const data = response.data.data || response.data;
+      setTagihanData(data);
+    } catch (err: any) {
+      console.error('Failed to fetch tagihan data:', err);
+      console.error('Error response:', err.response?.data);
+      console.error('Error status:', err.response?.status);
+      
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to load billing data';
+      setError(`Failed to load billing data: ${errorMessage}`);
+    } finally {
+      setLoadingTagihan(false);
+    }
+  };
+
+  const startEditingLocation = (group: DepositGroupWithMembers) => {
+    setEditingLocationId(group.id);
+    setEditingLocationName(group.spbg_location);
+  };
+
+  const cancelEditingLocation = () => {
+    setEditingLocationId(null);
+    setEditingLocationName('');
+  };
+
+  const saveLocationName = async (groupId: number) => {
+    try {
+      if (!editingLocationName.trim()) {
+        setError('Location name cannot be empty');
+        return;
+      }
+
+      await apiClient.put(`/deposit-groups/${groupId}`, {
+        spbg_location: editingLocationName.trim()
+      });
+
+      setEditingLocationId(null);
+      setEditingLocationName('');
+      fetchGroups();
+    } catch (err) {
+      setError('Failed to update location name.');
+      console.error(err);
+    }
   };
 
   const handleDOSubmit = async (e: React.FormEvent) => {
@@ -484,13 +532,88 @@ const DepositGroupManagement = () => {
     }
   };
 
+  const handleConfirmOCR = async (deliveryOrder: any) => {
+    const confirmed = window.confirm(
+      `Confirm OCR data for ${deliveryOrder.do_number}?\n\n` +
+      `OCR Volume: ${deliveryOrder.surat_jalan_volume_extracted} m³\n` +
+      `Gas Volume: ${deliveryOrder.gas_volume_m3} m³\n\n` +
+      `Do you want to confirm this volume?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await apiClient.post(`/deposit-groups/delivery-orders/${deliveryOrder.id}/confirm-surat-jalan-ocr`, {
+        confirmed_volume: deliveryOrder.surat_jalan_volume_extracted
+      });
+
+      // Refresh tagihan data
+      if (selectedGroup) {
+        const response = await apiClient.get(`/deposit-groups/${selectedGroup.id}/tagihan`);
+        setTagihanData(response.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to confirm OCR data:', err);
+      setError('Failed to confirm OCR data');
+    }
+  };
+
+  const handleRetryOCR = async (deliveryOrder: any) => {
+    const confirmed = window.confirm(
+      `Retry OCR processing for ${deliveryOrder.do_number}?\n\n` +
+      `This will attempt to process the surat jalan photos again using OCR.\n\n` +
+      `Continue?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setLoadingTagihan(true);
+      
+      // Call retry OCR endpoint
+      await apiClient.post(`/delivery-orders/${deliveryOrder.id}/retry-surat-jalan-ocr`);
+
+      // Refresh tagihan data after a short delay to allow OCR processing
+      setTimeout(async () => {
+        if (selectedGroup) {
+          const response = await apiClient.get(`/deposit-groups/${selectedGroup.id}/tagihan`);
+          setTagihanData(response.data.data);
+        }
+        setLoadingTagihan(false);
+      }, 3000);
+
+    } catch (err) {
+      console.error('Failed to retry OCR processing:', err);
+      setError('Failed to retry OCR processing');
+      setLoadingTagihan(false);
+    }
+  };
+
+  const handleViewSuratJalan = (deliveryOrder: any) => {
+    if (!deliveryOrder.surat_jalan_photo_url || deliveryOrder.surat_jalan_photo_url.length === 0) {
+      alert('No surat jalan photos available for this delivery order.');
+      return;
+    }
+
+    setSelectedDOPhotos({
+      do_number: deliveryOrder.do_number,
+      photos: deliveryOrder.surat_jalan_photo_url
+    });
+    setShowPhotoModal(true);
+  };
+
   const closeModal = () => {
     setShowCreateModal(false);
     setShowDOModal(false);
     setShowMembersModal(false);
     setShowTopUpModal(false);
-    setEditingGroup(null);
+    setShowTagihanModal(false);
+    setShowPhotoModal(false);
     setSelectedGroup(null);
+    setSelectedDOPhotos(null);
+    setEditingLocationId(null);
+    setEditingLocationName('');
+    setTagihanData(null);
     resetForm();
     resetDOForm();
     resetCustomerLocations();
@@ -550,7 +673,58 @@ const DepositGroupManagement = () => {
             </div>
 
             <div className="p-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">{group.spbg_location}</h3>
+              {/* Location Name with Inline Edit */}
+              <div className="mb-2">
+                {editingLocationId === group.id ? (
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={editingLocationName}
+                      onChange={(e) => setEditingLocationName(e.target.value)}
+                      className="flex-1 px-2 py-1 text-lg font-semibold border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          saveLocationName(group.id);
+                        } else if (e.key === 'Escape') {
+                          cancelEditingLocation();
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => saveLocationName(group.id)}
+                      className="p-1 text-green-600 hover:text-green-800"
+                      title="Save"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={cancelEditingLocation}
+                      className="p-1 text-red-600 hover:text-red-800"
+                      title="Cancel"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-lg font-semibold text-gray-900">{group.spbg_location}</h3>
+                    <button
+                      onClick={() => startEditingLocation(group)}
+                      className="p-1 text-gray-500 hover:text-blue-600"
+                      title="Edit location name"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+              </div>
               
               {/* Group Information */}
               <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
@@ -675,10 +849,10 @@ const DepositGroupManagement = () => {
                 </div>
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => handleEdit(group)}
+                    onClick={() => openTagihanModal(group)}
                     className="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded"
                   >
-                    Edit
+                    📋 Tagihan
                   </button>
                   <button
                     onClick={() => handleDelete(group.id)}
@@ -711,13 +885,13 @@ const DepositGroupManagement = () => {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
+      {/* Create Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">
-                {editingGroup ? 'Edit SPBG' : 'Create New SPBG'}
+                Create New SPBG
               </h3>
               
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -753,26 +927,24 @@ const DepositGroupManagement = () => {
                   />
                 </div>
 
-                {/* Deposited Amount - Only show when creating new SPBG, hide when editing */}
-                {!editingGroup && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Initial Deposited Amount (Rp)
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.deposited_amount}
-                      onChange={(e) => setFormData(prev => ({ ...prev, deposited_amount: e.target.value }))}
-                      placeholder="Enter initial deposited amount (optional)"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      min="0"
-                      step="0.01"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Leave empty if no initial deposit is made. Use Top Up button to add balance later.
-                    </p>
-                  </div>
-                )}
+                {/* Deposited Amount */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Initial Deposited Amount (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.deposited_amount}
+                    onChange={(e) => setFormData(prev => ({ ...prev, deposited_amount: e.target.value }))}
+                    placeholder="Enter initial deposited amount (optional)"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    min="0"
+                    step="0.01"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Leave empty if no initial deposit is made. Use Top Up button to add balance later.
+                  </p>
+                </div>
 
                 <div className="flex justify-end space-x-3 pt-4">
                   <button
@@ -786,7 +958,7 @@ const DepositGroupManagement = () => {
                     type="submit"
                     className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
                   >
-                    {editingGroup ? 'Update SPBG' : 'Create SPBG'}
+                    Create SPBG
                   </button>
                 </div>
               </form>
@@ -1270,6 +1442,327 @@ const DepositGroupManagement = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tagihan (Billing) Modal */}
+      {showTagihanModal && selectedGroup && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-10 mx-auto p-5 border w-full max-w-6xl shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  📋 Tagihan - {selectedGroup.spbg_location}
+                </h3>
+                <button
+                  onClick={closeModal}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {loadingTagihan ? (
+                <div className="text-center py-8">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <p className="mt-2 text-gray-500">Loading billing data...</p>
+                </div>
+              ) : tagihanData ? (
+                <div className="space-y-6">
+                  {/* Debug info */}
+                  <div className="mb-4 p-2 bg-gray-100 rounded text-xs">
+                    <strong>Debug:</strong> Found {tagihanData.delivery_orders?.length || 0} delivery orders, 
+                    Total cost: {tagihanData.summary?.total_cost || 0}
+                  </div>
+                  {/* Summary Section */}
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div className="bg-blue-50 p-4 rounded-lg">
+                      <div className="text-xs text-gray-600 mb-1">Total DOs</div>
+                      <div className="text-2xl font-bold text-blue-600">
+                        {tagihanData.summary.total_delivery_orders}
+                      </div>
+                    </div>
+                    <div className="bg-green-50 p-4 rounded-lg">
+                      <div className="text-xs text-gray-600 mb-1">Base Gas Cost</div>
+                      <div className="text-lg font-bold text-green-600">
+                        {formatCurrency(tagihanData.summary.total_base_gas_cost)}
+                      </div>
+                    </div>
+                    <div className="bg-orange-50 p-4 rounded-lg">
+                      <div className="text-xs text-gray-600 mb-1">Selisih Cost</div>
+                      <div className="text-lg font-bold text-orange-600">
+                        {formatCurrency(tagihanData.summary.total_selisih_cost)}
+                      </div>
+                    </div>
+                    <div className="bg-purple-50 p-4 rounded-lg">
+                      <div className="text-xs text-gray-600 mb-1">Total Cost</div>
+                      <div className="text-lg font-bold text-purple-600">
+                        {formatCurrency(tagihanData.summary.total_cost)}
+                      </div>
+                    </div>
+                    <div className="bg-yellow-50 p-4 rounded-lg">
+                      <div className="text-xs text-gray-600 mb-1">Pending / Confirmed</div>
+                      <div className="text-2xl font-bold">
+                        <span className="text-yellow-600">{tagihanData.summary.pending_confirmation}</span>
+                        <span className="text-gray-400 mx-1">/</span>
+                        <span className="text-green-600">{tagihanData.summary.confirmed}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Volume Summary */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <div className="text-sm text-gray-600 mb-1">Set Volume (m³)</div>
+                        <div className="text-xl font-bold text-blue-600">
+                          {tagihanData.summary.total_set_volume.toFixed(2)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-gray-600 mb-1">Actual Volume (m³)</div>
+                        <div className="text-xl font-bold text-green-600">
+                          {tagihanData.summary.total_actual_volume.toFixed(2)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-gray-600 mb-1">Selisih Volume (m³)</div>
+                        <div className={`text-xl font-bold ${tagihanData.summary.total_selisih_volume >= 0 ? 'text-orange-600' : 'text-red-600'}`}>
+                          {tagihanData.summary.total_selisih_volume >= 0 ? '+' : ''}{tagihanData.summary.total_selisih_volume.toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Delivery Orders Table */}
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                            DO Number
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                            Customer
+                          </th>
+                          <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                            Set Vol. (m³)
+                          </th>
+                          <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                            Actual Vol. (m³)
+                          </th>
+                          <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                            Selisih (m³)
+                          </th>
+                          <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                            Base Cost
+                          </th>
+                          <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                            Selisih Cost
+                          </th>
+                          <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                            Total Cost
+                          </th>
+                          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                            Status
+                          </th>
+                          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                            Action
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {tagihanData.delivery_orders.map((do_item: any) => (
+                          <tr key={do_item.id} className={`hover:bg-gray-50 ${do_item.selisih_volume_m3 > 0 ? 'bg-orange-50' : ''}`}>
+                            <td className="px-3 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {do_item.do_number}
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-700">
+                              {do_item.customer_name}
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap text-sm text-right text-blue-600 font-medium">
+                              {do_item.set_volume_m3.toFixed(2)}
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap text-sm text-right">
+                              {do_item.actual_volume_m3 > 0 ? (
+                                <div className="flex flex-col items-end">
+                                  <span className={`font-medium ${do_item.surat_jalan_ocr_confirmed ? 'text-green-600' : 'text-blue-500'}`}>
+                                    {do_item.actual_volume_m3.toFixed(2)}
+                                  </span>
+                                  {do_item.has_ocr_data && (
+                                    <span className="text-xs text-gray-500">
+                                      {do_item.surat_jalan_ocr_confirmed ? '✓ Confirmed' : '📊 OCR'}
+                                    </span>
+                                  )}
+                                  {do_item.has_surat_jalan && !do_item.has_ocr_data && (
+                                    <span className="text-xs text-orange-500">⚠️ No OCR</span>
+                                  )}
+                                </div>
+                              ) : do_item.has_surat_jalan ? (
+                                <span className="text-orange-500 text-xs">📷 Photo only</span>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap text-sm text-right">
+                              {do_item.actual_volume_m3 > 0 ? (
+                                <span className={`font-bold ${do_item.selisih_volume_m3 > 0 ? 'text-orange-600' : do_item.selisih_volume_m3 < 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                                  {do_item.selisih_volume_m3 > 0 ? '+' : ''}{do_item.selisih_volume_m3.toFixed(2)}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap text-sm text-right text-gray-900">
+                              {formatCurrency(do_item.base_gas_cost)}
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap text-sm text-right">
+                              {do_item.selisih_cost > 0 ? (
+                                <span className="text-orange-600 font-medium">
+                                  {formatCurrency(do_item.selisih_cost)}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap text-sm text-right font-bold text-gray-900">
+                              {formatCurrency(do_item.total_cost)}
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap text-center">
+                              {do_item.surat_jalan_ocr_confirmed ? (
+                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                                  ✓ Confirmed
+                                </span>
+                              ) : do_item.actual_volume_m3 > 0 ? (
+                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">
+                                  Pending
+                                </span>
+                              ) : (
+                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">
+                                  No Data
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap text-center">
+                              <div className="flex flex-col space-y-1">
+                                {do_item.needs_confirmation && (
+                                  <button
+                                    onClick={() => handleConfirmOCR(do_item)}
+                                    className="text-blue-600 hover:text-blue-900 text-sm font-medium"
+                                  >
+                                    Confirm
+                                  </button>
+                                )}
+                                {do_item.has_surat_jalan && !do_item.has_ocr_data && (
+                                  <button
+                                    onClick={() => handleRetryOCR(do_item)}
+                                    className="text-orange-600 hover:text-orange-900 text-xs font-medium"
+                                    title="Retry OCR processing"
+                                  >
+                                    🔄 Retry OCR
+                                  </button>
+                                )}
+                                {do_item.has_surat_jalan && (
+                                  <button
+                                    onClick={() => handleViewSuratJalan(do_item)}
+                                    className="text-green-600 hover:text-green-900 text-xs font-medium"
+                                    title="View Surat Jalan Photos"
+                                  >
+                                    📷 View Photos
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No billing data available</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Surat Jalan Photo Modal */}
+      {showPhotoModal && selectedDOPhotos && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-10 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  📷 Surat Jalan Photos - {selectedDOPhotos.do_number}
+                </h3>
+                <button
+                  onClick={closeModal}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  Found {selectedDOPhotos.photos.length} surat jalan photo(s) for this delivery order.
+                </p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {selectedDOPhotos.photos.map((photoUrl, index) => (
+                    <div key={index} className="border rounded-lg p-4">
+                      <div className="mb-2">
+                        <span className="text-sm font-medium text-gray-700">
+                          Photo {index + 1}
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <img
+                          src={`http://localhost:3000/${photoUrl}`}
+                          alt={`Surat Jalan ${index + 1}`}
+                          className="w-full h-64 object-contain border rounded cursor-pointer hover:opacity-80"
+                          onClick={() => window.open(`http://localhost:3000/${photoUrl}`, '_blank')}
+                          onError={(e) => {
+                            console.error('Failed to load image:', photoUrl);
+                            (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwyMCA5TDEzLjA5IDE1Ljc0TDEyIDIyTDEwLjkxIDE1Ljc0TDQgOUwxMC45MSA4LjI2TDEyIDJaIiBzdHJva2U9IiNjY2MiIHN0cm9rZS13aWR0aD0iMiIgZmlsbD0iI2Y5ZjlmOSIvPgo8L3N2Zz4K';
+                          }}
+                        />
+                        <div className="absolute bottom-2 right-2">
+                          <button
+                            onClick={() => window.open(`http://localhost:3000/${photoUrl}`, '_blank')}
+                            className="bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs hover:bg-opacity-70"
+                            title="Open in new tab"
+                          >
+                            🔍 View Full Size
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-2 text-xs text-gray-500">
+                        Path: {photoUrl}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-end space-x-2 mt-6">
+                  <button
+                    onClick={closeModal}
+                    className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

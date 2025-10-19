@@ -173,6 +173,47 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Photo surat jalan yang diambil driver di lokasi muat",
       },
+      // === SURAT JALAN OCR FIELDS ===
+      surat_jalan_ocr_data: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        comment: "OCR extracted data from surat jalan photos",
+      },
+      surat_jalan_ocr_confidence: {
+        type: DataTypes.FLOAT,
+        allowNull: true,
+        comment: "Overall confidence score of surat jalan OCR extraction (0-100)",
+      },
+      surat_jalan_volume_extracted: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        comment: "Total volume pengisian extracted from surat jalan via OCR",
+      },
+      surat_jalan_ocr_confirmed: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        comment: "Whether admin has confirmed the OCR extracted data",
+      },
+      surat_jalan_confirmed_volume: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        comment: "Admin-confirmed volume (may differ from OCR extracted volume)",
+      },
+      surat_jalan_ocr_processed_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "Timestamp when OCR processing was completed",
+      },
+      surat_jalan_confirmed_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "Timestamp when admin confirmed the OCR data",
+      },
+      surat_jalan_confirmed_by: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        comment: "User ID of admin who confirmed the OCR data",
+      },
       nota_photo_url: {
         type: DataTypes.ARRAY(DataTypes.TEXT),
         allowNull: true,

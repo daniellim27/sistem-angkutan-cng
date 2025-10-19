@@ -219,6 +219,13 @@ router.post(
   loadConfirmationController.uploadSuratJalanPhoto
 );
 
+// Retry OCR processing for surat jalan photos
+router.post(
+  "/:id/retry-surat-jalan-ocr",
+  checkRole(["admin", "owner"]),
+  loadConfirmationController.retrySuratJalanOCR
+);
+
 // Upload nota photo endpoint (before arrive at unload)
 router.post(
   "/:id/upload-nota",

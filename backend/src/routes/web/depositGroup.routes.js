@@ -107,4 +107,18 @@ router.post(
   depositGroupController.paySelisih
 );
 
+// ✅ Get tagihan (billing) information for SPBG
+router.get(
+  "/:id/tagihan",
+  checkRole(["admin", "owner"]),
+  depositGroupController.getSPBGTagihan
+);
+
+// ✅ Confirm surat jalan OCR data
+router.post(
+  "/delivery-orders/:doId/confirm-surat-jalan-ocr",
+  checkRole(["admin", "owner"]),
+  depositGroupController.confirmSuratJalanOCR
+);
+
 module.exports = router;

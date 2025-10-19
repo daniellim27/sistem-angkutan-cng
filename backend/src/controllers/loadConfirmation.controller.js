@@ -1,6 +1,8 @@
 // src/controllers/loadConfirmation.controller.js
 const { DeliveryOrder, DriverProfile, Vehicle } = require("../models");
 const path = require("path");
+const fs = require("fs");
+const ocrService = require("../services/ocrService");
 
 /**
  * @desc    Confirm load - Driver confirms actual load and uploads surat jalan photo
@@ -211,13 +213,96 @@ exports.uploadSuratJalanPhoto = async (req, res, next) => {
       surat_jalan_photo_url: updatedPhotos,
     });
 
+    // Process OCR on the first uploaded photo
+    let ocrResult = null;
+    if (suratJalanFiles.length > 0) {
+      try {
+        console.log("Starting OCR processing for surat jalan...");
+        const firstPhotoPath = suratJalanFiles[0].path;
+        
+        // Check if file exists and resolve path correctly
+        let fullPath = firstPhotoPath;
+        if (!path.isAbsolute(firstPhotoPath)) {
+          // For uploaded files, the path should be relative to project root
+          fullPath = path.join(__dirname, '../../..', firstPhotoPath);
+        }
+        
+        console.log('Resolving upload file path:', {
+          original: firstPhotoPath,
+          resolved: fullPath,
+          exists: fs.existsSync(fullPath)
+        });
+        
+        if (!fs.existsSync(fullPath)) {
+          throw new Error(`Surat jalan photo file not found: ${fullPath}`);
+        }
+        
+        const imageBuffer = fs.readFileSync(fullPath);
+        console.log(`Image buffer size: ${imageBuffer.length} bytes`);
+        
+        // Check OCR service configuration
+        const config = ocrService.checkConfiguration();
+        if (!config.isConfigured) {
+          throw new Error('OCR service is not properly configured. Please check OPENAI_API_KEY.');
+        }
+        
+        ocrResult = await ocrService.processSuratJalanImage(imageBuffer);
+        console.log("OCR processing completed:", JSON.stringify(ocrResult, null, 2));
+
+        // Validate OCR result
+        if (!ocrResult || typeof ocrResult !== 'object') {
+          throw new Error('Invalid OCR result received');
+        }
+
+        // Update delivery order with OCR results
+        const updateData = {
+          surat_jalan_ocr_data: ocrResult,
+          surat_jalan_ocr_confidence: ocrResult.overall_confidence || 0,
+          surat_jalan_volume_extracted: ocrResult.total_volume_pengisian || null,
+          surat_jalan_ocr_processed_at: new Date()
+        };
+        
+        console.log("Updating delivery order with OCR data:", updateData);
+        await deliveryOrder.update(updateData);
+
+        console.log("✅ OCR results saved to delivery order");
+      } catch (ocrError) {
+        console.error("❌ OCR processing failed:", {
+          message: ocrError.message,
+          stack: ocrError.stack,
+          deliveryOrderId: id
+        });
+        
+        // Save error information to delivery order for debugging
+        try {
+          await deliveryOrder.update({
+            surat_jalan_ocr_data: {
+              error: ocrError.message,
+              processed_at: new Date(),
+              status: 'failed'
+            },
+            surat_jalan_ocr_processed_at: new Date()
+          });
+        } catch (saveError) {
+          console.error("Failed to save OCR error to database:", saveError);
+        }
+        
+        // Don't fail the upload if OCR fails - just log it
+      }
+    }
+
     res.status(200).json({
-      message: "Foto surat jalan berhasil diupload.",
+      message: "Foto surat jalan berhasil diupload" + (ocrResult ? " dan diproses dengan OCR" : ""),
       delivery_order: {
         id: deliveryOrder.id,
         do_number: deliveryOrder.do_number,
         status: deliveryOrder.status,
         surat_jalan_photo_url: updatedPhotos,
+        ocr_result: ocrResult ? {
+          total_volume_pengisian: ocrResult.total_volume_pengisian,
+          confidence: ocrResult.overall_confidence,
+          extracted_at: ocrResult.extracted_at
+        } : null,
         photos_uploaded: surat_jalan_photo_url.length,
         total_photos: updatedPhotos.length,
       },
@@ -230,6 +315,143 @@ exports.uploadSuratJalanPhoto = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Full error in uploadSuratJalanPhoto:", {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+    });
+    next(error);
+  }
+};
+
+/**
+ * @desc    Retry OCR processing for surat jalan photos
+ * @route   POST /api/delivery-orders/:id/retry-surat-jalan-ocr
+ * @access  Private (Admin only)
+ */
+exports.retrySuratJalanOCR = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    console.log("Retry surat jalan OCR request for DO:", id);
+
+    // Find delivery order
+    const deliveryOrder = await DeliveryOrder.findByPk(id);
+
+    if (!deliveryOrder) {
+      return res.status(404).json({
+        message: "Delivery Order tidak ditemukan."
+      });
+    }
+
+    // Check if surat jalan photos exist
+    if (!deliveryOrder.surat_jalan_photo_url || deliveryOrder.surat_jalan_photo_url.length === 0) {
+      return res.status(400).json({
+        message: "Tidak ada foto surat jalan untuk diproses."
+      });
+    }
+
+    console.log("Found surat jalan photos:", deliveryOrder.surat_jalan_photo_url);
+
+    // Process OCR on the first photo
+    let ocrResult = null;
+    try {
+      const firstPhotoPath = deliveryOrder.surat_jalan_photo_url[0];
+      
+      // Check if file exists (handle both relative and absolute paths)
+      let fullPath = firstPhotoPath;
+      if (!path.isAbsolute(firstPhotoPath)) {
+        // Handle different possible path formats
+        if (firstPhotoPath.startsWith('uploads/')) {
+          // Path like "uploads/surat_jalan_photos/file.jpg" - relative to backend directory
+          fullPath = path.join(__dirname, '../../..', firstPhotoPath);
+        } else {
+          // Path like "surat_jalan_photos/file.jpg" - relative to uploads directory
+          fullPath = path.join(__dirname, '../../../uploads', firstPhotoPath);
+        }
+      }
+      
+      console.log('Resolving file path:', {
+        original: firstPhotoPath,
+        resolved: fullPath,
+        exists: fs.existsSync(fullPath)
+      });
+      
+      if (!fs.existsSync(fullPath)) {
+        throw new Error(`Surat jalan photo file not found: ${fullPath}`);
+      }
+      
+      const imageBuffer = fs.readFileSync(fullPath);
+      console.log(`Processing image buffer size: ${imageBuffer.length} bytes`);
+      
+      // Check OCR service configuration
+      const config = ocrService.checkConfiguration();
+      if (!config.isConfigured) {
+        throw new Error('OCR service is not properly configured. Please check OPENAI_API_KEY.');
+      }
+      
+      ocrResult = await ocrService.processSuratJalanImage(imageBuffer);
+      console.log("OCR retry processing completed:", JSON.stringify(ocrResult, null, 2));
+
+      // Validate OCR result
+      if (!ocrResult || typeof ocrResult !== 'object') {
+        throw new Error('Invalid OCR result received');
+      }
+
+      // Update delivery order with OCR results
+      const updateData = {
+        surat_jalan_ocr_data: ocrResult,
+        surat_jalan_ocr_confidence: ocrResult.overall_confidence || 0,
+        surat_jalan_volume_extracted: ocrResult.total_volume_pengisian || null,
+        surat_jalan_ocr_processed_at: new Date()
+      };
+      
+      console.log("Updating delivery order with retry OCR data:", updateData);
+      await deliveryOrder.update(updateData);
+
+      console.log("✅ OCR retry results saved to delivery order");
+    } catch (ocrError) {
+      console.error("❌ OCR retry processing failed:", {
+        message: ocrError.message,
+        stack: ocrError.stack,
+        deliveryOrderId: id
+      });
+      
+      // Save error information to delivery order for debugging
+      try {
+        await deliveryOrder.update({
+          surat_jalan_ocr_data: {
+            error: ocrError.message,
+            processed_at: new Date(),
+            status: 'failed',
+            retry_attempt: true
+          },
+          surat_jalan_ocr_processed_at: new Date()
+        });
+      } catch (saveError) {
+        console.error("Failed to save OCR retry error to database:", saveError);
+      }
+      
+      return res.status(500).json({
+        message: "OCR processing failed: " + ocrError.message,
+        error: ocrError.message
+      });
+    }
+
+    res.status(200).json({
+      message: "OCR processing berhasil dijalankan ulang" + (ocrResult ? " dan berhasil" : ""),
+      delivery_order: {
+        id: deliveryOrder.id,
+        do_number: deliveryOrder.do_number,
+        ocr_result: ocrResult ? {
+          total_volume_pengisian: ocrResult.total_volume_pengisian,
+          confidence: ocrResult.overall_confidence,
+          extracted_at: ocrResult.extracted_at
+        } : null
+      }
+    });
+
+  } catch (error) {
+    console.error("Full error in retrySuratJalanOCR:", {
       message: error.message,
       stack: error.stack,
       code: error.code,

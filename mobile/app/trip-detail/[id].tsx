@@ -1492,6 +1492,48 @@ const TripDetailScreen = () => {
     );
   };
 
+  const handleTakeSuratJalanPhoto = async () => {
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Error", "Permission to access camera was denied");
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets?.[0]) {
+        setSuratJalanPhotos(prev => [...prev, result.assets[0]]);
+      }
+    } catch (error) {
+      console.error("Error taking photo:", error);
+      Alert.alert("Error", "Failed to take picture");
+    }
+  };
+
+  const handlePickSuratJalanImage = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Error", "Permission to access gallery was denied");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets?.[0]) {
+        setSuratJalanPhotos(prev => [...prev, result.assets[0]]);
+      }
+    } catch (error) {
+      console.error("Error picking image:", error);
+      Alert.alert("Error", "Failed to pick image");
+    }
+  };
+
   const handleSuratJalanUpload = async (photos: any[]) => {
     if (!trip) return;
 
@@ -2539,60 +2581,31 @@ const TripDetailScreen = () => {
                 <TouchableOpacity 
                   style={styles.addPhotoButton} 
                   onPress={() => {
-                    Alert.alert(
-                      "Pilih Foto Surat Jalan",
-                      "Bagaimana cara Anda ingin mengambil foto?",
-                      [
-                        { 
-                          text: "Kamera", 
-                          onPress: async () => {
-                            try {
-                              const permission = await ImagePicker.requestCameraPermissionsAsync();
-                              if (!permission.granted) {
-                                Alert.alert("Error", "Permission to access camera was denied");
-                                return;
-                              }
-                              const result = await ImagePicker.launchCameraAsync({
-                                allowsEditing: true,
-                                quality: 0.8,
-                              });
-                              if (!result.canceled && result.assets?.[0]) {
-                                setSuratJalanPhotos(prev => [...prev, result.assets[0]]);
-                              }
-                            } catch (error) {
-                              Alert.alert("Error", "Failed to take picture");
-                            }
-                          }
-                        },
-                        { 
-                          text: "Galeri", 
-                          onPress: async () => {
-                            try {
-                              const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                              if (!permission.granted) {
-                                Alert.alert("Error", "Permission to access gallery was denied");
-                                return;
-                              }
-                              const result = await ImagePicker.launchImageLibraryAsync({
-                                mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                                allowsEditing: true,
-                                quality: 0.8,
-                              });
-                              if (!result.canceled && result.assets?.[0]) {
-                                setSuratJalanPhotos(prev => [...prev, result.assets[0]]);
-                              }
-                            } catch (error) {
-                              Alert.alert("Error", "Failed to pick image");
-                            }
-                          }
-                        },
-                        { 
-                          text: "Batal", 
-                          style: "cancel" 
-                        },
-                      ],
-                      { cancelable: true }
-                    );
+                    if (Platform.OS === 'web') {
+                      // Web: directly open image picker
+                      handlePickSuratJalanImage();
+                    } else {
+                      // Native: show alert with camera/gallery options
+                      Alert.alert(
+                        "Pilih Foto Surat Jalan",
+                        "Bagaimana cara Anda ingin mengambil foto?",
+                        [
+                          { 
+                            text: "Kamera", 
+                            onPress: handleTakeSuratJalanPhoto
+                          },
+                          { 
+                            text: "Galeri", 
+                            onPress: handlePickSuratJalanImage
+                          },
+                          { 
+                            text: "Batal", 
+                            style: "cancel" 
+                          },
+                        ],
+                        { cancelable: true }
+                      );
+                    }
                   }}
                 >
                   <Text style={styles.addPhotoIcon}>📷</Text>

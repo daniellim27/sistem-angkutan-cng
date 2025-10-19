@@ -213,7 +213,9 @@ docker-compose.override.yml
 jspm_packages/
 .serverless/
 .fusebox/
-.dynamodb/
+.dynamodb/  
 .tern-port
 *.tgz
 .yarn-integrity
+
+surat_jalan/

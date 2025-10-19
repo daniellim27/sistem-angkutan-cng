@@ -226,6 +226,143 @@ Return ONLY the JSON object starting with { and ending with }. No markdown, no c
   }
 
   /**
+   * Process surat jalan image using OpenAI GPT-4 Vision
+   * @param {Buffer} imageBuffer - Image buffer
+   * @param {Object} options - Processing options
+   * @returns {Object} Extracted data and confidence scores
+   */
+  async processSuratJalanImage(imageBuffer, options = {}) {
+    const config = this.checkConfiguration();
+    
+    if (!this.isConfigured || !config.isConfigured) {
+      throw new Error('OCR service is not configured. Please set OPENAI_API_KEY environment variable.');
+    }
+
+    try {
+      const prompt = this.buildSuratJalanPrompt(options);
+      
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { 
+              type: "image_url", 
+              image_url: { 
+                url: `data:image/jpeg;base64,${imageBuffer.toString('base64')}` 
+              }
+            }
+          ]
+        }],
+        max_tokens: 1000,
+        temperature: 0.1
+      });
+
+      let responseContent = response.choices[0].message.content;
+      
+      // Remove markdown code blocks if present
+      if (responseContent.includes('```json')) {
+        responseContent = responseContent.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      } else if (responseContent.includes('```')) {
+        responseContent = responseContent.replace(/```\n?/g, '');
+      }
+      
+      responseContent = responseContent.trim();
+      const extractedData = JSON.parse(responseContent);
+      
+      return this.validateAndCleanSuratJalanData(extractedData);
+      
+    } catch (error) {
+      console.error('Surat Jalan OCR Processing Error:', error);
+      throw new Error(`Surat Jalan OCR processing failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Build the prompt for surat jalan OCR processing
+   * @param {Object} options - Processing options
+   * @returns {String} Formatted prompt
+   */
+  buildSuratJalanPrompt(options = {}) {
+    return `
+Analyze this "Surat Jalan" (delivery note) image and extract the following information in JSON format.
+
+CRITICAL: Return ONLY valid JSON without any markdown formatting, code blocks, or additional text. Do not wrap the response in \`\`\`json or \`\`\`.
+
+{
+  "total_volume_pengisian": number,
+  "nomor_surat_jalan": string,
+  "tanggal": "YYYY-MM-DD",
+  "nama_pengirim": string,
+  "alamat_pengirim": string,
+  "nama_penerima": string,
+  "alamat_penerima": string,
+  "jenis_barang": string,
+  "satuan": string,
+  "keterangan": string,
+  "confidence": number
+}
+
+Look for these specific fields:
+- "Total Volume Pengisian" - the most important field, extract as a decimal number
+- Document number (Nomor Surat Jalan/No.)
+- Date (Tanggal)
+- Sender information (Pengirim/From)
+- Receiver information (Penerima/To/Kepada)
+- Type of goods (Jenis Barang/Nama Barang)
+- Unit of measurement (Satuan/Unit) - typically m³, kg, liter, etc.
+- Additional notes (Keterangan/Catatan)
+
+Rules:
+- If any field cannot be found, use null for numbers/objects or empty string for strings
+- Confidence should be 0-100 based on image clarity and text readability
+- For "total_volume_pengisian", look for variations like: "Total Volume", "Volume Pengisian", "Jumlah", "Qty"
+- Remove any thousand separators and convert numbers to decimal
+- For tanggal, try to extract in YYYY-MM-DD format, use null if not found
+
+Return ONLY the JSON object starting with { and ending with }. No markdown, no code blocks, no explanations.
+    `.trim();
+  }
+
+  /**
+   * Validate and clean surat jalan extracted data
+   * @param {Object} data - Raw extracted data
+   * @returns {Object} Cleaned and validated data
+   */
+  validateAndCleanSuratJalanData(data) {
+    const cleaned = {
+      total_volume_pengisian: this.parseNumber(data.total_volume_pengisian),
+      nomor_surat_jalan: data.nomor_surat_jalan || null,
+      tanggal: this.parseDateTime(data.tanggal),
+      nama_pengirim: data.nama_pengirim || null,
+      alamat_pengirim: data.alamat_pengirim || null,
+      nama_penerima: data.nama_penerima || null,
+      alamat_penerima: data.alamat_penerima || null,
+      jenis_barang: data.jenis_barang || null,
+      satuan: data.satuan || null,
+      keterangan: data.keterangan || null,
+      confidence: this.parseNumber(data.confidence) || 0,
+      extracted_at: new Date(),
+      raw_data: data
+    };
+
+    // Calculate overall confidence
+    const criticalFields = ['total_volume_pengisian'];
+    const optionalFields = ['nomor_surat_jalan', 'tanggal', 'nama_pengirim', 'nama_penerima'];
+    
+    const criticalFilled = criticalFields.filter(field => cleaned[field] !== null).length;
+    const optionalFilled = optionalFields.filter(field => cleaned[field] !== null).length;
+    
+    const criticalScore = (criticalFilled / criticalFields.length) * 60; // 60% weight
+    const optionalScore = (optionalFilled / optionalFields.length) * 40; // 40% weight
+    
+    cleaned.overall_confidence = Math.round(criticalScore + optionalScore);
+
+    return cleaned;
+  }
+
+  /**
    * Get processing statistics
    * @param {Array} results - Processing results
    * @returns {Object} Statistics
