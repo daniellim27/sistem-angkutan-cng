@@ -363,6 +363,45 @@ async getGroupDetails(req, res) {
     }
   },
 
+  // Top up balance for an SPBG
+  async topUpBalance(req, res) {
+    try {
+      const { id } = req.params;
+      const { amount } = req.body;
+      
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: "Amount must be greater than 0" });
+      }
+
+      const group = await DepositGroup.findByPk(id);
+      if (!group) {
+        return res.status(404).json({ error: "Group not found" });
+      }
+      
+      const topUpAmount = parseFloat(amount);
+      
+      // Update both deposited_amount and balance
+      group.deposited_amount = parseFloat(group.deposited_amount || 0) + topUpAmount;
+      group.balance = parseFloat(group.balance || 0) + topUpAmount;
+      
+      // Update status if needed
+      if (group.status === 'fulfilled' || group.status === 'overdrawn') {
+        group.status = 'active';
+      }
+      
+      await group.save();
+      
+      res.json({
+        success: true,
+        message: `Successfully topped up Rp ${topUpAmount.toLocaleString('id-ID')}`,
+        group
+      });
+    } catch (error) {
+      console.error("Error topping up balance:", error);
+      res.status(500).json({ error: "Failed to top up balance" });
+    }
+  },
+
 async updateMemberQuantity(req, res) {
   const { id } = req.params; // member ID
   const { quantity } = req.body;

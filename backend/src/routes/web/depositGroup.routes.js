@@ -36,6 +36,12 @@ router.put(
   depositGroupController.updateGroup
 );
 
+router.post(
+  "/:id/topup",
+  checkRole(["admin", "owner"]),
+  depositGroupController.topUpBalance
+);
+
 router.delete(
   "/:id",
   checkRole(["admin", "owner"]),

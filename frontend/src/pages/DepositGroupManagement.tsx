@@ -59,6 +59,7 @@ const DepositGroupManagement = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDOModal, setShowDOModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
+  const [showTopUpModal, setShowTopUpModal] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<DepositGroupWithMembers | null>(null);
   const [editingGroup, setEditingGroup] = useState<DepositGroup | null>(null);
   // Removed PO dependencies - system no longer relies on purchase orders
@@ -80,6 +81,9 @@ const DepositGroupManagement = () => {
     deposited_amount: '',
     unit: 'kubik' // Fixed to kubik (m³)
   });
+
+  // Form data for top up
+  const [topUpAmount, setTopUpAmount] = useState('');
 
   // Form data for creating DOs - match delivery orders page structure
   const [doFormData, setDOFormData] = useState({
@@ -286,6 +290,12 @@ const DepositGroupManagement = () => {
     setShowDOModal(true);
   };
 
+  const openTopUpModal = (group: DepositGroupWithMembers) => {
+    setSelectedGroup(group);
+    setTopUpAmount('');
+    setShowTopUpModal(true);
+  };
+
   const handleDOSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -450,10 +460,35 @@ const DepositGroupManagement = () => {
   };
 
 
+  const handleTopUpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedGroup) return;
+
+    try {
+      const amount = parseFloat(topUpAmount);
+      if (isNaN(amount) || amount <= 0) {
+        setError('Please enter a valid amount greater than 0');
+        return;
+      }
+
+      await apiClient.post(`/deposit-groups/${selectedGroup.id}/topup`, { amount });
+      
+      setShowTopUpModal(false);
+      setTopUpAmount('');
+      setSelectedGroup(null);
+      fetchGroups();
+    } catch (err) {
+      setError('Failed to top up balance.');
+      console.error(err);
+    }
+  };
+
   const closeModal = () => {
     setShowCreateModal(false);
     setShowDOModal(false);
     setShowMembersModal(false);
+    setShowTopUpModal(false);
     setEditingGroup(null);
     setSelectedGroup(null);
     resetForm();
@@ -617,31 +652,41 @@ const DepositGroupManagement = () => {
                 <span>Created {formatDate(group.created_at)}</span>
               </div>
 
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => openDOModal(group)}
-                  className="flex-1 bg-green-500 hover:bg-green-600 text-white text-sm py-2 px-3 rounded"
-                >
-                  Add DO
-                </button>
-                 <button
-                   onClick={() => openMembersModal(group)}
-                   className="flex-1 bg-gray-500 hover:bg-gray-600 text-white text-sm py-2 px-3 rounded"
-                 >
-                   View DOs
-                 </button>
-                <button
-                  onClick={() => handleEdit(group)}
-                  className="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDelete(group.id)}
-                  className="flex-1 bg-red-500 hover:bg-red-600 text-white text-sm py-2 px-3 rounded"
-                >
-                  Delete
-                </button>
+              <div className="space-y-2">
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => openDOModal(group)}
+                    className="flex-1 bg-green-500 hover:bg-green-600 text-white text-sm py-2 px-3 rounded"
+                  >
+                    Add DO
+                  </button>
+                  <button
+                    onClick={() => openTopUpModal(group)}
+                    className="flex-1 bg-purple-500 hover:bg-purple-600 text-white text-sm py-2 px-3 rounded"
+                  >
+                    Top Up
+                  </button>
+                  <button
+                    onClick={() => openMembersModal(group)}
+                    className="flex-1 bg-gray-500 hover:bg-gray-600 text-white text-sm py-2 px-3 rounded"
+                  >
+                    View DOs
+                  </button>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => handleEdit(group)}
+                    className="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(group.id)}
+                    className="flex-1 bg-red-500 hover:bg-red-600 text-white text-sm py-2 px-3 rounded"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -708,24 +753,26 @@ const DepositGroupManagement = () => {
                   />
                 </div>
 
-                {/* Deposited Amount */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Deposited Amount (Rp)
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.deposited_amount}
-                    onChange={(e) => setFormData(prev => ({ ...prev, deposited_amount: e.target.value }))}
-                    placeholder="Enter deposited amount (optional)"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    min="0"
-                    step="0.01"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Leave empty if no initial deposit is made
-                  </p>
-                </div>
+                {/* Deposited Amount - Only show when creating new SPBG, hide when editing */}
+                {!editingGroup && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Initial Deposited Amount (Rp)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.deposited_amount}
+                      onChange={(e) => setFormData(prev => ({ ...prev, deposited_amount: e.target.value }))}
+                      placeholder="Enter initial deposited amount (optional)"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      min="0"
+                      step="0.01"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Leave empty if no initial deposit is made. Use Top Up button to add balance later.
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex justify-end space-x-3 pt-4">
                   <button
@@ -1154,6 +1201,75 @@ const DepositGroupManagement = () => {
                   <p>No delivery orders in this group yet.</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top Up Modal */}
+      {showTopUpModal && selectedGroup && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
+                Top Up Balance - {selectedGroup.spbg_location}
+              </h3>
+              
+              <form onSubmit={handleTopUpSubmit} className="space-y-4">
+                {/* Current Balance Display */}
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <div className="text-sm text-gray-600 mb-1">Current Balance</div>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {formatCurrency(selectedGroup.total_balance)}
+                  </div>
+                </div>
+
+                {/* Top Up Amount */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Top Up Amount (Rp) *
+                  </label>
+                  <input
+                    type="number"
+                    value={topUpAmount}
+                    onChange={(e) => setTopUpAmount(e.target.value)}
+                    placeholder="Enter amount to top up"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    min="0"
+                    step="0.01"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Enter the amount to add to the current balance
+                  </p>
+                </div>
+
+                {/* New Balance Preview */}
+                {topUpAmount && parseFloat(topUpAmount) > 0 && (
+                  <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                    <div className="text-sm text-gray-600 mb-1">New Balance After Top Up</div>
+                    <div className="text-2xl font-bold text-green-600">
+                      {formatCurrency(selectedGroup.total_balance + parseFloat(topUpAmount))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded"
+                  >
+                    Confirm Top Up
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
