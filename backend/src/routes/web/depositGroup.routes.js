@@ -114,6 +114,13 @@ router.get(
   depositGroupController.getSPBGTagihan
 );
 
+// ✅ Get balancing report for SPBG
+router.get(
+  "/:id/balancing-report",
+  checkRole(["admin", "owner"]),
+  depositGroupController.getBalancingReport
+);
+
 // ✅ Confirm surat jalan OCR data
 router.post(
   "/delivery-orders/:doId/confirm-surat-jalan-ocr",

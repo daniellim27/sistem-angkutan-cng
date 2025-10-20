@@ -1034,6 +1034,140 @@ async linkPOToGroup(req, res) {
         error: "Failed to confirm OCR data" 
       });
     }
+  },
+
+  // Get balancing report for SPBG - comparing purchases vs sales
+  async getBalancingReport(req, res) {
+    try {
+      const { id } = req.params;
+      const { page = 1, pageSize = 10 } = req.query;
+      
+      // Convert to integers
+      const currentPage = parseInt(page);
+      const limit = parseInt(pageSize);
+      const offset = (currentPage - 1) * limit;
+
+      // Get the deposit group
+      const group = await DepositGroup.findByPk(id, {
+        include: [{
+          model: DepositGroupMember,
+          as: 'members',
+          include: [{
+            model: DeliveryOrder,
+            as: 'deliveryOrder',
+            attributes: [
+              'id', 'do_number', 'customer_name', 'total_amount', 'final_amount',
+              'gas_volume_m3', 'gas_filling_cost', 'created_at', 'payment_status'
+            ]
+          }]
+        }]
+      });
+
+      if (!group) {
+        return res.status(404).json({
+          success: false,
+          error: "SPBG not found"
+        });
+      }
+
+      // Calculate delivery orders data
+      const deliveryOrders = group.members
+        .map(member => member.deliveryOrder)
+        .filter(Boolean);
+      
+      // Calculate total gas filling costs (actual purchase costs from SPBG)
+      const totalGasFillingCost = deliveryOrders.reduce((sum, do_item) => 
+        sum + parseFloat(do_item.gas_filling_cost || 0), 0);
+      
+      // Calculate total gas volume purchased
+      const totalPurchaseVolume = deliveryOrders.reduce((sum, do_item) => 
+        sum + parseFloat(do_item.gas_volume_m3 || 0), 0);
+      
+      // Calculate total delivery orders amount (sales to customers)
+      const totalSalesAmount = deliveryOrders.reduce((sum, do_item) => 
+        sum + parseFloat(do_item.total_amount || 0), 0);
+      
+      const totalSalesVolume = deliveryOrders.reduce((sum, do_item) => 
+        sum + parseFloat(do_item.gas_volume_m3 || 0), 0);
+      
+      // Total purchases from SPBG = gas filling costs
+      const totalPurchases = totalGasFillingCost;
+      const totalSales = totalSalesAmount;
+      
+      // Calculate balance difference
+      const balanceDifference = totalPurchases - totalSales;
+      const volumeDifference = 0; // Sales and purchases use same volume (gas_volume_m3)
+      
+      // Get all transactions (delivery orders as both purchase and sale)
+      const allTransactions = deliveryOrders
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .flatMap(do_item => [
+          // Purchase transaction (gas filling cost)
+          {
+            date: do_item.created_at,
+            type: 'purchase',
+            description: `Gas filling for DO ${do_item.do_number}`,
+            amount: parseFloat(do_item.gas_filling_cost || 0),
+            do_number: do_item.do_number
+          },
+          // Sale transaction (total amount to customer)
+          {
+            date: do_item.created_at,
+            type: 'sale',
+            description: `DO ${do_item.do_number} - ${do_item.customer_name}`,
+            amount: parseFloat(do_item.total_amount || 0),
+            do_number: do_item.do_number
+          }
+        ])
+        .sort((a, b) => new Date(b.date) - new Date(a.date)); // Sort by date descending
+      
+      // Calculate pagination for transactions
+      const totalTransactions = allTransactions.length;
+      const totalPages = Math.ceil(totalTransactions / limit);
+      const paginatedTransactions = allTransactions.slice(offset, offset + limit);
+      
+      // Prepare response data
+      const balancingData = {
+        summary: {
+          total_purchases: totalPurchases,
+          total_purchase_volume: totalPurchaseVolume,
+          total_sales: totalSales,
+          total_sales_volume: totalSalesVolume,
+          balance_difference: balanceDifference,
+          volume_difference: volumeDifference
+        },
+        purchases: {
+          gas_filling_costs: totalGasFillingCost,
+          total_volume: totalPurchaseVolume,
+          total: totalPurchases
+        },
+        sales: {
+          delivery_orders_total: totalSales,
+          delivery_orders_count: deliveryOrders.length,
+          total: totalSales
+        },
+        recent_transactions: paginatedTransactions,
+        pagination: {
+          currentPage: currentPage,
+          totalPages: totalPages,
+          pageSize: limit,
+          totalTransactions: totalTransactions,
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
+        }
+      };
+
+      res.json({
+        success: true,
+        data: balancingData
+      });
+    } catch (error) {
+      console.error("Error fetching balancing report:", error);
+      res.status(500).json({ 
+        success: false,
+        error: "Failed to fetch balancing report" 
+      });
+    }
   }
 
 };

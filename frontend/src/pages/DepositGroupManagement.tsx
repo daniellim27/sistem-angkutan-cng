@@ -62,6 +62,7 @@ const DepositGroupManagement = () => {
   const [showTopUpModal, setShowTopUpModal] = useState(false);
   const [showTagihanModal, setShowTagihanModal] = useState(false);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [showBalancingModal, setShowBalancingModal] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<DepositGroupWithMembers | null>(null);
   const [selectedDOPhotos, setSelectedDOPhotos] = useState<{do_number: string, photos: string[]} | null>(null);
   // Removed PO dependencies - system no longer relies on purchase orders
@@ -94,6 +95,15 @@ const DepositGroupManagement = () => {
   // Tagihan state
   const [tagihanData, setTagihanData] = useState<any>(null);
   const [loadingTagihan, setLoadingTagihan] = useState(false);
+
+  // Balancing state
+  const [balancingData, setBalancingData] = useState<any>(null);
+  const [loadingBalancing, setLoadingBalancing] = useState(false);
+  
+  // Pagination state for balancing transactions
+  const [balancingPage, setBalancingPage] = useState(1);
+  const [balancingPageSize] = useState(10);
+  const [balancingTotalPages, setBalancingTotalPages] = useState(1);
 
   // Form data for creating DOs - match delivery orders page structure
   const [doFormData, setDOFormData] = useState({
@@ -311,6 +321,52 @@ const DepositGroupManagement = () => {
       setError(`Failed to load billing data: ${errorMessage}`);
     } finally {
       setLoadingTagihan(false);
+    }
+  };
+
+  const openBalancingModal = async (group: DepositGroupWithMembers) => {
+    setSelectedGroup(group);
+    setShowBalancingModal(true);
+    setBalancingPage(1); // Reset to first page
+    await fetchBalancingData(group.id, 1);
+  };
+
+  const fetchBalancingData = async (groupId: number, page: number = balancingPage) => {
+    setLoadingBalancing(true);
+    
+    try {
+      const response = await apiClient.get(`/deposit-groups/${groupId}/balancing-report`, {
+        params: {
+          page: page,
+          pageSize: balancingPageSize
+        }
+      });
+      console.log('Balancing API Response:', response.data);
+      
+      // Handle both intercepted and non-intercepted response structures
+      const data = response.data.data || response.data;
+      setBalancingData(data);
+      
+      // Update pagination info
+      if (data.pagination) {
+        setBalancingTotalPages(data.pagination.totalPages);
+        setBalancingPage(data.pagination.currentPage);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch balancing data:', err);
+      console.error('Error response:', err.response?.data);
+      console.error('Error status:', err.response?.status);
+      
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to load balancing data';
+      setError(`Failed to load balancing data: ${errorMessage}`);
+    } finally {
+      setLoadingBalancing(false);
+    }
+  };
+
+  const handleBalancingPageChange = async (newPage: number) => {
+    if (selectedGroup && newPage >= 1 && newPage <= balancingTotalPages) {
+      await fetchBalancingData(selectedGroup.id, newPage);
     }
   };
 
@@ -609,11 +665,16 @@ const DepositGroupManagement = () => {
     setShowTopUpModal(false);
     setShowTagihanModal(false);
     setShowPhotoModal(false);
+    setShowBalancingModal(false);
     setSelectedGroup(null);
     setSelectedDOPhotos(null);
     setEditingLocationId(null);
     setEditingLocationName('');
     setTagihanData(null);
+    setBalancingData(null);
+    // Reset balancing pagination
+    setBalancingPage(1);
+    setBalancingTotalPages(1);
     resetForm();
     resetDOForm();
     resetCustomerLocations();
@@ -662,7 +723,16 @@ const DepositGroupManagement = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {groups.map((group) => (
-          <div key={group.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+          <div key={group.id} className="bg-white rounded-lg shadow-md overflow-hidden relative">
+            {/* Delete X Button */}
+            <button
+              onClick={() => handleDelete(group.id)}
+              className="absolute top-2 right-2 z-10 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-sm font-bold transition-colors"
+              title="Delete SPBG"
+            >
+              ×
+            </button>
+            
             {/* Status Badge */}
             <div className={`px-4 py-2 text-xs font-medium text-white ${
               group.status === 'active' ? 'bg-green-600' : 
@@ -852,13 +922,13 @@ const DepositGroupManagement = () => {
                     onClick={() => openTagihanModal(group)}
                     className="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded"
                   >
-                    📋 Tagihan
+                    Tagihan
                   </button>
                   <button
-                    onClick={() => handleDelete(group.id)}
-                    className="flex-1 bg-red-500 hover:bg-red-600 text-white text-sm py-2 px-3 rounded"
+                    onClick={() => openBalancingModal(group)}
+                    className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white text-sm py-2 px-3 rounded"
                   >
-                    Delete
+                    Balancing
                   </button>
                 </div>
               </div>
@@ -1763,6 +1833,240 @@ const DepositGroupManagement = () => {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Balancing Report Modal */}
+      {showBalancingModal && selectedGroup && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-10 mx-auto p-5 border w-full max-w-5xl shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  ⚖️ Balancing Report - {selectedGroup.spbg_location}
+                </h3>
+                <button
+                  onClick={closeModal}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {loadingBalancing ? (
+                <div className="text-center py-8">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                  <p className="mt-2 text-gray-500">Loading balancing report...</p>
+                </div>
+              ) : balancingData ? (
+                <div className="space-y-6">
+                  {/* Summary Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
+                      <div className="text-sm text-gray-600 mb-2">Total Purchases from SPBG</div>
+                      <div className="text-2xl font-bold text-blue-600">
+                        {formatCurrency(balancingData.summary?.total_purchases || 0)}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Volume: {balancingData.summary?.total_purchase_volume?.toFixed(2) || '0.00'} m³
+                      </div>
+                    </div>
+                    
+                    <div className="bg-green-50 p-6 rounded-lg border border-green-200">
+                      <div className="text-sm text-gray-600 mb-2">Total Sales to Customers</div>
+                      <div className="text-2xl font-bold text-green-600">
+                        {formatCurrency(balancingData.summary?.total_sales || 0)}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Volume: {balancingData.summary?.total_sales_volume?.toFixed(2) || '0.00'} m³
+                      </div>
+                    </div>
+                    
+                    <div className="bg-orange-50 p-6 rounded-lg border border-orange-200">
+                      <div className="text-sm text-gray-600 mb-2">Balance Difference</div>
+                      <div className={`text-2xl font-bold ${
+                        (balancingData.summary?.balance_difference || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        {formatCurrency(balancingData.summary?.balance_difference || 0)}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Volume Diff: {((balancingData.summary?.volume_difference || 0) >= 0 ? '+' : '')}{balancingData.summary?.volume_difference?.toFixed(2) || '0.00'} m³
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Detailed Breakdown */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Purchases Section */}
+                    <div className="bg-white border rounded-lg p-4">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-4">📥 Purchases from SPBG</h4>
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center p-3 bg-blue-50 rounded">
+                          <span className="text-sm font-medium text-gray-700">Gas Filling Costs</span>
+                          <span className="text-lg font-bold text-blue-600">
+                            {formatCurrency(balancingData.purchases?.gas_filling_costs || 0)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
+                          <span className="text-sm font-medium text-gray-700">Total Volume</span>
+                          <span className="text-lg font-bold text-gray-600">
+                            {balancingData.purchases?.total_volume?.toFixed(2) || '0.00'} m³
+                          </span>
+                        </div>
+                        <div className="border-t pt-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-base font-semibold text-gray-900">Total Purchases</span>
+                            <span className="text-xl font-bold text-blue-600">
+                              {formatCurrency(balancingData.purchases?.total || 0)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sales Section */}
+                    <div className="bg-white border rounded-lg p-4">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-4">📤 Sales to Customers</h4>
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center p-3 bg-green-50 rounded">
+                          <span className="text-sm font-medium text-gray-700">Delivery Orders Total</span>
+                          <span className="text-lg font-bold text-green-600">
+                            {formatCurrency(balancingData.sales?.delivery_orders_total || 0)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
+                          <span className="text-sm font-medium text-gray-700">Number of DOs</span>
+                          <span className="text-lg font-bold text-gray-600">
+                            {balancingData.sales?.delivery_orders_count || 0}
+                          </span>
+                        </div>
+                        <div className="border-t pt-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-base font-semibold text-gray-900">Total Sales</span>
+                            <span className="text-xl font-bold text-green-600">
+                              {formatCurrency(balancingData.sales?.total || 0)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Recent Transactions */}
+                  {balancingData.recent_transactions && balancingData.recent_transactions.length > 0 && (
+                    <div className="bg-white border rounded-lg p-4">
+                      <div className="flex justify-between items-center mb-4">
+                        <h4 className="text-lg font-semibold text-gray-900">🕒 Recent Transactions</h4>
+                        {balancingData.pagination && (
+                          <div className="text-sm text-gray-500">
+                            Showing {((balancingData.pagination.currentPage - 1) * balancingData.pagination.pageSize) + 1} - {Math.min(balancingData.pagination.currentPage * balancingData.pagination.pageSize, balancingData.pagination.totalTransactions)} of {balancingData.pagination.totalTransactions} transactions
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {balancingData.recent_transactions.map((transaction: any, index: number) => (
+                              <tr key={`${transaction.do_number}-${transaction.type}-${index}`} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                  {formatDate(transaction.date)}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                    transaction.type === 'purchase' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                                  }`}>
+                                    {transaction.type === 'purchase' ? 'Purchase' : 'Sale'}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-900">
+                                  {transaction.description}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-medium">
+                                  {formatCurrency(transaction.amount)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Pagination Controls */}
+                      {balancingData.pagination && balancingData.pagination.totalPages > 1 && (
+                        <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleBalancingPageChange(balancingData.pagination.currentPage - 1)}
+                              disabled={!balancingData.pagination.hasPrevPage || loadingBalancing}
+                              className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Previous
+                            </button>
+                            
+                            <div className="flex items-center space-x-1">
+                              {Array.from({ length: Math.min(5, balancingData.pagination.totalPages) }, (_, i) => {
+                                let pageNum: number;
+                                if (balancingData.pagination.totalPages <= 5) {
+                                  pageNum = i + 1;
+                                } else if (balancingData.pagination.currentPage <= 3) {
+                                  pageNum = i + 1;
+                                } else if (balancingData.pagination.currentPage >= balancingData.pagination.totalPages - 2) {
+                                  pageNum = balancingData.pagination.totalPages - 4 + i;
+                                } else {
+                                  pageNum = balancingData.pagination.currentPage - 2 + i;
+                                }
+                                
+                                return (
+                                  <button
+                                    key={pageNum}
+                                    onClick={() => handleBalancingPageChange(pageNum)}
+                                    disabled={loadingBalancing}
+                                    className={`px-3 py-2 text-sm font-medium rounded-md ${
+                                      pageNum === balancingData.pagination.currentPage
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50'
+                                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                  >
+                                    {pageNum}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            
+                            <button
+                              onClick={() => handleBalancingPageChange(balancingData.pagination.currentPage + 1)}
+                              disabled={!balancingData.pagination.hasNextPage || loadingBalancing}
+                              className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Next
+                            </button>
+                          </div>
+                          
+                          <div className="text-sm text-gray-500">
+                            Page {balancingData.pagination.currentPage} of {balancingData.pagination.totalPages}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No balancing data available</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

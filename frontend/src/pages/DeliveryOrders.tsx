@@ -6,6 +6,23 @@ import { formatDeliveryOrdersForExport, exportToExcel, exportToCSV } from "../ut
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
+// Custom debounce hook
+const useDebounce = (value: string, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
 interface DeliveryOrder {
   id: number;
   do_number: string;
@@ -61,6 +78,9 @@ const DeliveryOrdersPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>(""); // Add search state
+  
+  // Debounce search query with 500ms delay
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false); // Export dropdown state
   const [stats, setStats] = useState({
     total: 0,
@@ -93,7 +113,7 @@ const DeliveryOrdersPage = () => {
 
   useEffect(() => {
     fetchDeliveryOrders();
-  }, [statusFilter, poId || "", searchQuery, currentPage, itemsPerPage]); // Add pagination dependencies with consistent array size
+  }, [statusFilter, poId || "", debouncedSearchQuery, currentPage, itemsPerPage]); // Use debounced search query
 
   // Handle clicking outside export dropdown to close it
   useEffect(() => {
@@ -151,8 +171,8 @@ const DeliveryOrdersPage = () => {
         params.append("po_id", poId);
       }
 
-      if (searchQuery) {
-        params.append("search", searchQuery); // Add search parameter
+      if (debouncedSearchQuery) {
+        params.append("search", debouncedSearchQuery); // Add debounced search parameter
       }
 
       if (params.toString()) {
@@ -206,13 +226,20 @@ const DeliveryOrdersPage = () => {
 
   // Reset pagination when filters change
   const handleFilterChange = (filterType: string, value: string) => {
-    setCurrentPage(1); // Reset to first page
     if (filterType === 'status') {
+      setCurrentPage(1); // Reset to first page
       setStatusFilter(value);
     } else if (filterType === 'search') {
+      // Only reset page when search actually changes (debounced)
+      // The page reset will happen when debouncedSearchQuery changes
       setSearchQuery(value);
     }
   };
+
+  // Reset page when debounced search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
