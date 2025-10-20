@@ -4,6 +4,24 @@ import apiClient from '../api/axiosConfig';
 import { GasStationApi } from '../api/gasStationApi';
 import { convertMoneyToVolume, formatVolume } from '../utils/volumeConversionUtils';
 
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+
+// Helper function to construct proper image URL
+const getImageUrl = (photoUrl: string) => {
+  if (!photoUrl) return '';
+  
+  // If photoUrl already includes the full URL, return as is
+  if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
+    return photoUrl;
+  }
+  
+  // Remove leading slash if present to avoid double slashes
+  const cleanPath = photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl;
+  
+  // Construct the full URL
+  return `${BACKEND_URL}/${cleanPath}`;
+};
+
 interface DeliveryOrder {
   id: number;
   do_number: string;
@@ -1798,18 +1816,20 @@ const DepositGroupManagement = () => {
                       </div>
                       <div className="relative">
                         <img
-                          src={`http://localhost:3000/${photoUrl}`}
+                          src={getImageUrl(photoUrl)}
                           alt={`Surat Jalan ${index + 1}`}
                           className="w-full h-64 object-contain border rounded cursor-pointer hover:opacity-80"
-                          onClick={() => window.open(`http://localhost:3000/${photoUrl}`, '_blank')}
+                          onClick={() => window.open(getImageUrl(photoUrl), '_blank')}
                           onError={(e) => {
                             console.error('Failed to load image:', photoUrl);
+                            console.error('Attempted URL:', getImageUrl(photoUrl));
+                            console.error('BACKEND_URL:', BACKEND_URL);
                             (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwyMCA5TDEzLjA5IDE1Ljc0TDEyIDIyTDEwLjkxIDE1Ljc0TDQgOUwxMC45MSA4LjI2TDEyIDJaIiBzdHJva2U9IiNjY2MiIHN0cm9rZS13aWR0aD0iMiIgZmlsbD0iI2Y5ZjlmOSIvPgo8L3N2Zz4K';
                           }}
                         />
                         <div className="absolute bottom-2 right-2">
                           <button
-                            onClick={() => window.open(`http://localhost:3000/${photoUrl}`, '_blank')}
+                            onClick={() => window.open(getImageUrl(photoUrl), '_blank')}
                             className="bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs hover:bg-opacity-70"
                             title="Open in new tab"
                           >
@@ -1818,7 +1838,9 @@ const DepositGroupManagement = () => {
                         </div>
                       </div>
                       <div className="mt-2 text-xs text-gray-500">
-                        Path: {photoUrl}
+                        <div>Original Path: {photoUrl}</div>
+                        <div>Full URL: {getImageUrl(photoUrl)}</div>
+                        <div>Backend URL: {BACKEND_URL}</div>
                       </div>
                     </div>
                   ))}
