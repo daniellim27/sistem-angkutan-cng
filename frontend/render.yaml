@@ -8,6 +8,6 @@ services:
       - key: NODE_ENV
         value: production
       - key: REACT_APP_API_URL
-        value: http://localhost:3000/api/web
+        value: https://backend-angkutan.onrender.com/api/web
       - key: REACT_APP_BACKEND_URL
-        value: http://localhost:3000
+        value: https://backend-angkutan.onrender.com
