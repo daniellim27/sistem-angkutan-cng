@@ -36,6 +36,7 @@ import NotaBesarManagement from "./pages/NotaBesarManagement";
 import NotaKecilManagement from "./pages/NotaKecilManagement";
 import NotaManagementPage from "./pages/operations/NotaManagementPage";
 import NotaBesarDetailPage from "./pages/operations/NotaBesarDetailPage";
+import CCTVMonitoringPage from "./pages/operations/CCTVMonitoringPage";
 import RitaseDashboard from "./pages/Ritase/RitaseDashboard";
 // Removed POPaymentDetail - payment aggregation is now DO-based
 import DOPaymentManagement from "./pages/Ritase/DOPaymentManagement";
@@ -137,6 +138,7 @@ function App() {
           {/* Operations Routes */}
           <Route path="operations/nota-management" element={<NotaManagementPage />} />
           <Route path="operations/nota-besar/:id" element={<NotaBesarDetailPage />} />
+          <Route path="operations/cctv-monitoring" element={<CCTVMonitoringPage />} />
 
           {/* Stock Management Routes */}
           <Route path="stock" element={<StockManagementPage />} />

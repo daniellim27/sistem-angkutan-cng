@@ -93,6 +93,8 @@ const webDepositGroupRoutes = require("./routes/web/depositGroup.routes");
 const trackingRoutes = require("./routes/tracking.routes");
 const gasStationRoutes = require("./routes/gasStation.routes");
 const customerRoutes = require("./routes/customer.routes");
+const bardiScrapingRoutes = require("./routes/bardiScraping");
+const receiptOcrRoutes = require("./routes/receiptOcr");
 const scheduledScrapingService = require("./services/scheduledScraper");
 
 const app = express();
@@ -269,6 +271,11 @@ initializeDatabase().then(() => {
         api: "/api/tracking",
         web: "/api/web/tracking",
       },
+      bardi_scraping: {
+        test_session: "/api/bardi/test-session",
+        devices: "/api/bardi/devices",
+        user_info: "/api/bardi/user-info",
+      },
     })
   });
 
@@ -346,6 +353,14 @@ initializeDatabase().then(() => {
     const ocrTestRoutes = require("./routes/test/ocrTest.routes");
     app.use("/api/test/ocr", ocrTestRoutes);
   }
+
+  // Add Bardi scraping routes
+  app.use("/api/bardi", bardiScrapingRoutes);
+
+  // Add receipt OCR routes (for mobile app)
+  app.use("/api/receipt-ocr", receiptOcrRoutes);
+  // Also register for web admin interface
+  app.use("/api/web/receipt-ocr", receiptOcrRoutes);
 
   app.use("/api/utils", utilsRoutes);
 

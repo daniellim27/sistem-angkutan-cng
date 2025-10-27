@@ -3,6 +3,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authClient } from '../../../api/axiosConfig';
 import apiClient from '../../../api/axiosConfig';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { 
+  faChevronDown,
+  faChevronRight,
+  faTruck,
+  faFileInvoiceDollar,
+  faEye
+} from '@fortawesome/free-solid-svg-icons';
 
 interface Customer {
   id: number;
@@ -46,14 +54,25 @@ interface NotaBesar {
   notes?: string;
 }
 
+interface DeliveryOrderGroup {
+  id: number;
+  do_number: string;
+  notaBesars: NotaBesar[];
+  totalValue: number;
+  totalVolume: number;
+  notaBesarCount: number;
+}
+
 const NotaBesarTab: React.FC = () => {
   const navigate = useNavigate();
   const [notaBesars, setNotaBesars] = useState<NotaBesar[]>([]);
+  const [deliveryOrderGroups, setDeliveryOrderGroups] = useState<DeliveryOrderGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filterDO, setFilterDO] = useState<string>('');
-  const [filterCustomer, setFilterCustomer] = useState<string>('');
   const [customers, setCustomers] = useState<Customer[]>([]);
+  
+  // Expand/collapse states
+  const [expandedDOs, setExpandedDOs] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     fetchAllNotaBesars();
@@ -68,10 +87,11 @@ const NotaBesarTab: React.FC = () => {
       
       if (basicNotaBesars.length === 0) {
         setNotaBesars([]);
+        setDeliveryOrderGroups([]);
         return;
       }
       
-      // Fetch detailed data for each nota besar to get customer and address info
+      // Fetch detailed data for each nota besar
       console.log(`Fetching details for ${basicNotaBesars.length} nota besars...`);
       const detailedNotaBesars = await Promise.all(
         basicNotaBesars.map(async (notaBesar: any) => {
@@ -80,19 +100,65 @@ const NotaBesarTab: React.FC = () => {
             return detailResponse.data.data;
           } catch (error) {
             console.error(`Error fetching details for nota besar ${notaBesar.id}:`, error);
-            return notaBesar; // Return basic data if detail fetch fails
+            return notaBesar;
           }
         })
       );
       
       setNotaBesars(detailedNotaBesars);
-      console.log('Fetched all nota besars with details:', detailedNotaBesars);
+      
+      // Group by DO
+      const grouped = groupNotaBesarsByDO(detailedNotaBesars);
+      setDeliveryOrderGroups(grouped);
+      
+      // Keep all DOs closed by default
+      setExpandedDOs(new Set());
+      
+      console.log('Fetched and grouped nota besars:', grouped);
     } catch (error) {
       console.error('Error fetching nota besars:', error);
       setError('Failed to fetch nota besars');
     } finally {
       setLoading(false);
     }
+  };
+
+  const groupNotaBesarsByDO = (notaBesarsData: NotaBesar[]): DeliveryOrderGroup[] => {
+    const doMap = new Map<number, DeliveryOrderGroup>();
+
+    notaBesarsData.forEach((notaBesar) => {
+      const doId = notaBesar.deliveryOrder.id;
+      const doNumber = notaBesar.deliveryOrder.do_number;
+      
+      if (!doMap.has(doId)) {
+        doMap.set(doId, {
+          id: doId,
+          do_number: doNumber,
+          notaBesars: [],
+          totalValue: 0,
+          totalVolume: 0,
+          notaBesarCount: 0,
+        });
+      }
+
+      const doGroup = doMap.get(doId)!;
+      doGroup.notaBesars.push(notaBesar);
+      doGroup.totalValue += parseFloat(notaBesar.total_price);
+      doGroup.totalVolume += parseFloat(notaBesar.total_volume);
+      doGroup.notaBesarCount += 1;
+    });
+
+    // Sort by DO ID (newest first)
+    const sortedGroups = Array.from(doMap.values()).sort((a, b) => b.id - a.id);
+    
+    // Sort nota besars within each DO by created_at (newest first)
+    sortedGroups.forEach(doGroup => {
+      doGroup.notaBesars.sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+    });
+
+    return sortedGroups;
   };
 
   const fetchCustomers = async () => {
@@ -102,6 +168,18 @@ const NotaBesarTab: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch customers:', err);
     }
+  };
+
+  const toggleDO = (doId: number) => {
+    setExpandedDOs(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(doId)) {
+        newSet.delete(doId);
+      } else {
+        newSet.add(doId);
+      }
+      return newSet;
+    });
   };
 
   const formatCurrency = (amount: number) => {
@@ -126,71 +204,19 @@ const NotaBesarTab: React.FC = () => {
     navigate(`/operations/nota-besar/${notaBesar.id}`);
   };
 
-  // Get unique delivery orders from nota besars
-  const getUniqueDeliveryOrders = () => {
-    const deliveryOrders = new Map<number, {id: number, do_number: string}>();
-    notaBesars.forEach(notaBesar => {
-      if (!deliveryOrders.has(notaBesar.deliveryOrder.id)) {
-        deliveryOrders.set(notaBesar.deliveryOrder.id, {
-          id: notaBesar.deliveryOrder.id,
-          do_number: notaBesar.deliveryOrder.do_number
-        });
+  // Get unique customers for a nota besar
+  const getCustomersForNotaBesar = (notaBesar: NotaBesar): string[] => {
+    if (!notaBesar.items) return [];
+    
+    const customerSet = new Set<string>();
+    notaBesar.items.forEach(item => {
+      if (item.notaKecil.customer_name) {
+        customerSet.add(item.notaKecil.customer_name);
       }
     });
-    return Array.from(deliveryOrders.values()).sort((a, b) => a.do_number.localeCompare(b.do_number));
+    
+    return Array.from(customerSet);
   };
-
-  // Get unique customers from nota besars
-  const getUniqueCustomers = () => {
-    // Get unique customer names from the nota besars
-    const customerNamesOrLocations = new Set<string>();
-    notaBesars.forEach(notaBesar => {
-      if (notaBesar.items) {
-        notaBesar.items.forEach(item => {
-          if (item.notaKecil.customer_name) {
-            customerNamesOrLocations.add(item.notaKecil.customer_name);
-          }
-        });
-      }
-    });
-
-    const uniqueCustomerNames = Array.from(customerNamesOrLocations);
-    
-    // Try to find matching customers from the customers table
-    const customersWithProperNames = uniqueCustomerNames.map(customerNameOrLocation => {
-      // First try to find by exact customer name
-      let matchedCustomer = customers.find(c => c.customer_name === customerNameOrLocation);
-      
-      // If not found, try to find by location (in case customer_name contains location)
-      if (!matchedCustomer) {
-        matchedCustomer = customers.find(c => c.location === customerNameOrLocation);
-      }
-      
-      if (matchedCustomer) {
-        return matchedCustomer.customer_name;
-      } else {
-        // If no match found, use the original data (fallback)
-        return customerNameOrLocation;
-      }
-    });
-    
-    // Remove duplicates and sort
-    const uniqueCustomers = Array.from(new Set(customersWithProperNames)).sort();
-    
-    return uniqueCustomers;
-  };
-
-  // Filter nota besars based on search criteria
-  const filteredNotaBesars = notaBesars.filter(notaBesar => {
-    const matchesDO = !filterDO || notaBesar.deliveryOrder.id.toString() === filterDO;
-    
-    // Check if any nota kecil in this nota besar matches the customer filter
-    const matchesCustomer = !filterCustomer || (notaBesar.items && notaBesar.items.some(item => 
-      item.notaKecil.customer_name === filterCustomer
-    ));
-    
-    return matchesDO && matchesCustomer;
-  });
 
   if (loading) {
     return (
@@ -215,47 +241,28 @@ const NotaBesarTab: React.FC = () => {
     );
   }
 
-  return (
-    <div>
-      {/* Filters */}
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Delivery Order</label>
-            <select
-              value={filterDO}
-              onChange={(e) => setFilterDO(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Delivery Orders</option>
-              {getUniqueDeliveryOrders().map((deliveryOrder) => (
-                <option key={deliveryOrder.id} value={deliveryOrder.id.toString()}>
-                  {deliveryOrder.do_number}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Customer</label>
-            <select
-              value={filterCustomer}
-              onChange={(e) => setFilterCustomer(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Customers</option>
-              {getUniqueCustomers().map((customer, index) => (
-                <option key={index} value={customer}>
-                  {customer}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+  if (deliveryOrderGroups.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <p className="text-gray-500 text-lg">No nota besars found</p>
+        <p className="text-gray-400 text-sm mt-2">Create nota besars by selecting nota kecils in the Nota Kecil tab</p>
       </div>
+    );
+  }
 
+  // Calculate overall stats
+  const totalNotaBesars = notaBesars.length;
+  const totalValue = notaBesars.reduce((sum, nota) => sum + parseFloat(nota.total_price), 0);
+  const totalVolume = notaBesars.reduce((sum, nota) => sum + parseFloat(nota.total_volume), 0);
+
+  return (
+    <div className="space-y-4">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <div className="bg-white p-6 rounded-lg shadow">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
           <div className="flex items-center">
             <div className="flex-shrink-0">
               <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -264,12 +271,12 @@ const NotaBesarTab: React.FC = () => {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Nota Besars</p>
-              <p className="text-2xl font-bold text-gray-900">{notaBesars.length}</p>
+              <p className="text-2xl font-bold text-gray-900">{totalNotaBesars}</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
           <div className="flex items-center">
             <div className="flex-shrink-0">
               <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -279,13 +286,13 @@ const NotaBesarTab: React.FC = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Value</p>
               <p className="text-2xl font-bold text-green-600">
-                {formatCurrency(notaBesars.reduce((sum, nota) => sum + parseFloat(nota.total_price), 0))}
+                {formatCurrency(totalValue)}
               </p>
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
           <div className="flex items-center">
             <div className="flex-shrink-0">
               <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -295,88 +302,137 @@ const NotaBesarTab: React.FC = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Volume</p>
               <p className="text-2xl font-bold text-purple-600">
-                {notaBesars.reduce((sum, nota) => sum + parseFloat(nota.total_volume), 0).toLocaleString('id-ID', { minimumFractionDigits: 3 })} m³
+                {totalVolume.toFixed(2)} m³
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Nota Besars Table */}
-      {filteredNotaBesars.length > 0 ? (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    ID
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    DO Number
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Created Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total Volume (m³)
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total Price
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Price per m³
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Created By
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredNotaBesars.map((notaBesar) => (
-                  <tr 
-                    key={notaBesar.id}
-                    className="cursor-pointer transition-colors duration-200 hover:bg-blue-50"
-                    onClick={() => handleNotaBesarClick(notaBesar)}
+      {/* Delivery Order Groups */}
+      {deliveryOrderGroups.map((doGroup) => {
+        const isExpanded = expandedDOs.has(doGroup.id);
+        
+        return (
+          <div key={doGroup.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+            {/* DO Header */}
+            <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 flex-1">
+                  <button
+                    onClick={() => toggleDO(doGroup.id)}
+                    className="hover:bg-green-400 p-2 rounded transition-colors"
                   >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      #{notaBesar.id}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {notaBesar.deliveryOrder.do_number}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatDate(notaBesar.created_at)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {parseFloat(notaBesar.total_volume).toLocaleString('id-ID', { minimumFractionDigits: 3 })}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
-                      {formatCurrency(parseFloat(notaBesar.total_price))}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatCurrency(parseFloat(notaBesar.gas_price_per_m3))}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {notaBesar.creator?.username || 'Unknown'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    <FontAwesomeIcon 
+                      icon={isExpanded ? faChevronDown : faChevronRight} 
+                      className="w-4 h-4"
+                    />
+                  </button>
+                  <FontAwesomeIcon icon={faTruck} className="w-5 h-5" />
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold">{doGroup.do_number}</h3>
+                    <p className="text-sm text-green-100">
+                      {doGroup.notaBesarCount} nota besar{doGroup.notaBesarCount > 1 ? 's' : ''} • 
+                      Volume: {doGroup.totalVolume.toFixed(2)} m³ • 
+                      Value: {formatCurrency(doGroup.totalValue)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Nota Besars (Collapsible) - 2 Column Grid */}
+            {isExpanded && (
+              <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                {doGroup.notaBesars.map((notaBesar) => {
+                  const customers = getCustomersForNotaBesar(notaBesar);
+                  
+                  return (
+                    <div 
+                      key={notaBesar.id}
+                      onClick={() => handleNotaBesarClick(notaBesar)}
+                      className="bg-white border-2 border-gray-200 rounded-lg p-3 hover:border-green-400 hover:shadow-md transition-all cursor-pointer"
+                    >
+                      <div className="space-y-2">
+                        {/* Header */}
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2">
+                            <FontAwesomeIcon icon={faFileInvoiceDollar} className="w-4 h-4 text-green-600" />
+                            <span className="font-bold text-gray-900">Nota Besar #{notaBesar.id}</span>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleNotaBesarClick(notaBesar);
+                            }}
+                            className="text-blue-600 hover:text-blue-700 p-1"
+                            title="View Details"
+                          >
+                            <FontAwesomeIcon icon={faEye} className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Created Date */}
+                        <div className="text-xs text-gray-500">
+                          {formatDate(notaBesar.created_at)}
+                        </div>
+
+                        {/* Customers */}
+                        {customers.length > 0 && (
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Customers:</p>
+                            <div className="flex flex-wrap gap-1">
+                              {customers.map((customer, idx) => (
+                                <span 
+                                  key={idx}
+                                  className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full"
+                                >
+                                  {customer}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Volume */}
+                        <div>
+                          <p className="text-xs text-gray-500">Total Volume</p>
+                          <p className="text-sm font-bold text-purple-600">
+                            {parseFloat(notaBesar.total_volume).toFixed(2)} m³
+                          </p>
+                        </div>
+
+                        {/* Price Info */}
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
+                          <div>
+                            <p className="text-xs text-gray-500">Price/m³</p>
+                            <p className="text-sm font-medium">
+                              {formatCurrency(parseFloat(notaBesar.gas_price_per_m3))}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500">Total Price</p>
+                            <p className="text-sm font-bold text-green-600">
+                              {formatCurrency(parseFloat(notaBesar.total_price))}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Created By */}
+                        <div className="pt-2 border-t border-gray-100">
+                          <p className="text-xs text-gray-500">
+                            Created by: <span className="font-medium text-gray-700">{notaBesar.creator?.username || 'Unknown'}</span>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      ) : (
-        <div className="text-center py-8">
-          <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <p className="text-gray-500 text-lg">No nota besars found</p>
-          <p className="text-gray-400 text-sm mt-2">
-            {filterDO || filterCustomer ? 'Try adjusting your filters' : 'Create nota besars by selecting nota kecils and clicking "Create Nota Besar"'}
-          </p>
-        </div>
-      )}
+        );
+      })}
     </div>
   );
 };

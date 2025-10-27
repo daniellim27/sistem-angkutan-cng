@@ -39,6 +39,7 @@ services:
       DB_NAME: angkutan_db
       DB_USER: postgres
       DB_PASSWORD: getsuga39
+      DB_SSL: "false"
       PORT: 3000
       HOST: "0.0.0.0"
       JWT_SECRET: your_super_secret_jwt_key_here_make_it_long_and_complex

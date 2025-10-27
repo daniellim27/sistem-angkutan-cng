@@ -118,10 +118,10 @@ const NotaBesarDetailPage: React.FC = () => {
       <div className="text-center py-8">
         <div className="text-red-600 mb-4">{error || 'Nota besar not found'}</div>
         <button
-          onClick={() => navigate('/operations/nota-besar')}
+          onClick={() => navigate('/operations/nota-management')}
           className="bg-blue-500 hover:bg-blue-700 text-white px-4 py-2 rounded"
         >
-          Back to Nota Besar
+          ← Back to Nota Management
         </button>
       </div>
     );
@@ -135,20 +135,15 @@ const NotaBesarDetailPage: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-800">Nota Besar #{notaBesar.id}</h1>
           <p className="text-gray-600">DO Number: {notaBesar.deliveryOrder.do_number}</p>
         </div>
-        <div className="flex space-x-3">
-          <button
-            onClick={() => navigate('/operations/nota-besar')}
-            className="bg-gray-500 hover:bg-gray-700 text-white px-4 py-2 rounded"
-          >
-            ← Back to Nota Besar
-          </button>
-          <button
-            onClick={() => navigate('/operations/nota-kecil')}
-            className="bg-blue-500 hover:bg-blue-700 text-white px-4 py-2 rounded"
-          >
-            ← Nota Kecil
-          </button>
-        </div>
+        <button
+          onClick={() => navigate('/operations/nota-management')}
+          className="bg-blue-500 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to Nota Management
+        </button>
       </div>
 
       {/* Status and Metadata */}

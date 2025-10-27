@@ -899,6 +899,71 @@ async linkPOToGroup(req, res) {
         });
       }
 
+      // Get all receipt data for DOs in this group
+      const doIds = group.members
+        .map(member => member.deliveryOrder?.id)
+        .filter(Boolean);
+      
+      const { Pool } = require('pg');
+      const pool = new Pool({
+        host: process.env.DB_HOST || 'localhost',
+        port: process.env.DB_PORT || 5435,
+        user: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASSWORD || 'getsuga39',
+        database: process.env.DB_NAME || 'angkutan_db',
+      });
+
+      let receiptsByDO = {};
+      let notaBesarsByDO = {};
+      if (doIds.length > 0) {
+        const client = await pool.connect();
+        try {
+          // Fetch receipts
+          const receiptQuery = `
+            SELECT 
+              r.*, 
+              u.username as confirmed_by_name
+            FROM receipt_ocr r
+            LEFT JOIN users u ON r.confirmed_by = u.id
+            WHERE r.do_id = ANY($1)
+            AND r.admin_confirmed = TRUE
+            ORDER BY r.filling_date DESC, r.created_at DESC
+          `;
+          const receiptResult = await client.query(receiptQuery, [doIds]);
+          
+          // Group receipts by DO ID
+          receiptResult.rows.forEach(receipt => {
+            if (!receiptsByDO[receipt.do_id]) {
+              receiptsByDO[receipt.do_id] = [];
+            }
+            receiptsByDO[receipt.do_id].push(receipt);
+          });
+
+          // Fetch nota besars
+          const notaBesarQuery = `
+            SELECT 
+              nb.*,
+              u.username as created_by_name
+            FROM nota_besars nb
+            LEFT JOIN users u ON nb.created_by = u.id
+            WHERE nb.delivery_order_id = ANY($1)
+            AND nb.status != 'cancelled'
+            ORDER BY nb.created_at DESC
+          `;
+          const notaBesarResult = await client.query(notaBesarQuery, [doIds]);
+          
+          // Group nota besars by DO ID
+          notaBesarResult.rows.forEach(notaBesar => {
+            if (!notaBesarsByDO[notaBesar.delivery_order_id]) {
+              notaBesarsByDO[notaBesar.delivery_order_id] = [];
+            }
+            notaBesarsByDO[notaBesar.delivery_order_id].push(notaBesar);
+          });
+        } finally {
+          client.release();
+        }
+      }
+
       // Extract and process delivery orders from members
       const processedDOs = group.members
         .map(member => {
@@ -925,8 +990,22 @@ async linkPOToGroup(req, res) {
           // Calculate additional cost for selisih
           const selisihCost = selisihVolume > 0 ? (selisihVolume * unitRate) : 0;
           
-          // Total cost including selisih
-          const totalCost = gasCost + selisihCost;
+          // Get receipts for this DO
+          const doReceipts = receiptsByDO[doItem.id] || [];
+          const totalReceiptVolume = doReceipts.reduce((sum, r) => 
+            sum + (parseFloat(r.total_volume) || 0), 0);
+          const totalReceiptCost = doReceipts.reduce((sum, r) => 
+            sum + (parseFloat(r.calculated_cost) || 0), 0);
+          
+          // Get nota besars for this DO
+          const doNotaBesars = notaBesarsByDO[doItem.id] || [];
+          const totalNotaBesarVolume = doNotaBesars.reduce((sum, nb) => 
+            sum + (parseFloat(nb.total_volume) || 0), 0);
+          const totalNotaBesarCost = doNotaBesars.reduce((sum, nb) => 
+            sum + (parseFloat(nb.total_price) || 0), 0);
+          
+          // Total cost including selisih, receipts, and nota besars
+          const totalCost = gasCost + selisihCost + totalReceiptCost + totalNotaBesarCost;
 
           return {
             ...doItem.get({ plain: true }),
@@ -937,6 +1016,40 @@ async linkPOToGroup(req, res) {
             unit_rate: unitRate,
             base_gas_cost: gasCost,
             selisih_cost: selisihCost,
+            // Receipt fields
+            receipts: doReceipts.map(r => ({
+              id: r.id,
+              filling_date: r.filling_date,
+              filling_time_start: r.filling_time_start,
+              filling_time_end: r.filling_time_end,
+              total_volume: parseFloat(r.total_volume) || 0,
+              filling_station_name: r.filling_station_name,
+              pricing_method: r.pricing_method,
+              rate_per_m3: r.pricing_method === 'jisdor' ? r.jisdor_rate : r.fixed_rate_per_m3,
+              calculated_cost: parseFloat(r.calculated_cost) || 0,
+              admin_confirmed: r.admin_confirmed,
+              confirmed_at: r.confirmed_at,
+              confirmed_by_name: r.confirmed_by_name,
+              receipt_photo_url: r.receipt_photo_url
+            })),
+            receipts_count: doReceipts.length,
+            total_receipt_volume: totalReceiptVolume,
+            total_receipt_cost: totalReceiptCost,
+            // Nota Besar fields
+            nota_besars: doNotaBesars.map(nb => ({
+              id: nb.id,
+              total_volume: parseFloat(nb.total_volume) || 0,
+              total_price: parseFloat(nb.total_price) || 0,
+              gas_price_per_m3: parseFloat(nb.gas_price_per_m3) || 0,
+              status: nb.status,
+              created_at: nb.created_at,
+              created_by_name: nb.created_by_name,
+              applied_to_spbg: nb.applied_to_spbg,
+              notes: nb.notes
+            })),
+            nota_besar_count: doNotaBesars.length,
+            total_nota_besar_volume: totalNotaBesarVolume,
+            total_nota_besar_cost: totalNotaBesarCost,
             total_cost: totalCost,
             has_surat_jalan: !!doItem.surat_jalan_photo_url,
             has_ocr_data: !!doItem.surat_jalan_ocr_data,
@@ -959,6 +1072,21 @@ async linkPOToGroup(req, res) {
           sum + do_item.base_gas_cost, 0),
         total_selisih_cost: processedDOs.reduce((sum, do_item) => 
           sum + do_item.selisih_cost, 0),
+        // Receipt statistics
+        total_receipts: processedDOs.reduce((sum, do_item) => 
+          sum + do_item.receipts_count, 0),
+        total_receipt_volume: processedDOs.reduce((sum, do_item) => 
+          sum + do_item.total_receipt_volume, 0),
+        total_receipt_cost: processedDOs.reduce((sum, do_item) => 
+          sum + do_item.total_receipt_cost, 0),
+        // Nota Besar statistics
+        total_nota_besars: processedDOs.reduce((sum, do_item) => 
+          sum + do_item.nota_besar_count, 0),
+        total_nota_besar_volume: processedDOs.reduce((sum, do_item) => 
+          sum + do_item.total_nota_besar_volume, 0),
+        total_nota_besar_cost: processedDOs.reduce((sum, do_item) => 
+          sum + do_item.total_nota_besar_cost, 0),
+        // Total cost including all components
         total_cost: processedDOs.reduce((sum, do_item) => 
           sum + do_item.total_cost, 0),
         pending_confirmation: processedDOs.filter(do_item => 

@@ -19,8 +19,8 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useFocusEffect, useRouter } from "expo-router";
 import LoadConfirmationModal from "../../components/LoadConfirmationModal";
-import NotaKecilUploader from "../../components/NotaKecilUploader";
-import NotaKecilsList from "../../components/NotaKecilsList";
+import ReceiptUploader from "../../components/ReceiptUploader";
+import ReceiptList from "../../components/ReceiptList";
 import {
   getDeliveryOrderDetails,
   createDriverExpense,
@@ -30,7 +30,7 @@ import {
   completeLocation,
   uploadSuratJalanPhoto,
   uploadDocumentationPhotos,
-  getNotaKecils,
+  getReceiptsForDO,
 } from "../../src/services/api";
 import { FontAwesome5 } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -156,10 +156,10 @@ const TripDetailScreen = () => {
   const [stanAwalPhotos, setStanAwalPhotos] = useState<any[]>([]);
   const [stanAkhirPhotos, setStanAkhirPhotos] = useState<any[]>([]);
   
-  // Nota Kecil functionality
-  const [showNotaKecilModal, setShowNotaKecilModal] = useState(false);
-  const [showNotaKecilListModal, setShowNotaKecilListModal] = useState(false);
-  const [notaKecils, setNotaKecils] = useState<any[]>([]);
+  // Receipt functionality
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showReceiptListModal, setShowReceiptListModal] = useState(false);
+  const [receipts, setReceipts] = useState<any[]>([]);
 
   const expenseTypes = [
     { label: "BBM/Solar", value: "bbm" },
@@ -195,19 +195,19 @@ const TripDetailScreen = () => {
     loadAllPhotos();
   }, [trip?.id]);
 
-  const fetchNotaKecils = useCallback(async (doId: string) => {
+  const fetchReceipts = useCallback(async (doId: string) => {
     try {
-      console.log(`Fetching nota kecils for DO: ${doId}`);
-      const response = await getNotaKecils(doId);
-      console.log("Nota Kecils Response:", response);
+      console.log(`Fetching receipts for DO: ${doId}`);
+      const response = await getReceiptsForDO(doId);
+      console.log("Receipts Response:", response);
       
       if (mountedRef.current) {
-        setNotaKecils(response.data.data || []);
+        setReceipts(response.data.data || []);
       }
     } catch (error) {
-      console.error("Error fetching nota kecils:", error);
+      console.error("Error fetching receipts:", error);
       if (mountedRef.current) {
-        setNotaKecils([]);
+        setReceipts([]);
       }
     }
   }, []);
@@ -234,9 +234,9 @@ const TripDetailScreen = () => {
         console.log("Trip ID:", tripData?.id);
         setTrip(tripData);
         
-        // Fetch nota kecils for this delivery order
+        // Fetch receipts for this delivery order
         if (id) {
-          await fetchNotaKecils(id);
+          await fetchReceipts(id);
         }
         console.log(`Trip loaded - ID: ${tripData?.id}, Status: ${tripData?.status}`);
         
@@ -1608,30 +1608,30 @@ const TripDetailScreen = () => {
     }
   };
 
-  // Nota Kecil handler functions
-  const handleNotaKecilCreated = async (notaKecil: any) => {
+  // Receipt handler functions
+  const handleReceiptCreated = async (receipt: any) => {
     // Add to local state immediately for better UX
-    setNotaKecils(prev => [notaKecil, ...prev]);
-    setShowNotaKecilModal(false);
+    setReceipts(prev => [receipt, ...prev]);
+    setShowReceiptModal(false);
     
     // Refresh the full list from server to ensure consistency
     if (id) {
-      await fetchNotaKecils(id);
+      await fetchReceipts(id);
     }
     
-    Alert.alert('Success', 'Nota Kecil created successfully!');
+    Alert.alert('Success', 'Receipt created successfully!');
   };
 
-  const handleCreateNotaKecil = () => {
-    setShowNotaKecilModal(true);
+  const handleCreateReceipt = () => {
+    setShowReceiptModal(true);
   };
 
-  const handleViewNotaKecils = async () => {
-    // Refresh nota kecils before showing the modal
+  const handleViewReceipts = async () => {
+    // Refresh receipts before showing the modal
     if (id) {
-      await fetchNotaKecils(id);
+      await fetchReceipts(id);
     }
-    setShowNotaKecilListModal(true);
+    setShowReceiptListModal(true);
   };
 
   const getStatusActions = () => {
@@ -2013,39 +2013,58 @@ const TripDetailScreen = () => {
           </View>
         )}
 
-        {/* NOTA KECIL SECTION */}
+        {/* RECEIPT SECTION */}
         {trip.status !== "assigned" && trip.status !== "at_spbu" && (
           <View style={styles.detailCard}>
-            <Text style={styles.cardTitle}>📋 Nota Kecil per Lokasi</Text>
+            <Text style={styles.cardTitle}>🧾 CNG Receipts</Text>
             
-            {getAllCustomerLocations().map((location, index) => {
-              return (
-                <View key={index} style={styles.locationDocItem}>
+            {receipts && receipts.length > 0 ? (
+              <View>
+                <Text style={styles.photoCountText}>
+                  {receipts.length} receipt{receipts.length !== 1 ? 's' : ''} telah diupload
+                </Text>
+                <View style={styles.receiptButtonsContainer}>
+                  <TouchableOpacity
+                    style={styles.viewReceiptsListButton}
+                    onPress={handleViewReceipts}
+                  >
+                    <FontAwesome5 name="list" size={16} color="#fff" />
+                    <Text style={styles.viewReceiptsListButtonText}>
+                      View Receipts
+                    </Text>
+                  </TouchableOpacity>
+                  
                   {!isTripCompleted && (
-                    <View style={styles.locationActionButtons}>
-                      {/* Lengkapi Button */}
-                      <TouchableOpacity
-                        style={styles.notaKecilButton}
-                        onPress={handleCreateNotaKecil}
-                      >
-                        <FontAwesome5 name="receipt" size={16} color="#fff" />
-                        <Text style={styles.notaKecilButtonText}>Buat Nota Kecil</Text>
-                      </TouchableOpacity>
-
-                      {notaKecils.length > 0 && (
-                        <TouchableOpacity
-                          style={styles.viewNotaKecilsButton}
-                          onPress={handleViewNotaKecils}
-                        >
-                          <FontAwesome5 name="list" size={16} color="#3b82f6" />
-                          <Text style={styles.viewNotaKecilsButtonText}>View ({notaKecils.length})</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
+                    <TouchableOpacity
+                      style={styles.addMorePhotosButton}
+                      onPress={() => setShowReceiptModal(true)}
+                    >
+                      <FontAwesome5 name="plus" size={16} color="#3b82f6" />
+                      <Text style={styles.addMorePhotosText}>
+                        Add More
+                      </Text>
+                    </TouchableOpacity>
                   )}
                 </View>
-              );
-            })}
+              </View>
+            ) : (
+              <View>
+                <Text style={styles.noPhotosText}>
+                  Belum ada receipt yang diupload
+                </Text>
+                {!isTripCompleted && (
+                  <TouchableOpacity
+                    style={styles.uploadReceiptButton}
+                    onPress={() => setShowReceiptModal(true)}
+                  >
+                    <FontAwesome5 name="camera" size={20} color="#fff" />
+                    <Text style={styles.uploadReceiptText}>
+                      Upload CNG Receipt
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
             
             {getAllCustomerLocations().length === 0 && (
               <Text style={styles.noLocationsText}>
@@ -2870,36 +2889,31 @@ const TripDetailScreen = () => {
         </View>
       </Modal>
 
-      {/* Nota Kecil Uploader Modal */}
+      {/* Receipt Uploader Modal */}
       <Modal
-        visible={showNotaKecilModal}
+        visible={showReceiptModal}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setShowNotaKecilModal(false)}
+        onRequestClose={() => setShowReceiptModal(false)}
       >
-        <NotaKecilUploader
+        <ReceiptUploader
           deliveryOrderId={trip?.id?.toString() || ''}
-          customerLocationIndex={currentLocationIndex}
-          customerName={trip?.customer_name || 'Customer'}
-          customerAddress={getAllCustomerLocations()[currentLocationIndex]?.location || ''}
-          onNotaKecilCreated={handleNotaKecilCreated}
-          onClose={() => setShowNotaKecilModal(false)}
+          onReceiptCreated={handleReceiptCreated}
+          onClose={() => setShowReceiptModal(false)}
         />
       </Modal>
 
-      {/* Nota Kecils List Modal */}
+      {/* Receipts List Modal */}
       <Modal
-        visible={showNotaKecilListModal}
+        visible={showReceiptListModal}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setShowNotaKecilListModal(false)}
+        onRequestClose={() => setShowReceiptListModal(false)}
       >
-        <NotaKecilsList
+        <ReceiptList
           deliveryOrderId={trip?.id?.toString() || ''}
-          customerLocationIndex={currentLocationIndex}
-          customerName={trip?.customer_name || 'Customer'}
-          onNotaKecilAdded={handleNotaKecilCreated}
-          onClose={() => setShowNotaKecilListModal(false)}
+          onReceiptSelected={handleReceiptCreated}
+          onClose={() => setShowReceiptListModal(false)}
         />
       </Modal>
     </>
@@ -3212,12 +3226,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginTop: 8,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginLeft: 12,
   },
 
   statusBadgeText: {
@@ -4188,18 +4196,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  disabledButton: {
-    backgroundColor: '#ccc',
-  },
-
-  // Nota Kecil Styles
+  // Receipt Styles
   locationActionButtons: {
     flexDirection: 'row',
     gap: 8,
     flexWrap: 'wrap',
   },
-  notaKecilButton: {
-    backgroundColor: '#8b5cf6',
+  receiptButton: {
+    backgroundColor: '#059669',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -4207,12 +4211,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  notaKecilButtonText: {
+  receiptButtonText: {
     color: '#fff',
     fontSize: 12,
     fontWeight: '600',
   },
-  viewNotaKecilsButton: {
+  viewReceiptsButton: {
     backgroundColor: '#f3f4f6',
     borderRadius: 8,
     paddingHorizontal: 12,
@@ -4223,10 +4227,56 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#3b82f6',
   },
-  viewNotaKecilsButtonText: {
+  viewReceiptsButtonText: {
     color: '#3b82f6',
     fontSize: 12,
     fontWeight: '600',
+  },
+  uploadReceiptButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#059669',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  uploadReceiptText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+  receiptButtonsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  viewReceiptsListButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3b82f6',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  viewReceiptsListButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });
 

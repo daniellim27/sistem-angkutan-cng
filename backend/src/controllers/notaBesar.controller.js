@@ -150,6 +150,19 @@ exports.calculateNotaBesar = async (req, res, next) => {
       });
     }
 
+    // Find the SPBG (deposit group) associated with this delivery order
+    const { DepositGroupMember, DepositGroup } = require('../models');
+    let spbgGroupId = null;
+    let spbgBalanceUpdated = false;
+    
+    const depositGroupMember = await DepositGroupMember.findOne({
+      where: { delivery_order_id: deliveryOrderId },
+      include: [{
+        model: DepositGroup,
+        as: 'group'
+      }]
+    });
+
     // Create nota besar in database
     const notaBesar = await NotaBesar.create({
       delivery_order_id: deliveryOrderId,
@@ -158,7 +171,9 @@ exports.calculateNotaBesar = async (req, res, next) => {
       total_price: calculationResult.totalPrice,
       gas_price_per_m3: gasPrice,
       status: 'draft',
-      notes: notes || null
+      notes: notes || null,
+      spbg_group_id: depositGroupMember ? depositGroupMember.group_id : null,
+      applied_to_spbg: false // Will be applied when confirmed
     });
 
     // Create nota besar items
@@ -171,6 +186,30 @@ exports.calculateNotaBesar = async (req, res, next) => {
         price: item.price
       });
       notaBesarItems.push(notaBesarItem);
+    }
+
+    // If SPBG exists and nota besar is confirmed, reduce balance immediately
+    // Otherwise, balance will be reduced when status changes to 'confirmed'
+    if (depositGroupMember && notaBesar.status === 'confirmed') {
+      const group = depositGroupMember.group;
+      const currentBalance = parseFloat(group.balance) || 0;
+      const notaBesarCost = parseFloat(calculationResult.totalPrice) || 0;
+      const newBalance = Math.max(0, currentBalance - notaBesarCost);
+      
+      await DepositGroup.update(
+        { balance: newBalance, updated_at: new Date() },
+        { where: { id: group.id } }
+      );
+      
+      await notaBesar.update({
+        applied_to_spbg: true,
+        applied_to_spbg_at: new Date()
+      });
+      
+      spbgBalanceUpdated = true;
+      spbgGroupId = group.id;
+      
+      console.log(`✅ Nota Besar #${notaBesar.id} cost (Rp ${notaBesarCost.toLocaleString('id-ID')}) deducted from SPBG "${group.spbg_location}"`);
     }
 
     // Fetch the complete nota besar with associations
@@ -382,6 +421,30 @@ exports.updateNotaBesarStatus = async (req, res, next) => {
       status: status,
       notes: notes || notaBesar.notes
     });
+
+    // If status changed to 'confirmed' and not yet applied to SPBG, apply now
+    if (status === 'confirmed' && !notaBesar.applied_to_spbg && notaBesar.spbg_group_id) {
+      const { DepositGroup } = require('../models');
+      const group = await DepositGroup.findByPk(notaBesar.spbg_group_id);
+      
+      if (group) {
+        const currentBalance = parseFloat(group.balance) || 0;
+        const notaBesarCost = parseFloat(notaBesar.total_price) || 0;
+        const newBalance = Math.max(0, currentBalance - notaBesarCost);
+        
+        await group.update({
+          balance: newBalance,
+          updated_at: new Date()
+        });
+        
+        await notaBesar.update({
+          applied_to_spbg: true,
+          applied_to_spbg_at: new Date()
+        });
+        
+        console.log(`✅ Nota Besar #${notaBesar.id} confirmed: Rp ${notaBesarCost.toLocaleString('id-ID')} deducted from SPBG "${group.spbg_location}"`);
+      }
+    }
 
     res.status(200).json({
       success: true,

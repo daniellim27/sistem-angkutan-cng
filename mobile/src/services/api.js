@@ -11,6 +11,16 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ||
                      Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL || 
                      'http://192.168.100.27:3000/api'; // Updated to use port 3000 (backend port)
 
+// Backend base URL for static files (without /api suffix)
+const BACKEND_BASE_URL = API_BASE_URL.replace('/api', '');
+
+// Helper function to get full image URL
+export const getImageUrl = (relativePath) => {
+  if (!relativePath) return null;
+  if (relativePath.startsWith('http')) return relativePath; // Already a full URL
+  return `${BACKEND_BASE_URL}${relativePath}`;
+};
+
 // Create a dedicated axios instance
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -889,6 +899,142 @@ export const uploadNotaKecilImagesToGoogleDrive = async (deliveryOrderId, custom
     console.error("Error in uploadNotaKecilImagesToGoogleDrive (NEW) API call:", {
       message: error.message,
       stack: error.stack,
+    });
+    throw error;
+  }
+};
+
+// Receipt OCR API functions
+export const processReceiptOCR = async (deliveryOrderId, photo) => {
+  try {
+    console.log("processReceiptOCR called with:", {
+      deliveryOrderId,
+      hasPhoto: !!photo
+    });
+
+    const formData = new FormData();
+    
+    // Add the delivery order ID
+    formData.append('do_id', deliveryOrderId);
+    
+    // Add the receipt photo
+    if (photo && photo.uri) {
+      const ext = photo.uri.split(".").pop() || "jpg";
+      await appendFileToFormData(
+        formData,
+        "receipt_photo",
+        {
+          uri: photo.uri,
+          fileName: photo.fileName || `receipt_${deliveryOrderId}.${ext}`,
+          mimeType: photo.mimeType || "image/jpeg"
+        }
+      );
+    }
+
+    console.log("Sending receipt photo to OCR processing endpoint...");
+    
+    return await apiClient.post(`/receipt-ocr/upload`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      timeout: 90000, // 90 seconds for OCR processing
+    });
+  } catch (error) {
+    console.error("Error in processReceiptOCR API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+export const confirmReceipt = async (deliveryOrderId, receiptData) => {
+  try {
+    console.log("confirmReceipt called with:", {
+      deliveryOrderId,
+      receiptData
+    });
+
+    return await apiClient.post(`/receipt-ocr/confirm`, {
+      delivery_order_id: deliveryOrderId,
+      ...receiptData
+    });
+  } catch (error) {
+    console.error("Error in confirmReceipt API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+export const getReceiptsForDO = async (deliveryOrderId) => {
+  try {
+    console.log("getReceiptsForDO called for DO:", deliveryOrderId);
+    
+    return await apiClient.get(`/receipt-ocr/do/${deliveryOrderId}`);
+  } catch (error) {
+    console.error("Error in getReceiptsForDO API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+export const updateReceiptData = async (receiptId, updatedData) => {
+  try {
+    console.log("updateReceiptData called with:", {
+      receiptId,
+      updatedData
+    });
+
+    return await apiClient.put(`/receipt-ocr/${receiptId}/edit`, updatedData);
+  } catch (error) {
+    console.error("Error in updateReceiptData API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+export const verifyReceipt = async (receiptId, isVerified, notes = '') => {
+  try {
+    console.log("verifyReceipt called with:", {
+      receiptId,
+      isVerified,
+      notes
+    });
+
+    return await apiClient.put(`/receipt-ocr/${receiptId}/verify`, {
+      is_verified: isVerified,
+      verification_notes: notes
+    });
+  } catch (error) {
+    console.error("Error in verifyReceipt API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+export const deleteReceipt = async (receiptId) => {
+  try {
+    console.log("deleteReceipt called for receipt:", receiptId);
+    
+    return await apiClient.delete(`/receipt-ocr/${receiptId}`);
+  } catch (error) {
+    console.error("Error in deleteReceipt API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
     });
     throw error;
   }

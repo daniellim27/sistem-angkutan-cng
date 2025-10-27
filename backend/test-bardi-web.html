@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bardi Scraping Test</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      color: white;
+      margin-bottom: 30px;
+    }
+
+    .header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      font-size: 1.2em;
+      opacity: 0.9;
+    }
+
+    .auth-section {
+      background: white;
+      padding: 25px;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      margin-bottom: 20px;
+    }
+
+    .auth-section h2 {
+      margin-bottom: 15px;
+      color: #333;
+    }
+
+    .input-group {
+      margin-bottom: 15px;
+    }
+
+    .input-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: #555;
+      font-weight: 500;
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+
+    .input-group input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .btn {
+      padding: 12px 30px;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #5a6268;
+    }
+
+    .btn-success {
+      background: #28a745;
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: #218838;
+    }
+
+    .test-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .test-card {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+
+    .test-card h3 {
+      margin-bottom: 10px;
+      color: #333;
+    }
+
+    .test-card p {
+      color: #666;
+      margin-bottom: 15px;
+      font-size: 14px;
+    }
+
+    .results {
+      background: white;
+      padding: 25px;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      margin-top: 20px;
+    }
+
+    .results h2 {
+      margin-bottom: 15px;
+      color: #333;
+    }
+
+    .result-item {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 10px;
+      border-left: 4px solid #667eea;
+    }
+
+    .result-item.success {
+      border-left-color: #28a745;
+    }
+
+    .result-item.error {
+      border-left-color: #dc3545;
+    }
+
+    .result-item h4 {
+      margin-bottom: 8px;
+      color: #333;
+    }
+
+    .result-item pre {
+      background: #fff;
+      padding: 10px;
+      border-radius: 3px;
+      overflow-x: auto;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+
+    .status-badge.success {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status-badge.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .loading.active {
+      display: block;
+    }
+
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .token-display {
+      background: #f8f9fa;
+      padding: 10px;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 12px;
+      word-break: break-all;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔍 Bardi IPC Scraping Service</h1>
+      <p>Test Web Interface</p>
+    </div>
+
+    <!-- Authentication Section -->
+    <div class="auth-section">
+      <h2>🔐 Authentication</h2>
+      <div class="input-group">
+        <label for="username">Username:</label>
+        <input type="text" id="username" value="admin" placeholder="Enter username">
+      </div>
+      <div class="input-group">
+        <label for="password">Password:</label>
+        <input type="password" id="password" value="awak1234" placeholder="Enter password">
+      </div>
+      <button class="btn btn-primary" onclick="login()">Login</button>
+      <button class="btn btn-secondary" onclick="clearToken()">Clear Token</button>
+      <div id="tokenDisplay" class="token-display" style="display: none;"></div>
+    </div>
+
+    <!-- Test Cases -->
+    <div class="test-grid">
+      <!-- Public Tests -->
+      <div class="test-card">
+        <h3>📡 Test Session</h3>
+        <p>Test if the Bardi session is valid (no auth required)</p>
+        <button class="btn btn-success" onclick="testSession()">Run Test</button>
+      </div>
+
+      <div class="test-card">
+        <h3>ℹ️ Session Info</h3>
+        <p>Get information about the current session (no auth required)</p>
+        <button class="btn btn-success" onclick="getSessionInfo()">Run Test</button>
+      </div>
+
+      <!-- Protected Tests -->
+      <div class="test-card">
+        <h3>👤 User Info</h3>
+        <p>Get user information from Bardi (requires auth)</p>
+        <button class="btn btn-primary" onclick="getUserInfo()">Run Test</button>
+      </div>
+
+      <div class="test-card">
+        <h3>📱 Get Devices</h3>
+        <p>Get all devices from Bardi account (requires auth)</p>
+        <button class="btn btn-primary" onclick="getDevices()">Run Test</button>
+      </div>
+
+      <div class="test-card">
+        <h3>🔍 Device Details</h3>
+        <p>Get details for a specific device (requires auth + device ID)</p>
+        <input type="text" id="deviceId" placeholder="Device ID" style="width: 100%; margin-bottom: 10px; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+        <button class="btn btn-primary" onclick="getDeviceDetails()">Run Test</button>
+      </div>
+
+      <div class="test-card">
+        <h3>📊 Device Status</h3>
+        <p>Get status for a specific device (requires auth + device ID)</p>
+        <input type="text" id="statusDeviceId" placeholder="Device ID" style="width: 100%; margin-bottom: 10px; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+        <button class="btn btn-primary" onclick="getDeviceStatus()">Run Test</button>
+      </div>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p style="margin-top: 10px; color: white;">Loading...</p>
+    </div>
+
+    <!-- Results Section -->
+    <div class="results" id="results" style="display: none;">
+      <h2>📋 Test Results</h2>
+      <div id="resultsContent"></div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:5000/api';
+    let authToken = localStorage.getItem('authToken');
+
+    // Update token display on load
+    if (authToken) {
+      displayToken();
+    }
+
+    function displayToken() {
+      const tokenDisplay = document.getElementById('tokenDisplay');
+      tokenDisplay.style.display = 'block';
+      tokenDisplay.innerHTML = `<strong>Token:</strong> ${authToken}`;
+    }
+
+    function clearToken() {
+      localStorage.removeItem('authToken');
+      authToken = null;
+      document.getElementById('tokenDisplay').style.display = 'none';
+      addResult('Token Cleared', 'success', 'Authentication token has been cleared from localStorage');
+    }
+
+    function showLoading() {
+      document.getElementById('loading').classList.add('active');
+    }
+
+    function hideLoading() {
+      document.getElementById('loading').classList.remove('active');
+    }
+
+    function addResult(title, status, data) {
+      const resultsDiv = document.getElementById('results');
+      const resultsContent = document.getElementById('resultsContent');
+      
+      resultsDiv.style.display = 'block';
+      
+      const resultItem = document.createElement('div');
+      resultItem.className = `result-item ${status}`;
+      
+      const statusBadge = status === 'success' ? '✅ SUCCESS' : '❌ ERROR';
+      const dataString = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
+      
+      resultItem.innerHTML = `
+        <h4>${title}</h4>
+        <span class="status-badge ${status}">${statusBadge}</span>
+        <pre>${dataString}</pre>
+      `;
+      
+      resultsContent.insertBefore(resultItem, resultsContent.firstChild);
+    }
+
+    async function login() {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      if (!username || !password) {
+        addResult('Login Failed', 'error', 'Username and password are required');
+        return;
+      }
+
+      showLoading();
+
+      try {
+        const response = await fetch(`${API_BASE}/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.token) {
+          authToken = data.token;
+          localStorage.setItem('authToken', authToken);
+          displayToken();
+          addResult('Login Successful', 'success', data);
+        } else {
+          addResult('Login Failed', 'error', data);
+        }
+      } catch (error) {
+        addResult('Login Failed', 'error', error.message);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function makeRequest(endpoint, options = {}) {
+      showLoading();
+
+      try {
+        const response = await fetch(`${API_BASE}${endpoint}`, {
+          ...options,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+            ...options.headers
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          addResult(options.title || endpoint, 'success', data);
+        } else {
+          addResult(options.title || endpoint, 'error', data);
+        }
+      } catch (error) {
+        addResult(options.title || endpoint, 'error', error.message);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function testSession() {
+      makeRequest('/bardi/test-session', { title: 'Test Session' });
+    }
+
+    function getSessionInfo() {
+      makeRequest('/bardi/session-info', { title: 'Session Info' });
+    }
+
+    function getUserInfo() {
+      if (!authToken) {
+        addResult('User Info Failed', 'error', 'Please login first');
+        return;
+      }
+      makeRequest('/bardi/user-info', { title: 'User Info' });
+    }
+
+    function getDevices() {
+      if (!authToken) {
+        addResult('Get Devices Failed', 'error', 'Please login first');
+        return;
+      }
+      makeRequest('/bardi/devices', { title: 'Get Devices' });
+    }
+
+    function getDeviceDetails() {
+      const deviceId = document.getElementById('deviceId').value;
+      
+      if (!authToken) {
+        addResult('Device Details Failed', 'error', 'Please login first');
+        return;
+      }
+      
+      if (!deviceId) {
+        addResult('Device Details Failed', 'error', 'Device ID is required');
+        return;
+      }
+      
+      makeRequest(`/bardi/devices/${deviceId}`, { title: `Device Details (${deviceId})` });
+    }
+
+    function getDeviceStatus() {
+      const deviceId = document.getElementById('statusDeviceId').value;
+      
+      if (!authToken) {
+        addResult('Device Status Failed', 'error', 'Please login first');
+        return;
+      }
+      
+      if (!deviceId) {
+        addResult('Device Status Failed', 'error', 'Device ID is required');
+        return;
+      }
+      
+      makeRequest(`/bardi/devices/${deviceId}/status`, { title: `Device Status (${deviceId})` });
+    }
+  </script>
+</body>
+</html>
+

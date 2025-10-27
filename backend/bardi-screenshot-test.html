@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bardi Screenshot Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #333;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fafafa;
+        }
+        .button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .button:hover {
+            background-color: #0056b3;
+        }
+        .button.success {
+            background-color: #28a745;
+        }
+        .button.danger {
+            background-color: #dc3545;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .result.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .result.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .result.info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status.connected {
+            background-color: #28a745;
+            color: white;
+        }
+        .status.disconnected {
+            background-color: #dc3545;
+            color: white;
+        }
+        .credentials {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .credentials input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📸 Bardi Screenshot Test Interface</h1>
+            <p>Test your Bardi camera screenshot functionality</p>
+            <span id="connectionStatus" class="status disconnected">Disconnected</span>
+        </div>
+
+        <!-- Authentication Section -->
+        <div class="section">
+            <h3>🔐 Authentication</h3>
+            <div class="credentials">
+                <input type="text" id="username" placeholder="Username" value="admin">
+                <input type="password" id="password" placeholder="Password" value="awak1234">
+                <button class="button" onclick="authenticate()">Login</button>
+            </div>
+            <div id="authResult" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Screenshot Testing Section -->
+        <div class="section">
+            <h3>📸 Screenshot Tests</h3>
+            <button class="button" onclick="testScreenshot()">Test General Screenshot</button>
+            <button class="button" onclick="testDeviceScreenshot()">Test Device Screenshot</button>
+            <button class="button" onclick="testCustomEndpoints()">Test Custom Endpoints</button>
+            <button class="button danger" onclick="clearResults()">Clear Results</button>
+            
+            <div id="screenshotResult" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Browser Automation Section -->
+        <div class="section">
+            <h3>🌐 Browser Automation</h3>
+            <p>Open a browser window with your Bardi session already logged in:</p>
+            <button class="button success" onclick="openBrowser()">Open Bardi Browser</button>
+            <button class="button" onclick="openBardiWebsite()">Open Bardi Website</button>
+            
+            <div id="browserResult" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Instructions Section -->
+        <div class="section">
+            <h3>📋 Instructions</h3>
+            <ol>
+                <li><strong>Authenticate:</strong> Click "Login" to get your API token</li>
+                <li><strong>Test Screenshots:</strong> Try the screenshot endpoints to see what they return</li>
+                <li><strong>Browser Automation:</strong> Use "Open Bardi Browser" for manual testing</li>
+                <li><strong>Find Real Endpoint:</strong> Use browser DevTools to find the actual screenshot API</li>
+            </ol>
+            
+            <h4>🔍 Finding the Real Screenshot Endpoint:</h4>
+            <ol>
+                <li>Open the Bardi browser window</li>
+                <li>Press F12 to open DevTools</li>
+                <li>Go to the "Network" tab</li>
+                <li>Click the camera/screenshot button in the Bardi interface</li>
+                <li>Look for API calls that return image data (not HTML)</li>
+                <li>Note the endpoint URL and update the service</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        let authToken = null;
+        const API_BASE = 'http://localhost:3000/api';
+        const BARDI_API = `${API_BASE}/bardi`;
+
+        // Update connection status
+        function updateConnectionStatus() {
+            const status = document.getElementById('connectionStatus');
+            if (authToken) {
+                status.textContent = 'Connected';
+                status.className = 'status connected';
+            } else {
+                status.textContent = 'Disconnected';
+                status.className = 'status disconnected';
+            }
+        }
+
+        // Show result in a div
+        function showResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.className = `result ${type}`;
+            element.textContent = message;
+        }
+
+        // Authenticate
+        async function authenticate() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                showResult('authResult', 'Authenticating...', 'info');
+                
+                const response = await fetch(`${API_BASE}/auth/web/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    authToken = data.token;
+                    updateConnectionStatus();
+                    showResult('authResult', '✅ Authentication successful!\nToken: ' + authToken.substring(0, 50) + '...', 'success');
+                } else {
+                    showResult('authResult', `❌ Authentication failed: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                showResult('authResult', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Test general screenshot
+        async function testScreenshot() {
+            if (!authToken) {
+                showResult('screenshotResult', '❌ Please authenticate first!', 'error');
+                return;
+            }
+
+            try {
+                showResult('screenshotResult', 'Testing general screenshot endpoint...', 'info');
+                
+                const response = await fetch(`${BARDI_API}/custom-request`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        endpoint: '/api/screenshot',
+                        method: 'POST'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    let message = `✅ SUCCESS!\nStatus: ${data.statusCode}\n`;
+                    message += `Response type: ${typeof data.data}\n`;
+                    message += `Data length: ${data.data?.length || 'N/A'}\n\n`;
+                    
+                    if (typeof data.data === 'string' && data.data.includes('<!DOCTYPE html>')) {
+                        message += '📄 Response is HTML (camera interface)\n';
+                        message += `HTML preview: ${data.data.substring(0, 200)}...`;
+                    } else {
+                        message += `Response data: ${JSON.stringify(data.data, null, 2)}`;
+                    }
+                    
+                    showResult('screenshotResult', message, 'success');
+                } else {
+                    showResult('screenshotResult', `❌ Failed: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showResult('screenshotResult', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Test device screenshot
+        async function testDeviceScreenshot() {
+            if (!authToken) {
+                showResult('screenshotResult', '❌ Please authenticate first!', 'error');
+                return;
+            }
+
+            const deviceId = prompt('Enter device ID (or leave empty for default):', 'BARDI_CAMERA_001');
+            
+            try {
+                showResult('screenshotResult', `Testing device screenshot for: ${deviceId}...`, 'info');
+                
+                const response = await fetch(`${BARDI_API}/devices/${deviceId}/screenshot`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResult('screenshotResult', `✅ SUCCESS!\nStatus: ${data.statusCode}\nResponse: ${JSON.stringify(data.data, null, 2)}`, 'success');
+                } else {
+                    showResult('screenshotResult', `❌ Failed: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showResult('screenshotResult', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Test custom endpoints
+        async function testCustomEndpoints() {
+            if (!authToken) {
+                showResult('screenshotResult', '❌ Please authenticate first!', 'error');
+                return;
+            }
+
+            const endpoints = [
+                '/api/screenshot',
+                '/api/capture', 
+                '/api/camera/screenshot',
+                '/api/device/screenshot',
+                '/home/screenshot',
+                '/camera/screenshot'
+            ];
+
+            let results = 'Testing custom endpoints...\n\n';
+
+            for (const endpoint of endpoints) {
+                try {
+                    const response = await fetch(`${BARDI_API}/custom-request`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${authToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            endpoint: endpoint,
+                            method: 'POST'
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        results += `✅ ${endpoint} - Status: ${data.statusCode}\n`;
+                    } else {
+                        results += `❌ ${endpoint} - ${data.error}\n`;
+                    }
+                } catch (error) {
+                    results += `❌ ${endpoint} - Error: ${error.message}\n`;
+                }
+            }
+
+            showResult('screenshotResult', results, 'info');
+        }
+
+        // Open browser automation
+        async function openBrowser() {
+            showResult('browserResult', '🚀 Starting browser automation...\nThis will open a browser window with your Bardi session.\n\nRun this command in your terminal:\n\ncd backend && node bardi-browser-automation.js', 'info');
+        }
+
+        // Open Bardi website
+        function openBardiWebsite() {
+            window.open('https://ipc.bardi.co.id/', '_blank');
+            showResult('browserResult', '🌐 Opened Bardi website in new tab\n\nInstructions:\n1. Login with your credentials\n2. Open DevTools (F12)\n3. Go to Network tab\n4. Click camera/screenshot button\n5. Look for image API calls', 'info');
+        }
+
+        // Clear results
+        function clearResults() {
+            document.getElementById('screenshotResult').style.display = 'none';
+            document.getElementById('browserResult').style.display = 'none';
+        }
+
+        // Initialize
+        updateConnectionStatus();
+    </script>
+</body>
+</html>

@@ -9,7 +9,11 @@ import {
   faPlay, 
   faSquare,
   faEye,
-  faTimes
+  faTimes,
+  faChevronDown,
+  faChevronRight,
+  faTruck,
+  faMapMarkerAlt
 } from '@fortawesome/free-solid-svg-icons';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000';
@@ -32,12 +36,10 @@ interface NotaKecil {
     do_number: string;
   };
   driver_notes?: string;
-  // Local storage photos (legacy)
   pressure_bar_photos?: string[];
   temperature_photos?: string[];
   stan_awal_photos?: string[];
   stan_akhir_photos?: string[];
-  // Google Drive photos (new)
   pressure_bar_photos_urls?: Array<{
     url: string;
     filename: string;
@@ -62,13 +64,27 @@ interface NotaKecil {
     fileId: string;
     uploadedAt: string;
   }>;
-  // New optimized photo format
   photos?: {
     pressure_bar: string[];
     temperature: string[];
     stan_awal: string[];
     stan_akhir: string[];
   };
+}
+
+interface DeliveryOrderGroup {
+  id: number;
+  do_number: string;
+  customers: CustomerGroup[];
+  totalV: number;
+  notaCount: number;
+}
+
+interface CustomerGroup {
+  customer_name: string;
+  customer_location_index: number;
+  notaKecils: NotaKecil[];
+  totalV: number;
 }
 
 interface Customer {
@@ -81,18 +97,18 @@ interface Customer {
 const NotaKecilTab: React.FC = () => {
   const navigate = useNavigate();
   const [notaKecils, setNotaKecils] = useState<NotaKecil[]>([]);
+  const [deliveryOrderGroups, setDeliveryOrderGroups] = useState<DeliveryOrderGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedNotaKecils, setSelectedNotaKecils] = useState<Set<number>>(new Set());
   const [calculatingNotaBesar, setCalculatingNotaBesar] = useState(false);
   const [gasPricePerM3, setGasPricePerM3] = useState<number>(15000);
-  const [filterDO, setFilterDO] = useState<string>('');
-  const [filterCustomer, setFilterCustomer] = useState<string>('');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [availableDOs, setAvailableDOs] = useState<{id: number, do_number: string}[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  
+  // Expand/collapse states
+  const [expandedDOs, setExpandedDOs] = useState<Set<number>>(new Set());
+  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
   
   // Photo modal state
   const [showPhotoModal, setShowPhotoModal] = useState(false);
@@ -104,16 +120,6 @@ const NotaKecilTab: React.FC = () => {
     fetchCustomers();
   }, []);
 
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filterDO, filterCustomer]);
-
-  // Reset customer filter when DO changes
-  useEffect(() => {
-    setFilterCustomer('');
-  }, [filterDO]);
-
   const fetchAllNotaKecils = async () => {
     try {
       setLoading(true);
@@ -121,35 +127,79 @@ const NotaKecilTab: React.FC = () => {
       const notaKecilsData = response.data.data || [];
       setNotaKecils(notaKecilsData);
       
-      // Extract unique DOs from the nota kecils with creation date
-      const doMap = new Map<number, {id: number, do_number: string, created_at: string}>();
-      notaKecilsData.forEach((nota: NotaKecil) => {
-        if (!doMap.has(nota.deliveryOrder.id)) {
-          doMap.set(nota.deliveryOrder.id, {
-            id: nota.deliveryOrder.id,
-            do_number: nota.deliveryOrder.do_number,
-            created_at: nota.created_at
-          });
-        }
-      });
-      const uniqueDOs: {id: number, do_number: string, created_at: string}[] = Array.from(doMap.values())
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      // Group by DO and Customer
+      const grouped = groupNotaKecilsByDOAndCustomer(notaKecilsData);
+      setDeliveryOrderGroups(grouped);
       
-      setAvailableDOs(uniqueDOs);
+      // Keep all DOs closed by default
+      setExpandedDOs(new Set());
       
-      // Auto-select the newest delivery order if none is selected
-      if (uniqueDOs.length > 0 && !filterDO) {
-        setFilterDO(uniqueDOs[0].id.toString());
-      }
-      
-      console.log('Fetched all nota kecils:', response.data);
-      console.log('Available DOs:', uniqueDOs);
+      console.log('Fetched and grouped nota kecils:', grouped);
     } catch (error) {
       console.error('Error fetching nota kecils:', error);
       setError('Failed to fetch nota kecils');
     } finally {
       setLoading(false);
     }
+  };
+
+  const groupNotaKecilsByDOAndCustomer = (notaKecilsData: NotaKecil[]): DeliveryOrderGroup[] => {
+    const doMap = new Map<number, DeliveryOrderGroup>();
+
+    notaKecilsData.forEach((nota) => {
+      const doId = nota.deliveryOrder.id;
+      const doNumber = nota.deliveryOrder.do_number;
+      
+      if (!doMap.has(doId)) {
+        doMap.set(doId, {
+          id: doId,
+          do_number: doNumber,
+          customers: [],
+          totalV: 0,
+          notaCount: 0,
+        });
+      }
+
+      const doGroup = doMap.get(doId)!;
+      
+      // Find or create customer group
+      const customerKey = `${nota.customer_name}_${nota.customer_location_index}`;
+      let customerGroup = doGroup.customers.find(
+        c => c.customer_name === nota.customer_name && c.customer_location_index === nota.customer_location_index
+      );
+
+      if (!customerGroup) {
+        customerGroup = {
+          customer_name: nota.customer_name,
+          customer_location_index: nota.customer_location_index,
+          notaKecils: [],
+          totalV: 0,
+        };
+        doGroup.customers.push(customerGroup);
+      }
+
+      customerGroup.notaKecils.push(nota);
+      const notaV = parseFloat(nota.V || '0');
+      customerGroup.totalV += notaV;
+      doGroup.totalV += notaV;
+      doGroup.notaCount += 1;
+    });
+
+    // Sort by DO ID (newest first)
+    const sortedGroups = Array.from(doMap.values()).sort((a, b) => b.id - a.id);
+    
+    // Sort customers within each DO
+    sortedGroups.forEach(doGroup => {
+      doGroup.customers.sort((a, b) => a.customer_location_index - b.customer_location_index);
+      // Sort nota kecils by created_at
+      doGroup.customers.forEach(customer => {
+        customer.notaKecils.sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+      });
+    });
+
+    return sortedGroups;
   };
 
   const fetchCustomers = async () => {
@@ -161,12 +211,29 @@ const NotaKecilTab: React.FC = () => {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0
-    }).format(amount);
+  const toggleDO = (doId: number) => {
+    setExpandedDOs(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(doId)) {
+        newSet.delete(doId);
+      } else {
+        newSet.add(doId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleCustomer = (doId: number, customerKey: string) => {
+    const key = `${doId}_${customerKey}`;
+    setExpandedCustomers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(key)) {
+        newSet.delete(key);
+      } else {
+        newSet.add(key);
+      }
+      return newSet;
+    });
   };
 
   const formatDate = (dateString: string) => {
@@ -179,20 +246,16 @@ const NotaKecilTab: React.FC = () => {
     });
   };
 
-  // Helper function to get Google Drive thumbnail URL
   const getThumbnailUrl = (fileId: string) => {
     return `https://drive.google.com/thumbnail?id=${fileId}&sz=w100-h100`;
   };
 
-  // Helper function to get real photo URLs (filter out fake example URLs)
   const getRealPhotoUrls = (notaKecil: NotaKecil, photoType: 'pressure_bar' | 'temperature' | 'stan_awal' | 'stan_akhir'): string[] => {
     let photos: string[] = [];
 
-    // Try new optimized format first
     if (notaKecil.photos && notaKecil.photos[photoType]) {
       photos = notaKecil.photos[photoType];
     } else {
-      // Fallback to old formats
       const gdriveField = `${photoType}_photos_urls` as keyof NotaKecil;
       const localField = `${photoType}_photos` as keyof NotaKecil;
       
@@ -206,7 +269,6 @@ const NotaKecilTab: React.FC = () => {
       }
     }
 
-    // Filter out fake example URLs and return only real photos
     return photos.filter(url => 
       url && 
       !url.includes('example.com') && 
@@ -215,35 +277,6 @@ const NotaKecilTab: React.FC = () => {
     );
   };
 
-  // Helper function to get image URLs with metadata (for thumbnails)
-  const getImageUrls = (notaKecil: NotaKecil, photoType: 'pressure_bar' | 'temperature' | 'stan_awal' | 'stan_akhir') => {
-    const gdriveField = `${photoType}_photos_urls` as keyof NotaKecil;
-    const localField = `${photoType}_photos` as keyof NotaKecil;
-    
-    const gdriveUrls = notaKecil[gdriveField] as Array<{url: string, fileId: string, filename: string}> | undefined;
-    const localUrls = notaKecil[localField] as string[] | undefined;
-    
-    // Return Google Drive URLs if available, otherwise local URLs
-    if (gdriveUrls && gdriveUrls.length > 0) {
-      return gdriveUrls.map(item => ({
-        url: item.url,
-        thumbnail: getThumbnailUrl(item.fileId),
-        filename: item.filename || 'Unknown',
-        isGDrive: true
-      }));
-    } else if (localUrls && localUrls.length > 0) {
-      return localUrls.map(url => ({
-        url: url,
-        thumbnail: url,
-        filename: url.split('/').pop() || 'Unknown',
-        isGDrive: false
-      }));
-    }
-    
-    return [];
-  };
-
-  // Function to view photos in modal
   const viewPhotos = (notaKecil: NotaKecil, photoType: 'pressure_bar' | 'temperature' | 'stan_awal' | 'stan_akhir') => {
     const realPhotos = getRealPhotoUrls(notaKecil, photoType);
     let title = '';
@@ -272,7 +305,6 @@ const NotaKecilTab: React.FC = () => {
     }
   };
 
-  // Helper function to get icon for photo type
   const getPhotoIcon = (photoType: 'pressure_bar' | 'temperature' | 'stan_awal' | 'stan_akhir') => {
     switch (photoType) {
       case 'pressure_bar':
@@ -288,7 +320,6 @@ const NotaKecilTab: React.FC = () => {
     }
   };
 
-  // Helper function to render photo button with icon
   const renderPhotoButton = (notaKecil: NotaKecil, photoType: 'pressure_bar' | 'temperature' | 'stan_awal' | 'stan_akhir') => {
     const realPhotos = getRealPhotoUrls(notaKecil, photoType);
     const hasRealPhotos = realPhotos.length > 0;
@@ -325,35 +356,19 @@ const NotaKecilTab: React.FC = () => {
     });
   };
 
-  const handleStartSelection = () => {
+  const handleStartSelection = (doId: number) => {
     setIsSelectionMode(true);
-    setSelectedNotaKecils(new Set()); // Clear any previous selections
+    setSelectedNotaKecils(new Set());
+    // Expand the DO automatically
+    setExpandedDOs(prev => new Set(prev).add(doId));
   };
 
   const handleCancelSelection = () => {
     setIsSelectionMode(false);
-    setSelectedNotaKecils(new Set()); // Clear selections
+    setSelectedNotaKecils(new Set());
   };
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      const allIds = paginatedNotaKecils.map(nota => nota.id);
-      setSelectedNotaKecils(prev => {
-        const newSet = new Set(prev);
-        allIds.forEach(id => newSet.add(id));
-        return newSet;
-      });
-    } else {
-      const allIds = paginatedNotaKecils.map(nota => nota.id);
-      setSelectedNotaKecils(prev => {
-        const newSet = new Set(prev);
-        allIds.forEach(id => newSet.delete(id));
-        return newSet;
-      });
-    }
-  };
-
-  const handleCreateNotaBesar = async () => {
+  const handleCreateNotaBesar = async (doId: number) => {
     if (selectedNotaKecils.size === 0) {
       alert('Please select at least one nota kecil');
       return;
@@ -361,27 +376,19 @@ const NotaKecilTab: React.FC = () => {
 
     try {
       setCalculatingNotaBesar(true);
-      
-      // Get the first selected nota kecil's delivery order ID
-      const firstSelectedNota = notaKecils.find(nota => selectedNotaKecils.has(nota.id));
-      if (!firstSelectedNota) {
-        alert('Invalid selection');
-        return;
-      }
 
-      const response = await authClient.post(`/delivery-orders/${firstSelectedNota.deliveryOrder.id}/nota-besar/calculate`, {
+      const response = await authClient.post(`/delivery-orders/${doId}/nota-besar/calculate`, {
         notaKecilIds: Array.from(selectedNotaKecils),
-        gasPricePerM3: gasPricePerM3 // Keep the existing gas price state for nota besar creation
+        gasPricePerM3: gasPricePerM3
       });
 
       console.log('Nota besar created:', response.data);
       
-      // Clear selection
       setSelectedNotaKecils(new Set());
+      setIsSelectionMode(false);
       
       alert('Nota besar created successfully!');
       
-      // Refresh the page to show the new nota besar
       window.location.reload();
     } catch (error: any) {
       console.error('Error creating nota besar:', error);
@@ -391,57 +398,11 @@ const NotaKecilTab: React.FC = () => {
     }
   };
 
-  // Get customers for the selected DO
-  const getCustomersForSelectedDO = () => {
-    if (!filterDO) return [];
-    
-    // Get unique customer names from the nota kecils for the selected DO
-    const customerNamesInDO = notaKecils
-      .filter(nota => nota.deliveryOrder.id.toString() === filterDO)
-      .map(nota => nota.customer_name || 'Unknown Customer');
-    
-    const uniqueCustomerNames = Array.from(new Set(customerNamesInDO));
-    
-    // Try to find matching customers from the customers table
-    const customersWithProperNames = uniqueCustomerNames.map(customerNameOrLocation => {
-      // First try to find by exact customer name
-      let matchedCustomer = customers.find(c => c.customer_name === customerNameOrLocation);
-      
-      // If not found, try to find by location (in case customer_name contains location)
-      if (!matchedCustomer) {
-        matchedCustomer = customers.find(c => c.location === customerNameOrLocation);
-      }
-      
-      if (matchedCustomer) {
-        return {
-          customer_name: matchedCustomer.customer_name,
-          customer_address: matchedCustomer.location
-        };
-      } else {
-        // If no match found, use the original data (fallback)
-        return {
-          customer_name: customerNameOrLocation,
-          customer_address: ''
-        };
-      }
-    });
-    
-    // Remove duplicates based on customer_name and sort
-    const uniqueCustomers = Array.from(
-      new Map(customersWithProperNames.map(customer => [customer.customer_name, customer])).values()
-    ).sort((a, b) => a.customer_name.localeCompare(b.customer_name));
-    
-    return uniqueCustomers;
-  };
-
-  // Helper function to get proper customer information for display
   const getCustomerInfo = (notaKecil: NotaKecil) => {
     const customerNameOrLocation = notaKecil.customer_name || 'Unknown Customer';
     
-    // First try to find by exact customer name
     let matchedCustomer = customers.find(c => c.customer_name === customerNameOrLocation);
     
-    // If not found, try to find by location (in case customer_name contains location)
     if (!matchedCustomer) {
       matchedCustomer = customers.find(c => c.location === customerNameOrLocation);
     }
@@ -452,29 +413,12 @@ const NotaKecilTab: React.FC = () => {
         customer_location: matchedCustomer.location
       };
     } else {
-      // If no match found, use the original data (fallback)
       return {
         customer_name: customerNameOrLocation,
         customer_location: notaKecil.customer_address || ''
       };
     }
   };
-
-  // Filter nota kecils based on search criteria
-  const filteredNotaKecils = notaKecils.filter(nota => {
-    const matchesDO = !filterDO || nota.deliveryOrder.id.toString() === filterDO;
-    const matchesCustomer = !filterCustomer || nota.customer_name === filterCustomer;
-    return matchesDO && matchesCustomer;
-  });
-
-  // Pagination logic
-  const totalPages = Math.ceil(filteredNotaKecils.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedNotaKecils = filteredNotaKecils.slice(startIndex, endIndex);
-
-  const isAllSelected = paginatedNotaKecils.length > 0 && selectedNotaKecils.size === paginatedNotaKecils.length;
-  const isIndeterminate = selectedNotaKecils.size > 0 && selectedNotaKecils.size < paginatedNotaKecils.length;
 
   if (loading) {
     return (
@@ -499,47 +443,23 @@ const NotaKecilTab: React.FC = () => {
     );
   }
 
-  return (
-    <div>
-      {/* Filters */}
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Select Delivery Order</label>
-            <select
-              value={filterDO}
-              onChange={(e) => setFilterDO(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {availableDOs.map(deliveryOrder => (
-                <option key={deliveryOrder.id} value={deliveryOrder.id.toString()}>
-                  {deliveryOrder.do_number}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Customer</label>
-            <select
-              value={filterCustomer}
-              onChange={(e) => setFilterCustomer(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={!filterDO}
-            >
-              <option value="">All Customers</option>
-              {getCustomersForSelectedDO().map((customer, index) => (
-                <option key={index} value={customer.customer_name}>
-                  {customer.customer_name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+  if (deliveryOrderGroups.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <p className="text-gray-500 text-lg">No nota kecils found</p>
+        <p className="text-gray-400 text-sm mt-2">Nota kecils will appear here once drivers upload them</p>
       </div>
+    );
+  }
 
-      {/* Selection Mode Interface */}
+  return (
+    <div className="space-y-4">
+      {/* Selection Mode Info */}
       {isSelectionMode && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-blue-900">
@@ -549,427 +469,216 @@ const NotaKecilTab: React.FC = () => {
                 }
               </p>
               <p className="text-xs text-blue-700 mt-1">
-                {selectedNotaKecils.size > 0 
-                  ? 'Click "Create Nota Besar" to proceed with billing calculation'
-                  : 'Use checkboxes to select the nota kecils you want to include (across all pages)'
-                }
+                Check the boxes next to nota kecils you want to include in the nota besar
               </p>
             </div>
-            <div className="flex space-x-2">
-              {selectedNotaKecils.size > 0 && (
-                <button
-                  onClick={handleCreateNotaBesar}
-                  disabled={calculatingNotaBesar}
-                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-6 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center"
-                >
-                  {calculatingNotaBesar ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                      </svg>
-                      Create Nota Besar
-                    </>
-                  )}
-                </button>
-              )}
-              <button
-                onClick={handleCancelSelection}
-                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200"
-              >
-                Cancel
-              </button>
-            </div>
+            <button
+              onClick={handleCancelSelection}
+              className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+            >
+              Cancel Selection
+            </button>
           </div>
         </div>
       )}
 
-      {/* No DO Selected Message */}
-      {!filterDO && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-          <svg className="mx-auto h-12 w-12 text-yellow-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-          </svg>
-          <h3 className="text-lg font-medium text-yellow-800 mb-2">Select a Delivery Order</h3>
-          <p className="text-yellow-700">
-            Please select a delivery order from the dropdown above to view and manage nota kecils.
-          </p>
-        </div>
-      )}
-
-      {/* Nota Kecils Table */}
-      {filterDO && paginatedNotaKecils.length > 0 ? (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="overflow-x-auto">
-          {/* Table Header with Create Button */}
-          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-            <div>
-              <h3 className="text-lg font-medium text-gray-900">Nota Kecils</h3>
-              {filterDO && (
-                <p className="text-sm text-gray-600 mt-1">
-                  Delivery Order: {availableDOs.find(deliveryOrder => deliveryOrder.id.toString() === filterDO)?.do_number}
-                </p>
-              )}
-            </div>
-            {!isSelectionMode && (
-              <button
-                onClick={handleStartSelection}
-                disabled={!filterDO}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center ${
-                  filterDO 
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-                Create Nota Besar
-              </button>
-            )}
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  {isSelectionMode && (
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      <input
-                        type="checkbox"
-                        checked={isAllSelected}
-                        ref={(input) => {
-                          if (input) input.indeterminate = isIndeterminate;
-                        }}
-                        onChange={(e) => handleSelectAll(e.target.checked)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                    </th>
-                  )}
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    DO Number
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Customer
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Time
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px]">
-                     Stand Meter
-                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Tekanan (Bar)
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Suhu (°C)
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Faktor Koreksi
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Pemakaian (m³)
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Images
-                  </th>
-                </tr>
-                <tr>
-                  {isSelectionMode && <th></th>}
-                  <th></th>
-                  <th></th>
-                  <th></th>
-                  <th></th>
-                  <th className="px-6 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px]">
-                    <div className="grid grid-cols-3 gap-3 min-w-[180px]">
-                      <span className="min-w-[50px]">Awal</span>
-                      <span className="min-w-[50px]">Akhir</span>
-                      <span className="min-w-[60px]">Selisih</span>
-                    </div>
-                  </th>
-                  <th></th>
-                  <th></th>
-                  <th></th>
-                  <th></th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {paginatedNotaKecils.map((notaKecil, index) => {
-                  const createdDate = new Date(notaKecil.created_at);
-                  const time = createdDate.toLocaleTimeString('id-ID', { 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    hour12: false 
-                  });
-                  const date = createdDate.toLocaleDateString('id-ID', {
-                    day: 'numeric',
-                    month: 'numeric',
-                    year: 'numeric'
-                  });
-                  
-                  // Calculate Selisih (difference between stan_akhir and stan_awal)
-                  const stanAwal = parseFloat(notaKecil.stan_awal || '0');
-                  const stanAkhir = parseFloat(notaKecil.stan_akhir || '0');
-                  const selisih = stanAkhir - stanAwal;
-                  const isSelected = selectedNotaKecils.has(notaKecil.id);
-                  
-                  return (
-                    <tr 
-                      key={notaKecil.id || index}
-                      className={`transition-colors duration-200 ${
-                        isSelected 
-                          ? 'bg-blue-200' 
-                          : 'hover:bg-blue-50'
-                      }`}
-                    >
-                      {isSelectionMode && (
-                        <td 
-                          className="px-4 py-4 whitespace-nowrap"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => handleNotaKecilCheckboxChange(notaKecil.id, e.target.checked)}
-                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                          />
-                        </td>
-                      )}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {notaKecil.deliveryOrder.do_number}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <div>
-                          <div className="font-medium text-gray-900">
-                            {(() => {
-                              const customerInfo = getCustomerInfo(notaKecil);
-                              return customerInfo.customer_name;
-                            })()}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {(() => {
-                              const customerInfo = getCustomerInfo(notaKecil);
-                              return customerInfo.customer_location || 'Location not available';
-                            })()}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {time}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {date}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[200px]">
-                        <div className="grid grid-cols-3 gap-3 min-w-[180px]">
-                          <span className="text-right min-w-[50px]">{stanAwal.toLocaleString('id-ID', { minimumFractionDigits: 2 })}</span>
-                          <span className="text-right min-w-[50px]">{stanAkhir.toLocaleString('id-ID', { minimumFractionDigits: 2 })}</span>
-                          <span className="text-right font-semibold text-blue-600 min-w-[60px]">{selisih.toLocaleString('id-ID', { minimumFractionDigits: 2 })}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {notaKecil.tekanan_operasi ? parseFloat(notaKecil.tekanan_operasi).toLocaleString('id-ID', { minimumFractionDigits: 2 }) : 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {notaKecil.temperatur_operasi ? parseFloat(notaKecil.temperatur_operasi).toLocaleString('id-ID', { minimumFractionDigits: 2 }) : 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {notaKecil.k ? parseFloat(notaKecil.k).toFixed(6) : 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-purple-600">
-                        {notaKecil.V ? parseFloat(notaKecil.V).toLocaleString('id-ID', { minimumFractionDigits: 2 }) : 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500 w-16">Pressure:</span>
-                            {renderPhotoButton(notaKecil, 'pressure_bar')}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500 w-16">Temp:</span>
-                            {renderPhotoButton(notaKecil, 'temperature')}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500 w-16">Stan Awal:</span>
-                            {renderPhotoButton(notaKecil, 'stan_awal')}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500 w-16">Stan Akhir:</span>
-                            {renderPhotoButton(notaKecil, 'stan_akhir')}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot className="bg-gray-50">
-                <tr>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                    {selectedNotaKecils.size > 0 && (
-                      <span className="text-blue-600">
-                        {selectedNotaKecils.size} selected
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900" colSpan={4}>
-                    TOTAL
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                    <div className="grid grid-cols-3 gap-2">
-                      <span></span>
-                      <span></span>
-                      <span className="text-right text-blue-600">
-                        {filteredNotaKecils.reduce((sum, nota) => {
-                          const stanAwal = parseFloat(nota.stan_awal || '0');
-                          const stanAkhir = parseFloat(nota.stan_akhir || '0');
-                          return sum + (stanAkhir - stanAwal);
-                        }, 0).toLocaleString('id-ID', { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                    -
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                    -
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                    -
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-purple-600">
-                    {filteredNotaKecils.reduce((sum, nota) => {
-                      return sum + parseFloat(nota.V || '0');
-                    }, 0).toLocaleString('id-ID', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                    -
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-          
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="bg-white px-4 py-3 border-t border-gray-200 sm:px-6">
+      {/* Delivery Order Groups */}
+      {deliveryOrderGroups.map((doGroup) => {
+        const isExpanded = expandedDOs.has(doGroup.id);
+        
+        return (
+          <div key={doGroup.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+            {/* DO Header */}
+            <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4">
               <div className="flex items-center justify-between">
-                <div className="flex-1 flex justify-between sm:hidden">
+                <div className="flex items-center gap-3 flex-1">
                   <button
-                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                    disabled={currentPage === 1}
-                    className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                    onClick={() => toggleDO(doGroup.id)}
+                    className="hover:bg-blue-400 p-2 rounded transition-colors"
                   >
-                    Previous
+                    <FontAwesomeIcon 
+                      icon={isExpanded ? faChevronDown : faChevronRight} 
+                      className="w-4 h-4"
+                    />
                   </button>
-                  <button
-                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                    disabled={currentPage === totalPages}
-                    className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                  >
-                    Next
-                  </button>
-                </div>
-                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm text-gray-700">
-                      Showing{' '}
-                      <span className="font-medium">{startIndex + 1}</span>
-                      {' '}to{' '}
-                      <span className="font-medium">{Math.min(endIndex, filteredNotaKecils.length)}</span>
-                      {' '}of{' '}
-                      <span className="font-medium">{filteredNotaKecils.length}</span>
-                      {' '}results
+                  <FontAwesomeIcon icon={faTruck} className="w-5 h-5" />
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold">{doGroup.do_number}</h3>
+                    <p className="text-sm text-blue-100">
+                      {doGroup.notaCount} nota kecil{doGroup.notaCount > 1 ? 's' : ''} • {doGroup.customers.length} customer{doGroup.customers.length > 1 ? 's' : ''} • Total: {doGroup.totalV.toLocaleString('id-ID', { minimumFractionDigits: 2 })} m³
                     </p>
                   </div>
-                  <div>
-                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                      <button
-                        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                        disabled={currentPage === 1}
-                        className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                      >
-                        <span className="sr-only">Previous</span>
-                        <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                          <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                      
-                      {/* Page numbers */}
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                        // Show first page, last page, current page, and pages around current page
-                        const shouldShow = page === 1 || page === totalPages || 
-                          (page >= currentPage - 1 && page <= currentPage + 1);
-                        
-                        if (!shouldShow) {
-                          // Show ellipsis for gaps
-                          if (page === 2 && currentPage > 4) {
-                            return (
-                              <span key={`ellipsis-${page}`} className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
-                                ...
-                              </span>
-                            );
-                          }
-                          if (page === totalPages - 1 && currentPage < totalPages - 3) {
-                            return (
-                              <span key={`ellipsis-${page}`} className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
-                                ...
-                              </span>
-                            );
-                          }
-                          return null;
-                        }
-                        
-                        return (
-                          <button
-                            key={page}
-                            onClick={() => setCurrentPage(page)}
-                            className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                              page === currentPage
-                                ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
-                                : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
-                            }`}
-                          >
-                            {page}
-                          </button>
-                        );
-                      })}
-                      
-                      <button
-                        onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                        disabled={currentPage === totalPages}
-                        className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                      >
-                        <span className="sr-only">Next</span>
-                        <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                          <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                    </nav>
-                  </div>
                 </div>
+                {!isSelectionMode && (
+                  <button
+                    onClick={() => handleStartSelection(doGroup.id)}
+                    className="bg-white text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    Create Nota Besar
+                  </button>
+                )}
+                {isSelectionMode && selectedNotaKecils.size > 0 && (
+                  <button
+                    onClick={() => handleCreateNotaBesar(doGroup.id)}
+                    disabled={calculatingNotaBesar}
+                    className="bg-white text-blue-600 hover:bg-blue-50 disabled:bg-blue-200 px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+                  >
+                    {calculatingNotaBesar ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Create with {selectedNotaKecils.size} selected
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
-          )}
+
+            {/* Customer Groups (Collapsible) */}
+            {isExpanded && (
+              <div className="divide-y divide-gray-200">
+                {doGroup.customers.map((customerGroup) => {
+                  const customerKey = `${customerGroup.customer_name}_${customerGroup.customer_location_index}`;
+                  const isCustomerExpanded = expandedCustomers.has(`${doGroup.id}_${customerKey}`);
+                  const customerInfo = getCustomerInfo(customerGroup.notaKecils[0]);
+                  
+                  return (
+                    <div key={customerKey} className="bg-gray-50">
+                      {/* Customer Header */}
+                      <div className="p-4 hover:bg-gray-100 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3 flex-1">
+                            <button
+                              onClick={() => toggleCustomer(doGroup.id, customerKey)}
+                              className="hover:bg-gray-200 p-2 rounded transition-colors"
+                            >
+                              <FontAwesomeIcon 
+                                icon={isCustomerExpanded ? faChevronDown : faChevronRight} 
+                                className="w-4 h-4 text-gray-600"
+                              />
+                            </button>
+                            <FontAwesomeIcon icon={faMapMarkerAlt} className="w-4 h-4 text-gray-500" />
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-gray-900">
+                                {customerInfo.customer_name}
+                                <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                  Location {customerGroup.customer_location_index}
+                                </span>
+                              </h4>
+                              <p className="text-sm text-gray-600">
+                                {customerInfo.customer_location || 'Location not available'} • 
+                                {customerGroup.notaKecils.length} nota kecil{customerGroup.notaKecils.length > 1 ? 's' : ''} • 
+                                Total: {customerGroup.totalV.toLocaleString('id-ID', { minimumFractionDigits: 2 })} m³
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Nota Kecils List (Collapsible) - 2 Column Grid */}
+                      {isCustomerExpanded && (
+                        <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {customerGroup.notaKecils.map((notaKecil) => {
+                            const stanAwal = parseFloat(notaKecil.stan_awal || '0');
+                            const stanAkhir = parseFloat(notaKecil.stan_akhir || '0');
+                            const selisih = stanAkhir - stanAwal;
+                            const isSelected = selectedNotaKecils.has(notaKecil.id);
+                            
+                            return (
+                              <div 
+                                key={notaKecil.id}
+                                className={`bg-white border-2 rounded-lg p-3 transition-all ${
+                                  isSelected 
+                                    ? 'border-blue-500 shadow-md' 
+                                    : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                                }`}
+                              >
+                                <div className="flex items-start gap-2">
+                                  {/* Checkbox */}
+                                  {isSelectionMode && (
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={(e) => handleNotaKecilCheckboxChange(notaKecil.id, e.target.checked)}
+                                      className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded flex-shrink-0"
+                                    />
+                                  )}
+
+                                  {/* Content */}
+                                  <div className="flex-1 space-y-2">
+                                    {/* Time & Date */}
+                                    <div className="text-xs text-gray-500">
+                                      {formatDate(notaKecil.created_at)}
+                                    </div>
+
+                                    {/* Stand Meter - Compact */}
+                                    <div>
+                                      <p className="text-xs text-gray-500 mb-1">Stand Meter (m³)</p>
+                                      <div className="flex items-center gap-2 text-xs">
+                                        <span className="font-medium">{stanAwal.toFixed(2)}</span>
+                                        <span className="text-gray-400">→</span>
+                                        <span className="font-medium">{stanAkhir.toFixed(2)}</span>
+                                        <span className="text-gray-400">=</span>
+                                        <span className="font-bold text-blue-600">{selisih.toFixed(2)}</span>
+                                      </div>
+                                    </div>
+
+                                    {/* Tekanan & Suhu - Side by Side */}
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div>
+                                        <p className="text-xs text-gray-500">Tekanan</p>
+                                        <p className="text-sm font-medium">
+                                          {notaKecil.tekanan_operasi ? parseFloat(notaKecil.tekanan_operasi).toFixed(2) : 'N/A'} bar
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-gray-500">Suhu</p>
+                                        <p className="text-sm font-medium">
+                                          {notaKecil.temperatur_operasi ? parseFloat(notaKecil.temperatur_operasi).toFixed(2) : 'N/A'} °C
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    {/* Faktor Koreksi */}
+                                    <div>
+                                      <p className="text-xs text-gray-500">Faktor Koreksi (k)</p>
+                                      <p className="text-sm font-medium">
+                                        {notaKecil.k ? parseFloat(notaKecil.k).toFixed(6) : 'N/A'}
+                                      </p>
+                                    </div>
+
+                                    {/* Pemakaian - Highlighted */}
+                                    <div className="pt-2 border-t border-gray-100">
+                                      <p className="text-xs text-gray-500">Pemakaian</p>
+                                      <p className="text-lg font-bold text-purple-600">
+                                        {notaKecil.V ? parseFloat(notaKecil.V).toFixed(2) : 'N/A'} m³
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      ) : filterDO ? (
-        <div className="text-center py-8">
-          <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <p className="text-gray-500 text-lg">No nota kecils found for this delivery order</p>
-          <p className="text-gray-400 text-sm mt-2">
-            {filterCustomer ? 'Try adjusting your customer filter' : 'Nota kecils will appear here once drivers upload them for this delivery order'}
-          </p>
-        </div>
-      ) : null}
+        );
+      })}
 
       {/* Photo Modal */}
       {showPhotoModal && (

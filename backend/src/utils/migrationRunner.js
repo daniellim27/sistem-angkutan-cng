@@ -13,7 +13,7 @@ class MigrationRunner {
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
       max: 5,
-      ssl: {
+      ssl: process.env.DB_SSL === 'false' ? false : {
         rejectUnauthorized: false
       }
     });
@@ -27,7 +27,7 @@ class MigrationRunner {
       database: process.env.DB_NAME,
       dialect: 'postgres',
       logging: false,
-      dialectOptions: {
+      dialectOptions: process.env.DB_SSL === 'false' ? {} : {
         ssl: {
           require: true,
           rejectUnauthorized: false

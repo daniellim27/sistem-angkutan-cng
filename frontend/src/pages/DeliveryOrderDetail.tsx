@@ -82,12 +82,19 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
   const [deliveryOrder, setDeliveryOrder] = useState<DeliveryOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'details' | 'expenses'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'expenses' | 'receipts'>('details');
 
   // Expenses State
   const [expenses, setExpenses] = useState<any[]>([]);
   const [expensesLoading, setExpensesLoading] = useState(false);
   const [pendingExpenses, setPendingExpenses] = useState<any[]>([]);
+  
+  // Receipts State
+  const [receipts, setReceipts] = useState<any[]>([]);
+  const [receiptsLoading, setReceiptsLoading] = useState(false);
+  const [showReceiptDetailModal, setShowReceiptDetailModal] = useState(false);
+  const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
+  const [confirmingReceipt, setConfirmingReceipt] = useState(false);
   
   // Direct API data fetching (copied from working pages)
   const [budgetRequestsData, setBudgetRequestsData] = useState<any[]>([]);
@@ -112,8 +119,14 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
       fetchDeliveryOrder();
       fetchExpensesForDO();
       fetchBudgetRequestsForDO();
+      fetchReceiptsForDO();
     }
   }, [id]);
+
+  // Debug effect to log receipts state changes
+  useEffect(() => {
+    console.log('📋 Receipts state updated:', receipts);
+  }, [receipts]);
 
   // Fetch expenses for this delivery order using working API
   const fetchExpensesForDO = async () => {
@@ -146,6 +159,30 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
     } catch (error) {
       console.error('Error fetching budget requests:', error);
       setBudgetRequestsData([]);
+    }
+  };
+
+  // Fetch receipts for this delivery order
+  const fetchReceiptsForDO = async () => {
+    console.log('🔄 fetchReceiptsForDO called for DO ID:', id);
+    setReceiptsLoading(true);
+    try {
+      console.log('📡 Making API call to:', `/receipt-ocr/do/${id}`);
+      const response = await apiClient.get(`/receipt-ocr/do/${id}`);
+      console.log('📦 Full API response:', response);
+      console.log('📦 Response data:', response.data);
+      const receiptsData = response.data.data || response.data || [];
+      console.log('📋 Extracted receipts data:', receiptsData);
+      console.log('📋 Receipts array length:', receiptsData.length);
+      setReceipts(receiptsData);
+      console.log('✅ Receipts state updated');
+    } catch (error: any) {
+      console.error('❌ Error fetching receipts:', error);
+      console.error('❌ Error details:', error.response?.data);
+      setReceipts([]);
+    } finally {
+      setReceiptsLoading(false);
+      console.log('✅ fetchReceiptsForDO completed');
     }
   };
 
@@ -364,6 +401,16 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
             }`}
           >
             💰 Pengeluaran Driver
+          </button>
+          <button
+            onClick={() => setActiveTab('receipts')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'receipts'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            🧾 Receipt OCR {receipts.length > 0 && `(${receipts.length})`}
           </button>
         </nav>
       </div>
@@ -1137,6 +1184,474 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
                 No expenses recorded for this delivery order
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Receipts Tab Content */}
+      {activeTab === 'receipts' && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold text-gray-900">🧾 Driver Receipt OCR</h2>
+            <div className="text-sm text-gray-600">
+              {receipts.length} receipt{receipts.length !== 1 ? 's' : ''} uploaded
+            </div>
+          </div>
+
+          {receiptsLoading ? (
+            <div className="text-center py-12">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <p className="mt-2 text-gray-600">Loading receipts...</p>
+            </div>
+          ) : receipts.length > 0 ? (
+            <div className="grid grid-cols-1 gap-4">
+              {receipts.map((receipt: any) => (
+                <div
+                  key={receipt.id}
+                  className={`bg-white border-2 rounded-lg p-6 transition-all ${
+                    receipt.admin_confirmed
+                      ? 'border-green-300 bg-green-50'
+                      : receipt.is_verified
+                      ? 'border-yellow-300 bg-yellow-50'
+                      : 'border-gray-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 space-y-3">
+                      {/* Header */}
+                      <div className="flex items-center gap-3">
+                        <div className="text-2xl">🧾</div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900">
+                            Receipt #{receipt.id}
+                          </h3>
+                          <p className="text-sm text-gray-600">
+                            {new Date(receipt.filling_date || receipt.created_at).toLocaleDateString('id-ID', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
+                            {receipt.filling_time_start && receipt.filling_time_end && (
+                              <span className="ml-2">
+                                {receipt.filling_time_start} - {receipt.filling_time_end}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Details Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <div className="text-xs text-gray-500">Filling Station</div>
+                          <div className="font-medium text-gray-900">
+                            {receipt.filling_station_name || 'N/A'}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Customer</div>
+                          <div className="font-medium text-gray-900">
+                            {receipt.customer_name || 'N/A'}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Total Volume</div>
+                          <div className="font-bold text-blue-600">
+                            {parseFloat(receipt.total_volume || '0').toFixed(2)} m³
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">OCR Confidence</div>
+                          <div className="font-medium text-gray-900">
+                            {receipt.ocr_confidence_score 
+                              ? `${(parseFloat(receipt.ocr_confidence_score) * 100).toFixed(0)}%` 
+                              : 'N/A'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Status & Cost */}
+                      <div className="flex items-center gap-4">
+                        {receipt.admin_confirmed ? (
+                          <>
+                            <span className="px-3 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                              ✅ Admin Confirmed
+                            </span>
+                            {receipt.calculated_cost && (
+                              <div className="text-sm">
+                                <span className="text-gray-600">Cost: </span>
+                                <span className="font-bold text-green-600">
+                                  Rp {parseFloat(receipt.calculated_cost).toLocaleString('id-ID')}
+                                </span>
+                                <span className="text-xs text-gray-500 ml-2">
+                                  ({receipt.pricing_method?.toUpperCase()} @ Rp {parseFloat(
+                                    receipt.pricing_method === 'jisdor' ? receipt.jisdor_rate : receipt.fixed_rate_per_m3
+                                  ).toLocaleString('id-ID')}/m³)
+                                </span>
+                              </div>
+                            )}
+                          </>
+                        ) : receipt.is_verified ? (
+                          <span className="px-3 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">
+                            ⚠️ Pending Admin Confirmation
+                          </span>
+                        ) : (
+                          <span className="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">
+                            ⏳ Pending Driver Verification
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Driver Notes */}
+                      {receipt.driver_notes && (
+                        <div className="bg-gray-50 border border-gray-200 rounded p-3">
+                          <div className="text-xs text-gray-500 mb-1">Driver Notes:</div>
+                          <div className="text-sm text-gray-700">{receipt.driver_notes}</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex flex-col gap-2">
+                      {receipt.receipt_photo_url && (
+                        <a
+                          href={receipt.receipt_photo_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                        >
+                          📷 Photo
+                        </a>
+                      )}
+                      <button
+                        onClick={async () => {
+                          console.log('🔘 View Detail clicked for receipt ID:', receipt.id);
+                          try {
+                            console.log('📡 Fetching receipt detail from:', `/receipt-ocr/receipt/${receipt.id}`);
+                            const detailResponse = await apiClient.get(`/receipt-ocr/receipt/${receipt.id}`);
+                            console.log('📦 Receipt detail response:', detailResponse);
+                            console.log('📦 Receipt detail data:', detailResponse.data);
+                            const receiptData = detailResponse.data.data || detailResponse.data;
+                            console.log('📋 Extracted receipt data:', receiptData);
+                            setSelectedReceipt(receiptData);
+                            console.log('✅ Selected receipt set, opening modal...');
+                            setShowReceiptDetailModal(true);
+                            console.log('✅ Modal state set to true');
+                          } catch (error: any) {
+                            console.error('❌ Error fetching receipt detail:', error);
+                            console.error('❌ Error response:', error.response?.data);
+                            alert('Failed to load receipt details: ' + (error.response?.data?.message || error.message));
+                          }
+                        }}
+                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                      >
+                        👁️ View Detail
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-gray-50 rounded-lg">
+              <div className="text-4xl mb-4">🧾</div>
+              <p className="text-gray-500 text-lg">No receipts uploaded for this delivery order</p>
+              <p className="text-gray-400 text-sm mt-2">
+                Receipts will appear here once the driver uploads them via the mobile app
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Receipt Detail Modal */}
+      {showReceiptDetailModal && selectedReceipt && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-xl font-semibold text-gray-900">
+                🧾 Receipt Detail - #{selectedReceipt.id}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowReceiptDetailModal(false);
+                  setSelectedReceipt(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6">
+              {/* OCR Extracted Information */}
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900 mb-4">📋 OCR Extracted Information</h4>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-600">Filling Station:</span>
+                    <div className="font-medium text-gray-900">{selectedReceipt.filling_station_name || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Customer:</span>
+                    <div className="font-medium text-gray-900">{selectedReceipt.customer_name || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Date:</span>
+                    <div className="font-medium text-gray-900">
+                      {new Date(selectedReceipt.filling_date || selectedReceipt.created_at).toLocaleDateString('id-ID')}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Time:</span>
+                    <div className="font-medium text-gray-900">
+                      {selectedReceipt.filling_time_start && selectedReceipt.filling_time_end
+                        ? `${selectedReceipt.filling_time_start} - ${selectedReceipt.filling_time_end}`
+                        : 'N/A'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Initial Pressure:</span>
+                    <div className="font-medium text-gray-900">{selectedReceipt.initial_pressure || 'N/A'} bar</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Final Pressure:</span>
+                    <div className="font-medium text-gray-900">{selectedReceipt.final_pressure || 'N/A'} bar</div>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-gray-600">Total Volume:</span>
+                    <div className="text-xl font-bold text-blue-600">
+                      {parseFloat(selectedReceipt.total_volume || '0').toFixed(3)} m³
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Customer Signatory:</span>
+                    <div className="font-medium text-gray-900">{selectedReceipt.customer_signatory || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Provider Signatory:</span>
+                    <div className="font-medium text-gray-900">{selectedReceipt.provider_signatory || 'N/A'}</div>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-gray-600">OCR Confidence Score:</span>
+                    <div className="font-medium text-gray-900">
+                      {selectedReceipt.ocr_confidence_score 
+                        ? `${(parseFloat(selectedReceipt.ocr_confidence_score) * 100).toFixed(0)}%` 
+                        : 'N/A'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Receipt Photo */}
+              {selectedReceipt.receipt_photo_url && (
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">📷 Receipt Photo</h4>
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <img
+                      src={selectedReceipt.receipt_photo_url}
+                      alt="Receipt"
+                      className="w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => window.open(selectedReceipt.receipt_photo_url, '_blank')}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    Click image to view full size in new tab
+                  </p>
+                </div>
+              )}
+
+              {/* Pricing Configuration - Only show if not yet confirmed */}
+              {!selectedReceipt.admin_confirmed && (
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">💰 Pricing Configuration</h4>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">⚙️ Pricing Method:</label>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="pricing_method"
+                            value="jisdor"
+                            checked={(selectedReceipt as any).temp_pricing_method === 'jisdor'}
+                            onChange={(e) => setSelectedReceipt({
+                              ...selectedReceipt,
+                              temp_pricing_method: e.target.value,
+                              temp_rate: selectedReceipt.suggested_jisdor_rate
+                            })}
+                            className="w-4 h-4 text-blue-600"
+                          />
+                          <span className="text-sm">
+                            JISDOR Rate (Current: Rp {parseFloat(selectedReceipt.suggested_jisdor_rate || '15000').toLocaleString('id-ID')}/m³)
+                          </span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="pricing_method"
+                            value="fixed"
+                            checked={(selectedReceipt as any).temp_pricing_method === 'fixed'}
+                            onChange={(e) => setSelectedReceipt({
+                              ...selectedReceipt,
+                              temp_pricing_method: e.target.value,
+                              temp_rate: selectedReceipt.suggested_fixed_rate
+                            })}
+                            className="w-4 h-4 text-blue-600"
+                          />
+                          <span className="text-sm">
+                            Fixed Rate (Suggested: Rp {parseFloat(selectedReceipt.suggested_fixed_rate || '14500').toLocaleString('id-ID')}/m³)
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Rate per m³ (Rp):</label>
+                      <input
+                        type="number"
+                        value={(selectedReceipt as any).temp_rate || selectedReceipt.suggested_jisdor_rate || 15000}
+                        onChange={(e) => setSelectedReceipt({
+                          ...selectedReceipt,
+                          temp_rate: parseFloat(e.target.value) || 0
+                        })}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+
+                    <div className="bg-white border-2 border-blue-300 rounded p-4">
+                      <div className="text-sm text-gray-600 mb-1">Total Cost:</div>
+                      <div className="text-2xl font-bold text-blue-600">
+                        Rp {(parseFloat(selectedReceipt.total_volume || '0') * ((selectedReceipt as any).temp_rate || selectedReceipt.suggested_jisdor_rate || 15000)).toLocaleString('id-ID')}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        ({parseFloat(selectedReceipt.total_volume || '0').toFixed(2)} m³ × Rp {((selectedReceipt as any).temp_rate || selectedReceipt.suggested_jisdor_rate || 15000).toLocaleString('id-ID')}/m³)
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">📝 Admin Notes (Optional):</label>
+                      <textarea
+                        value={(selectedReceipt as any).temp_admin_notes || ''}
+                        onChange={(e) => setSelectedReceipt({
+                          ...selectedReceipt,
+                          temp_admin_notes: e.target.value
+                        })}
+                        rows={3}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Add any notes about this receipt confirmation..."
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Confirmation Info - Only show if confirmed */}
+              {selectedReceipt.admin_confirmed && (
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">✅ Confirmation Details</h4>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-2 text-sm">
+                    <div>
+                      <span className="text-gray-600">Pricing Method:</span>
+                      <span className="ml-2 font-medium text-gray-900">{selectedReceipt.pricing_method?.toUpperCase()}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Rate per m³:</span>
+                      <span className="ml-2 font-medium text-gray-900">
+                        Rp {parseFloat(selectedReceipt.pricing_method === 'jisdor' ? selectedReceipt.jisdor_rate : selectedReceipt.fixed_rate_per_m3).toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Total Cost:</span>
+                      <span className="ml-2 font-bold text-green-600">
+                        Rp {parseFloat(selectedReceipt.calculated_cost).toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Confirmed At:</span>
+                      <span className="ml-2 font-medium text-gray-900">
+                        {new Date(selectedReceipt.confirmed_at).toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                    {selectedReceipt.admin_notes && (
+                      <div>
+                        <span className="text-gray-600">Admin Notes:</span>
+                        <div className="mt-1 text-gray-900">{selectedReceipt.admin_notes}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowReceiptDetailModal(false);
+                  setSelectedReceipt(null);
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                {selectedReceipt.admin_confirmed ? 'Close' : 'Cancel'}
+              </button>
+              {!selectedReceipt.admin_confirmed && (
+                <button
+                  onClick={async () => {
+                    if (!selectedReceipt || confirmingReceipt) return;
+                    
+                    const pricingMethod = (selectedReceipt as any).temp_pricing_method || 'jisdor';
+                    const rate = (selectedReceipt as any).temp_rate || selectedReceipt.suggested_jisdor_rate || 15000;
+                    const adminNotes = (selectedReceipt as any).temp_admin_notes || '';
+
+                    if (rate <= 0) {
+                      alert('Please enter a valid rate');
+                      return;
+                    }
+
+                    if (!window.confirm(`Confirm this receipt with ${pricingMethod.toUpperCase()} pricing at Rp ${rate.toLocaleString('id-ID')}/m³?\n\nThis will calculate the cost and deduct it from the SPBG balance.`)) {
+                      return;
+                    }
+
+                    setConfirmingReceipt(true);
+                    try {
+                      await apiClient.post(`/receipt-ocr/${selectedReceipt.id}/confirm-admin`, {
+                        pricing_method: pricingMethod,
+                        rate_per_m3: rate,
+                        admin_notes: adminNotes
+                      });
+
+                      alert('Receipt confirmed successfully! The cost has been applied to the SPBG balance.');
+                      setShowReceiptDetailModal(false);
+                      setSelectedReceipt(null);
+                      fetchReceiptsForDO(); // Refresh the list
+                    } catch (error: any) {
+                      console.error('Error confirming receipt:', error);
+                      alert(error.response?.data?.message || 'Failed to confirm receipt');
+                    } finally {
+                      setConfirmingReceipt(false);
+                    }
+                  }}
+                  disabled={confirmingReceipt}
+                  className="bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+                >
+                  {confirmingReceipt ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Confirming...
+                    </>
+                  ) : (
+                    <>
+                      ✅ Confirm Receipt & Apply to SPBG
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
