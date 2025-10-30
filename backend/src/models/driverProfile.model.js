@@ -56,8 +56,8 @@ module.exports = (sequelize) => {
           msg: 'Address cannot be empty'
         },
         len: {
-          args: [10, 500],
-          msg: 'Address must be between 10 and 500 characters'
+          args: [1, 500],
+          msg: 'Address must be between 1 and 500 characters'
         }
       }
     },
