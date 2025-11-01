@@ -14,7 +14,7 @@ class ScrapingHelper {
     console.log('🧪 Starting scraping helper...');
     
     this.browser = await chromium.launch({
-      headless: false, // Show browser so you can see what's happening
+      headless: true, // Headless mode for server environments
       slowMo: 1000, // Slow down for visibility
     });
 

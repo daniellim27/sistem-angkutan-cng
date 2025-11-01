@@ -37,7 +37,7 @@ class InovatracksScraper {
       await this.cleanup();
       
       this.browser = await chromium.launch({
-        headless: process.env.NODE_ENV === 'production', // Show browser in development
+        headless: true, // Always headless for stability in production/development
         slowMo: 100, // Slow down actions for stability
         args: [
           '--no-sandbox',
