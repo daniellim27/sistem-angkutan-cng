@@ -16,6 +16,19 @@ class ScrapingHelper {
     this.browser = await chromium.launch({
       headless: true, // Headless mode for server environments
       slowMo: 1000, // Slow down for visibility
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--memory-pressure-off',
+        '--max_old_space_size=2048'
+      ]
     });
 
     this.page = await this.browser.newPage();
