@@ -9,7 +9,7 @@
     "dev": "nodemon src/server.js",
     "build": "echo 'No build step required'",
     "vercel-build": "echo 'No build step required'",
-    "render-build": "npm install",
+    "render-build": "npm install && npx playwright install --with-deps chromium",
     "migrate": "node scripts/migrate.js",
     "migrate:status": "node scripts/migrate-status.js",
     "migrate:mark-existing": "node scripts/mark-existing-migrations.js",
