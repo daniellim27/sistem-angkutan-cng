@@ -35,21 +35,34 @@ export interface ApiResponse<T> {
  */
 export const getCustomerLocationsWithCoords = async (): Promise<CustomerLocation[]> => {
   try {
-    const response = await apiClient.get<ApiResponse<CustomerLocation[]>>('/customers/locations-with-coords');
+    console.log('🔍 API Call: Fetching customer locations with coords...');
+    
+    // Add cache-busting parameter to force fresh data
+    const response = await apiClient.get<ApiResponse<CustomerLocation[]>>('/customers/locations-with-coords', {
+      params: { _t: Date.now() }
+    });
+    
+    console.log('📡 Raw API Response:', {
+      status: response.status,
+      data: response.data,
+      headers: response.headers
+    });
     
     // Check if response.data has the expected structure
     if (response.data && Array.isArray(response.data)) {
       // Direct array response
+      console.log('✅ Returning direct array:', response.data.length, 'items');
       return response.data;
     } else if (response.data && response.data.data) {
       // Wrapped response
+      console.log('✅ Returning wrapped data:', response.data.data.length, 'items');
       return response.data.data;
     } else {
       console.error('❌ Unexpected response structure:', response.data);
       return [];
     }
   } catch (error) {
-    console.error('Error fetching customer locations with coordinates:', error);
+    console.error('❌ Error fetching customer locations with coordinates:', error);
     throw error;
   }
 };

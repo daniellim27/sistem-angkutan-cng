@@ -374,6 +374,7 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
   // Customer locations state
   const [customerLocations, setCustomerLocations] = useState<CustomerLocation[]>([]);
   const [loadingCustomerLocations, setLoadingCustomerLocations] = useState(false);
+  const [updatingCustomerCoordinates, setUpdatingCustomerCoordinates] = useState(false);
   
   // Show/hide toggles
   const [showCustomerLocations, setShowCustomerLocations] = useState(false);
@@ -503,14 +504,55 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
   const fetchCustomerLocations = useCallback(async () => {
     try {
       setLoadingCustomerLocations(true);
+      console.log('🔍 Fetching customer locations...');
       const locations = await getCustomerLocationsWithCoords();
+      console.log('✅ Customer locations received:', {
+        count: locations.length,
+        sample: locations[0],
+        allData: locations
+      });
       setCustomerLocations(locations);
+      
+      if (locations.length === 0) {
+        console.warn('⚠️ No customer locations with coordinates found in database');
+      }
     } catch (err: any) {
       console.error('❌ Error fetching customer locations:', err);
+      setCustomerLocations([]);
     } finally {
       setLoadingCustomerLocations(false);
     }
   }, []);
+
+  // Update customer coordinates using geocoding
+  const handleUpdateCustomerCoordinates = useCallback(async () => {
+    if (!window.confirm('This will geocode all customers without coordinates. This may take a few minutes. Continue?')) {
+      return;
+    }
+    
+    try {
+      setUpdatingCustomerCoordinates(true);
+      console.log('🔍 Updating customer coordinates...');
+      
+      const response = await apiClient.post('/customers/update-coordinates');
+      
+      if (response.data.success) {
+        alert(`✅ Successfully updated ${response.data.data.updated} customer location(s)!\n\nTotal: ${response.data.data.total}\nUpdated: ${response.data.data.updated}\nFailed: ${response.data.data.failed}`);
+        
+        // Refresh customer locations
+        if (showCustomerLocations) {
+          fetchCustomerLocations();
+        }
+      } else {
+        alert('❌ Failed to update customer coordinates: ' + response.data.message);
+      }
+    } catch (err: any) {
+      console.error('❌ Error updating customer coordinates:', err);
+      alert('❌ Error updating customer coordinates: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setUpdatingCustomerCoordinates(false);
+    }
+  }, [showCustomerLocations, fetchCustomerLocations]);
 
   // Fetch delivery order data and create location markers
   const fetchDeliveryOrderLocations = useCallback(async () => {
@@ -938,9 +980,35 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
           {showCustomerLocations && loadingCustomerLocations && (
             <span className="text-gray-500">Loading customer locations...</span>
           )}
+          
+          {showCustomerLocations && !loadingCustomerLocations && customerLocations.length === 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-amber-600 text-xs">⚠️ No customer locations with coordinates found</span>
+              <button
+                onClick={handleUpdateCustomerCoordinates}
+                disabled={updatingCustomerCoordinates}
+                className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Geocode customer addresses to add map coordinates"
+              >
+                {updatingCustomerCoordinates ? 'Updating...' : '📍 Add Coordinates'}
+              </button>
+            </div>
+          )}
+          
+          {showCustomerLocations && !loadingCustomerLocations && customerLocations.length > 0 && (
+            <span className="text-green-600 text-xs">✓ {customerLocations.length} customer location{customerLocations.length !== 1 ? 's' : ''} loaded</span>
+          )}
 
           {showSPBGLocations && loadingGasStations && (
             <span className="text-gray-500">Loading SPBG locations...</span>
+          )}
+          
+          {showSPBGLocations && !loadingGasStations && gasStations.length === 0 && (
+            <span className="text-amber-600 text-xs">⚠️ No SPBG locations found</span>
+          )}
+          
+          {showSPBGLocations && !loadingGasStations && gasStations.length > 0 && (
+            <span className="text-green-600 text-xs">✓ {gasStations.length} SPBG location{gasStations.length !== 1 ? 's' : ''} loaded</span>
           )}
 
           {loadingGasStations && (
