@@ -71,6 +71,7 @@ apiClient.interceptors.response.use(
       response.config.url?.includes("/gas-stations") ||
       response.config.url?.includes("/deposit-groups/") ||
       response.config.url?.includes("/customers/locations-with-coords") ||
+      response.config.url?.includes("/customers/update-coordinates") ||
       response.config.url?.includes("/ocr/")
     ) {
       return response; // Return full response for these endpoints

@@ -500,21 +500,30 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     }
   }, []);
 
-  // Customer locations fetching function
+  // Customer locations fetching function - matching SPBG pattern
   const fetchCustomerLocations = useCallback(async () => {
     try {
       setLoadingCustomerLocations(true);
       console.log('🔍 Fetching customer locations...');
-      const locations = await getCustomerLocationsWithCoords();
-      console.log('✅ Customer locations received:', {
-        count: locations.length,
-        sample: locations[0],
-        allData: locations
-      });
-      setCustomerLocations(locations);
       
-      if (locations.length === 0) {
-        console.warn('⚠️ No customer locations with coordinates found in database');
+      // Use the same pattern as SPBG - direct API call
+      const response = await apiClient.get('/customers/locations-with-coords');
+      
+      if (response.data && response.data.success && response.data.data) {
+        const locations = response.data.data;
+        console.log('✅ Customer locations received:', {
+          count: locations.length,
+          sample: locations[0],
+          allData: locations
+        });
+        setCustomerLocations(locations);
+        
+        if (locations.length === 0) {
+          console.warn('⚠️ No customer locations with coordinates found in database');
+        }
+      } else {
+        console.error('❌ API response not successful:', response.data);
+        setCustomerLocations([]);
       }
     } catch (err: any) {
       console.error('❌ Error fetching customer locations:', err);
@@ -525,34 +534,56 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
   }, []);
 
   // Update customer coordinates using geocoding
-  const handleUpdateCustomerCoordinates = useCallback(async () => {
-    if (!window.confirm('This will geocode all customers without coordinates. This may take a few minutes. Continue?')) {
-      return;
+  const handleUpdateCustomerCoordinates = useCallback(async (
+    options: { skipConfirm?: boolean; silent?: boolean } = {}
+  ) => {
+    const { skipConfirm = false, silent = false } = options;
+    if (!skipConfirm) {
+      if (!window.confirm('This will geocode all customers without coordinates. This may take a few minutes. Continue?')) {
+        return;
+      }
     }
-    
     try {
       setUpdatingCustomerCoordinates(true);
       console.log('🔍 Updating customer coordinates...');
-      
       const response = await apiClient.post('/customers/update-coordinates');
+      console.log('📡 Update coordinates response:', response.data);
       
-      if (response.data.success) {
-        alert(`✅ Successfully updated ${response.data.data.updated} customer location(s)!\n\nTotal: ${response.data.data.total}\nUpdated: ${response.data.data.updated}\nFailed: ${response.data.data.failed}`);
-        
-        // Refresh customer locations
+      if (response.data && response.data.success) {
+        if (!silent) {
+          const data = response.data.data || {};
+          alert(`✅ Successfully updated ${data.updated || 0} customer location(s)!\n\nTotal: ${data.total || 0}\nUpdated: ${data.updated || 0}\nFailed: ${data.failed || 0}`);
+        }
         if (showCustomerLocations) {
-          fetchCustomerLocations();
+          await fetchCustomerLocations();
         }
       } else {
-        alert('❌ Failed to update customer coordinates: ' + response.data.message);
+        const errorMsg = response.data?.message || response.data?.error || 'Unknown error occurred';
+        console.error('❌ Update coordinates failed:', response.data);
+        if (!silent) {
+          alert('❌ Failed to update customer coordinates: ' + errorMsg);
+        }
       }
     } catch (err: any) {
       console.error('❌ Error updating customer coordinates:', err);
-      alert('❌ Error updating customer coordinates: ' + (err.response?.data?.message || err.message));
+      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message || 'Network error occurred';
+      if (!silent) {
+        alert('❌ Error updating customer coordinates: ' + errorMsg);
+      }
     } finally {
       setUpdatingCustomerCoordinates(false);
     }
   }, [showCustomerLocations, fetchCustomerLocations]);
+
+  // When toggling customer locations on, ensure coordinates are updated first (SPBG-like behavior)
+  const handleToggleCustomerLocations = useCallback(async (checked: boolean) => {
+    setShowCustomerLocations(checked);
+    if (!checked) return;
+    try {
+      await handleUpdateCustomerCoordinates({ skipConfirm: true, silent: true });
+    } catch {}
+    await fetchCustomerLocations();
+  }, [handleUpdateCustomerCoordinates, fetchCustomerLocations]);
 
   // Fetch delivery order data and create location markers
   const fetchDeliveryOrderLocations = useCallback(async () => {
@@ -842,7 +873,7 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     }
   }, [showSPBGLocations, fetchGasStations]);
 
-  // Effect for customer locations
+  // Effect for customer locations - matching SPBG pattern
   useEffect(() => {
     if (showCustomerLocations) {
       fetchCustomerLocations();
@@ -957,7 +988,7 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
             <input
               type="checkbox"
               checked={showCustomerLocations}
-              onChange={(e) => setShowCustomerLocations(e.target.checked)}
+              onChange={(e) => handleToggleCustomerLocations(e.target.checked)}
               className="rounded"
             />
             <span>Show Customer Locations</span>
@@ -982,17 +1013,7 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
           )}
           
           {showCustomerLocations && !loadingCustomerLocations && customerLocations.length === 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-amber-600 text-xs">⚠️ No customer locations with coordinates found</span>
-              <button
-                onClick={handleUpdateCustomerCoordinates}
-                disabled={updatingCustomerCoordinates}
-                className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Geocode customer addresses to add map coordinates"
-              >
-                {updatingCustomerCoordinates ? 'Updating...' : '📍 Add Coordinates'}
-              </button>
-            </div>
+            <span className="text-amber-600 text-xs">⚠️ No customer locations with coordinates found</span>
           )}
           
           {showCustomerLocations && !loadingCustomerLocations && customerLocations.length > 0 && (
@@ -1058,6 +1079,9 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
               )}
               {gasStations.length > 0 && (
                 <span>⛽ Gas stations: {gasStations.length}</span>
+              )}
+              {showCustomerLocations && customerLocations.length > 0 && (
+                <span>👤 Customers: {customerLocations.length}</span>
               )}
               {locationMarkers.length > 0 && (
                 <span>📍 Delivery locations: {locationMarkers.length}</span>

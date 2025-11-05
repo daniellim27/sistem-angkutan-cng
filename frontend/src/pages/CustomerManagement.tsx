@@ -132,6 +132,24 @@ const CustomerManagement: React.FC = () => {
             ? "Customer updated successfully"
             : "Customer created successfully"
         );
+        // Auto-geocode customers without coordinates so Live Tracking can show markers
+        try {
+          const geocodeRes = await fetch(
+            `${process.env.REACT_APP_API_URL}/customers/update-coordinates`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+          const geocodeData = await geocodeRes.json().catch(() => null);
+          if (geocodeRes.ok && geocodeData?.success) {
+            toast.success(
+              `Updated ${geocodeData.data?.updated || 0} customer coordinate(s)`
+            );
+          }
+        } catch {}
         setShowForm(false);
         setEditingCustomer(null);
         resetForm();
