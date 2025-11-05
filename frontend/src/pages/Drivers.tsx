@@ -173,6 +173,7 @@ const DriversPage = () => {
           <thead>
             <tr>
               <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase">Full Name</th>
+              <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase">Username</th>
               <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase">Phone Number</th>
               <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase">SIM Expiry</th>
               <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
@@ -190,6 +191,9 @@ const DriversPage = () => {
                 <tr key={driver.id}>
                   <td className="px-5 py-4 border-b border-gray-200 bg-white text-sm">
                     <p className="text-gray-900">{driver.driverProfile.full_name}</p>
+                  </td>
+                  <td className="px-5 py-4 border-b border-gray-200 bg-white text-sm">
+                    <p className="text-gray-900">{driver.username}</p>
                   </td>
                   <td className="px-5 py-4 border-b border-gray-200 bg-white text-sm">
                     <p className="text-gray-900">{driver.driverProfile.phone}</p>
