@@ -14,9 +14,33 @@ const DriverCreatePage = () => {
       await apiClient.post("/drivers", data);
       navigate("/drivers");
     } catch (err) {
-      // Error handling with user feedback
-      alert("Failed to create driver");
-      console.error("Error creating driver:", err);
+      // Show detailed backend error if available
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const axiosErr = err as any;
+      const status = axiosErr?.response?.status;
+      const data = axiosErr?.response?.data;
+      const serverMessage = data?.message;
+      const notice = data?.notice;
+      const details = data?.details;
+      const fieldErrors = Array.isArray(data?.errors)
+        ? data.errors
+            .map((e: { field?: string; message?: string }) =>
+              [e.field, e.message].filter(Boolean).join(": ")
+            )
+            .join("\n")
+        : undefined;
+
+      const parts = [
+        "Failed to create driver",
+        status ? `(HTTP ${status})` : undefined,
+        serverMessage,
+        notice,
+        details,
+        fieldErrors,
+      ].filter(Boolean);
+
+      alert(parts.join("\n"));
+      console.error("Error creating driver:", axiosErr);
       setIsLoading(false);
     }
   };
