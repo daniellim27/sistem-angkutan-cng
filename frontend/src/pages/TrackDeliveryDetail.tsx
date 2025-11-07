@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiClient from '../api/axiosConfig';
 import LiveTrackingMap from '../components/LiveTrackingMap';
+import { getImageUrl } from '../utils/imageUtils';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000';
 
@@ -366,7 +367,7 @@ const TrackDeliveryDetail: React.FC = () => {
                           
                           <div className="mb-3">
                             <img
-                              src={`${BACKEND_URL}/${photoUrl}`}
+                              src={getImageUrl(photoUrl)}
                               alt={`Surat Jalan ${index + 1}`}
                               className="w-full h-28 object-cover rounded-md border border-gray-200"
                               onError={(e) => {
@@ -377,7 +378,7 @@ const TrackDeliveryDetail: React.FC = () => {
                           
                           <div className="text-center">
                             <a
-                              href={`${BACKEND_URL}/${photoUrl}`}
+                              href={getImageUrl(photoUrl)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-xs font-medium"

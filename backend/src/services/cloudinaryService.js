@@ -1,5 +1,6 @@
 const cloudinary = require('cloudinary').v2;
 const { Readable } = require('stream');
+const path = require('path');
 
 class CloudinaryService {
   constructor() {
@@ -157,6 +158,153 @@ class CloudinaryService {
 
     } catch (error) {
       console.error('Error uploading image to Cloudinary:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload surat jalan image to Cloudinary
+   */
+  async uploadSuratJalanImage(file, deliveryOrderId) {
+    try {
+      // Mock mode for testing without credentials
+      if (this.isMockMode()) {
+        console.log('🔧 Mock mode: Simulating Cloudinary upload for surat jalan');
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+        const filename = `surat-jalan-photo-${uniqueSuffix}`;
+        const mockPublicId = `mock_surat_jalan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        return {
+          publicId: mockPublicId,
+          filename: filename,
+          secureUrl: `https://res.cloudinary.com/mock-cloud/image/upload/v${Date.now()}/${mockPublicId}.jpg`,
+          folderPath: `surat-jalan-photos/${deliveryOrderId}`,
+          uploadedAt: new Date().toISOString()
+        };
+      }
+
+      // Create folder structure for organization
+      const folderPath = `surat-jalan-photos/${deliveryOrderId}`;
+      
+      // Generate filename
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      let fileExtension = '';
+      
+      // Determine file extension from MIME type or original name
+      if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/jpg') {
+        fileExtension = '.jpg';
+      } else if (file.mimetype === 'image/png') {
+        fileExtension = '.png';
+      } else if (file.originalname) {
+        fileExtension = path.extname(file.originalname) || '.jpg';
+      } else {
+        fileExtension = '.jpg'; // default fallback
+      }
+      
+      const filename = `surat-jalan-photo-${uniqueSuffix}${fileExtension}`;
+      
+      // Convert buffer to stream if needed
+      let fileStream;
+      if (file.buffer) {
+        fileStream = Readable.from(file.buffer);
+      } else if (file.path) {
+        fileStream = file.path;
+      } else {
+        throw new Error('No file data provided');
+      }
+
+      // Try direct upload first (simpler and more reliable)
+      try {
+        console.log(`📸 Uploading surat jalan to Cloudinary: ${filename}`);
+        console.log(`📸 File info:`, {
+          hasBuffer: !!file.buffer,
+          hasPath: !!file.path,
+          mimetype: file.mimetype,
+          size: file.buffer ? file.buffer.length : 'unknown'
+        });
+
+        let uploadOptions = {
+          folder: folderPath,
+          public_id: filename,
+          resource_type: 'image',
+          quality: 'auto',
+          fetch_format: 'auto',
+          transformation: [
+            { width: 1920, height: 1080, crop: 'limit' },
+            { quality: 'auto:good' }
+          ]
+        };
+
+        let result;
+        if (file.buffer) {
+          // Upload from buffer
+          result = await cloudinary.uploader.upload(
+            `data:${file.mimetype};base64,${file.buffer.toString('base64')}`,
+            uploadOptions
+          );
+        } else if (file.path) {
+          // Upload from file path
+          result = await cloudinary.uploader.upload(file.path, uploadOptions);
+        } else {
+          throw new Error('No file data provided');
+        }
+
+        console.log(`✅ Uploaded surat jalan image: ${filename} (ID: ${result.public_id})`);
+        return {
+          publicId: result.public_id,
+          filename: filename,
+          secureUrl: result.secure_url,
+          folderPath: folderPath,
+          uploadedAt: new Date().toISOString()
+        };
+
+      } catch (uploadError) {
+        console.error('Direct upload failed, trying stream upload:', uploadError.message);
+        
+        // Fallback to stream upload
+        return new Promise((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            {
+              folder: folderPath,
+              public_id: filename,
+              resource_type: 'image',
+              quality: 'auto',
+              fetch_format: 'auto'
+            },
+            (error, result) => {
+              if (error) {
+                console.error('Stream upload also failed:', error);
+                reject(error);
+              } else {
+                console.log(`✅ Stream uploaded surat jalan image: ${filename} (ID: ${result.public_id})`);
+                resolve({
+                  publicId: result.public_id,
+                  filename: filename,
+                  secureUrl: result.secure_url,
+                  folderPath: folderPath,
+                  uploadedAt: new Date().toISOString()
+                });
+              }
+            }
+          );
+
+          // Pipe the file data to the upload stream
+          if (file.buffer) {
+            const bufferStream = Readable.from(file.buffer);
+            bufferStream.pipe(uploadStream);
+          } else if (file.path) {
+            const fs = require('fs');
+            const fileStream = fs.createReadStream(file.path);
+            fileStream.pipe(uploadStream);
+          } else {
+            reject(new Error('No file data provided'));
+          }
+        });
+      }
+
+    } catch (error) {
+      console.error('Error uploading surat jalan image to Cloudinary:', error);
       throw error;
     }
   }

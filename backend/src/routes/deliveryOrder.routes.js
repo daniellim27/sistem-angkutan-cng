@@ -50,38 +50,7 @@ const upload = multer({
 });
 
 // === SETUP MULTER UNTUK SURAT JALAN PHOTOS (DRIVER) ===
-const suratJalanPhotoDir = "uploads/surat_jalan_photos";
-
-// === SETUP MULTER UNTUK NOTA KECIL PHOTOS ===
-const notaKecilPhotoDir = "uploads/nota_kecil";
-
-const suratJalanPhotoStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    fs.mkdirSync(suratJalanPhotoDir, { recursive: true });
-    cb(null, suratJalanPhotoDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    
-    // Handle blob URLs and get proper file extension
-    let fileExtension = path.extname(file.originalname);
-    if (!fileExtension || file.originalname.includes('blob:')) {
-      // If no extension or blob URL, determine from MIME type
-      if (file.mimetype === 'image/jpeg') {
-        fileExtension = '.jpg';
-      } else if (file.mimetype === 'image/png') {
-        fileExtension = '.png';
-      } else if (file.mimetype === 'application/pdf') {
-        fileExtension = '.pdf';
-      } else {
-        fileExtension = '.jpg'; // default fallback
-      }
-    }
-    
-    cb(null, "surat-jalan-photo-" + uniqueSuffix + fileExtension);
-  },
-});
-
+// Using memory storage for Cloudinary upload
 const suratJalanPhotoFilter = (req, file, cb) => {
   const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png'];
   
@@ -108,10 +77,13 @@ const suratJalanPhotoFilter = (req, file, cb) => {
 };
 
 const suratJalanUpload = multer({
-  storage: suratJalanPhotoStorage,
+  storage: multer.memoryStorage(), // Use memory storage for Cloudinary
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB untuk foto
   fileFilter: suratJalanPhotoFilter,
 });
+
+// === SETUP MULTER UNTUK NOTA KECIL PHOTOS ===
+const notaKecilPhotoDir = "uploads/nota_kecil";
 
 // === MULTER UNTUK NOTA KECIL PHOTOS ===
 const notaKecilPhotoStorage = multer.diskStorage({

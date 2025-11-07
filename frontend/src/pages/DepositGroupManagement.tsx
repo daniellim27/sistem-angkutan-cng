@@ -3,24 +3,9 @@ import React, { useState, useEffect } from 'react';
 import apiClient from '../api/axiosConfig';
 import { GasStationApi } from '../api/gasStationApi';
 import { convertMoneyToVolume, formatVolume } from '../utils/volumeConversionUtils';
+import { getImageUrl } from '../utils/imageUtils';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-
-// Helper function to construct proper image URL
-const getImageUrl = (photoUrl: string) => {
-  if (!photoUrl) return '';
-  
-  // If photoUrl already includes the full URL, return as is
-  if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
-    return photoUrl;
-  }
-  
-  // Remove leading slash if present to avoid double slashes
-  const cleanPath = photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl;
-  
-  // Construct the full URL
-  return `${BACKEND_URL}/${cleanPath}`;
-};
 
 interface DeliveryOrder {
   id: number;

@@ -53,20 +53,7 @@ exports.confirmLoad = async (req, res, next) => {
     //   });
     // }
 
-    // Process file upload - handle both single file and multiple files
-    let surat_jalan_photo_url = [];
-    
-    if (suratJalanFiles.length > 0) {
-      // Multiple files uploaded
-      surat_jalan_photo_url = suratJalanFiles.map((f) =>
-        f.path.replace(/\\/g, "/")
-      );
-    } else if (suratJalanFile) {
-      // Single file uploaded  
-      surat_jalan_photo_url = [suratJalanFile.path.replace(/\\/g, "/")];
-    }
-
-    // Cari delivery order
+    // Cari delivery order first
     const deliveryOrder = await DeliveryOrder.findOne({
       where: {
         id,
@@ -79,6 +66,42 @@ exports.confirmLoad = async (req, res, next) => {
         message:
           "Delivery Order tidak ditemukan atau Anda tidak berhak mengaksesnya.",
       });
+    }
+
+    // Process file upload to Cloudinary - handle both single file and multiple files
+    let surat_jalan_photo_url = [];
+    
+    if (suratJalanFiles.length > 0 || suratJalanFile) {
+      const cloudinaryService = require('../services/cloudinaryService');
+      const filesToUpload = suratJalanFiles.length > 0 ? suratJalanFiles : (suratJalanFile ? [suratJalanFile] : []);
+      
+      try {
+        for (const file of filesToUpload) {
+          // Check if file has buffer (memory storage) or path (disk storage - backward compatibility)
+          if (!file.buffer && !file.path) {
+            console.warn('Skipping file without buffer or path:', file);
+            continue;
+          }
+
+          console.log(`Uploading surat jalan photo to Cloudinary:`, {
+            originalname: file.originalname,
+            mimetype: file.mimetype,
+            size: file.buffer ? file.buffer.length : (file.size || 'unknown'),
+            hasBuffer: !!file.buffer,
+            hasPath: !!file.path
+          });
+
+          const uploadResult = await cloudinaryService.uploadSuratJalanImage(file, id);
+          surat_jalan_photo_url.push(uploadResult.secureUrl);
+          
+          console.log(`✅ Uploaded to Cloudinary: ${uploadResult.secureUrl}`);
+        }
+      } catch (uploadError) {
+        console.error("Error uploading to Cloudinary:", uploadError);
+        return res.status(500).json({
+          message: "Gagal mengunggah foto surat jalan ke Cloudinary: " + uploadError.message,
+        });
+      }
     }
 
     // Verifikasi status - Driver should be able to confirm load when at SPBU
@@ -160,6 +183,7 @@ exports.uploadSuratJalanPhoto = async (req, res, next) => {
   try {
     const { id } = req.params;
     const driverId = req.user.id;
+    const cloudinaryService = require('../services/cloudinaryService');
 
     console.log("Upload surat jalan photo request:", {
       id,
@@ -180,17 +204,7 @@ exports.uploadSuratJalanPhoto = async (req, res, next) => {
       });
     }
 
-    // Process file upload - handle multiple files
-    let surat_jalan_photo_url = [];
-    
-    if (suratJalanFiles.length > 0) {
-      // Multiple files uploaded
-      surat_jalan_photo_url = suratJalanFiles.map((f) =>
-        f.path.replace(/\\/g, "/")
-      );
-    }
-
-    // Cari delivery order
+    // Cari delivery order first
     const deliveryOrder = await DeliveryOrder.findOne({
       where: {
         id,
@@ -205,6 +219,29 @@ exports.uploadSuratJalanPhoto = async (req, res, next) => {
       });
     }
 
+    // Process file upload to Cloudinary - handle multiple files
+    let surat_jalan_photo_url = [];
+    
+    try {
+      for (const file of suratJalanFiles) {
+        console.log(`Uploading surat jalan photo to Cloudinary:`, {
+          originalname: file.originalname,
+          mimetype: file.mimetype,
+          size: file.buffer ? file.buffer.length : 'unknown'
+        });
+
+        const uploadResult = await cloudinaryService.uploadSuratJalanImage(file, id);
+        surat_jalan_photo_url.push(uploadResult.secureUrl);
+        
+        console.log(`✅ Uploaded to Cloudinary: ${uploadResult.secureUrl}`);
+      }
+    } catch (uploadError) {
+      console.error("Error uploading to Cloudinary:", uploadError);
+      return res.status(500).json({
+        message: "Gagal mengunggah foto surat jalan ke Cloudinary: " + uploadError.message,
+      });
+    }
+
     // Update delivery order with surat jalan photos
     const existingPhotos = deliveryOrder.surat_jalan_photo_url || [];
     const updatedPhotos = [...existingPhotos, ...surat_jalan_photo_url];
@@ -215,29 +252,12 @@ exports.uploadSuratJalanPhoto = async (req, res, next) => {
 
     // Process OCR on the first uploaded photo
     let ocrResult = null;
-    if (suratJalanFiles.length > 0) {
+    if (suratJalanFiles.length > 0 && suratJalanFiles[0].buffer) {
       try {
         console.log("Starting OCR processing for surat jalan...");
-        const firstPhotoPath = suratJalanFiles[0].path;
+        const firstPhoto = suratJalanFiles[0];
+        const imageBuffer = firstPhoto.buffer;
         
-        // Check if file exists and resolve path correctly
-        let fullPath = firstPhotoPath;
-        if (!path.isAbsolute(firstPhotoPath)) {
-          // For uploaded files, the path should be relative to project root
-          fullPath = path.join(__dirname, '../../..', firstPhotoPath);
-        }
-        
-        console.log('Resolving upload file path:', {
-          original: firstPhotoPath,
-          resolved: fullPath,
-          exists: fs.existsSync(fullPath)
-        });
-        
-        if (!fs.existsSync(fullPath)) {
-          throw new Error(`Surat jalan photo file not found: ${fullPath}`);
-        }
-        
-        const imageBuffer = fs.readFileSync(fullPath);
         console.log(`Image buffer size: ${imageBuffer.length} bytes`);
         
         // Check OCR service configuration
@@ -355,33 +375,66 @@ exports.retrySuratJalanOCR = async (req, res, next) => {
     // Process OCR on the first photo
     let ocrResult = null;
     try {
-      const firstPhotoPath = deliveryOrder.surat_jalan_photo_url[0];
+      const firstPhotoUrl = deliveryOrder.surat_jalan_photo_url[0];
+      let imageBuffer;
       
-      // Check if file exists (handle both relative and absolute paths)
-      let fullPath = firstPhotoPath;
-      if (!path.isAbsolute(firstPhotoPath)) {
-        // Handle different possible path formats
-        if (firstPhotoPath.startsWith('uploads/')) {
-          // Path like "uploads/surat_jalan_photos/file.jpg" - relative to backend directory
-          fullPath = path.join(__dirname, '../../..', firstPhotoPath);
-        } else {
-          // Path like "surat_jalan_photos/file.jpg" - relative to uploads directory
-          fullPath = path.join(__dirname, '../../../uploads', firstPhotoPath);
+      // Check if it's a Cloudinary URL or local file path
+      if (firstPhotoUrl.startsWith('http://') || firstPhotoUrl.startsWith('https://')) {
+        // Cloudinary URL - fetch the image
+        console.log('Fetching image from Cloudinary URL:', firstPhotoUrl);
+        const https = require('https');
+        const http = require('http');
+        const url = require('url');
+        
+        const imageUrl = firstPhotoUrl;
+        const protocol = imageUrl.startsWith('https') ? https : http;
+        
+        imageBuffer = await new Promise((resolve, reject) => {
+          protocol.get(imageUrl, (response) => {
+            if (response.statusCode !== 200) {
+              reject(new Error(`Failed to fetch image: ${response.statusCode}`));
+              return;
+            }
+            
+            const chunks = [];
+            response.on('data', (chunk) => chunks.push(chunk));
+            response.on('end', () => {
+              resolve(Buffer.concat(chunks));
+            });
+            response.on('error', reject);
+          }).on('error', reject);
+        });
+        
+        console.log(`Fetched image from Cloudinary, buffer size: ${imageBuffer.length} bytes`);
+      } else {
+        // Local file path - read from filesystem (backward compatibility)
+        console.log('Reading image from local file path:', firstPhotoUrl);
+        
+        let fullPath = firstPhotoUrl;
+        if (!path.isAbsolute(firstPhotoUrl)) {
+          // Handle different possible path formats
+          if (firstPhotoUrl.startsWith('uploads/')) {
+            // Path like "uploads/surat_jalan_photos/file.jpg" - relative to backend directory
+            fullPath = path.join(__dirname, '../../..', firstPhotoUrl);
+          } else {
+            // Path like "surat_jalan_photos/file.jpg" - relative to uploads directory
+            fullPath = path.join(__dirname, '../../../uploads', firstPhotoUrl);
+          }
         }
+        
+        console.log('Resolving file path:', {
+          original: firstPhotoUrl,
+          resolved: fullPath,
+          exists: fs.existsSync(fullPath)
+        });
+        
+        if (!fs.existsSync(fullPath)) {
+          throw new Error(`Surat jalan photo file not found: ${fullPath}`);
+        }
+        
+        imageBuffer = fs.readFileSync(fullPath);
+        console.log(`Read image from local file, buffer size: ${imageBuffer.length} bytes`);
       }
-      
-      console.log('Resolving file path:', {
-        original: firstPhotoPath,
-        resolved: fullPath,
-        exists: fs.existsSync(fullPath)
-      });
-      
-      if (!fs.existsSync(fullPath)) {
-        throw new Error(`Surat jalan photo file not found: ${fullPath}`);
-      }
-      
-      const imageBuffer = fs.readFileSync(fullPath);
-      console.log(`Processing image buffer size: ${imageBuffer.length} bytes`);
       
       // Check OCR service configuration
       const config = ocrService.checkConfiguration();

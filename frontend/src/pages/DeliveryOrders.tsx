@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import apiClient from "../api/axiosConfig";
 import { formatDeliveryOrdersForExport, exportToExcel, exportToCSV } from "../utils/exportUtils";
+import { getImageUrl } from "../utils/imageUtils";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -731,7 +732,7 @@ const DeliveryOrdersPage = () => {
                           {Array.isArray(dOrder.surat_jalan_photo_url) && dOrder.surat_jalan_photo_url.map((url, idx) => (
                             <a
                               key={`sj-${idx}`}
-                              href={`${BACKEND_URL}/${url}`}
+                              href={getImageUrl(url)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center justify-center w-7 h-7 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-all duration-200"
