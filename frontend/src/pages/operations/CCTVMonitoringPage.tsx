@@ -15,7 +15,10 @@ import {
   RefreshCw,
   Key,
   Eye,
-  Plus
+  Plus,
+  Trash2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 interface CCTVSession {
@@ -67,12 +70,15 @@ interface DeliveryOrder {
   do_number: string;
   do_name: string;
   customer_name: string;
+  status?: 'assigned' | 'at_spbu' | 'otw_to_unload_location' | 'at_unload_location' | 'completed' | 'cancelled';
 }
 
 interface Customer {
   id: number;
-  name: string;
-  address?: string;
+  customer_name?: string; // API field
+  name?: string; // Fallback for mockup
+  location?: string; // API field
+  address?: string; // Fallback for mockup
 }
 
 interface CreateSessionForm {
@@ -160,6 +166,10 @@ const MOCKUP_CUSTOMERS: Customer[] = [
 ];
 
 const CCTVMonitoringPage: React.FC = () => {
+  // Configuration toggles
+  const [useRealData, setUseRealData] = useState(true); // Toggle: false = mockup, true = real API (DEFAULT: ON)
+  const [autoSnapshot, setAutoSnapshot] = useState(true); // Toggle: auto screenshot capture (DEFAULT: ON)
+  
   // Initialize with mockup data
   const [sessions, setSessions] = useState<CCTVSession[]>(MOCKUP_SESSIONS);
   const [healthStats, setHealthStats] = useState<HealthStats>({
@@ -179,13 +189,13 @@ const CCTVMonitoringPage: React.FC = () => {
   const [loadingScreenshots, setLoadingScreenshots] = useState(false);
   const [creatingSession, setCreatingSession] = useState(false);
 
-  // Session token form
+  // Session token form - with default values (only s-sid needs to be updated)
   const [sessionToken, setSessionToken] = useState({
-    's-sid': '',
-    's-sid.sig': '',
-    'uid': '',
-    'clientId': '',
-    'deviceId': ''
+    's-sid': '', // This is the only field that needs to be updated regularly
+    's-sid.sig': 'kP9rtKAn17znXSNWGWFHK2iuqOOusfuo',
+    'uid': 'az1760007796938NmNAy',
+    'clientId': 'u8aphxps48jv38uraqtf',
+    'deviceId': 'security-wisdom'
   });
 
   // Create session form
@@ -198,40 +208,55 @@ const CCTVMonitoringPage: React.FC = () => {
     customer_location_index: 0,
   });
 
-  // Dropdowns
-  const [deliveryOrders] = useState<DeliveryOrder[]>(MOCKUP_DELIVERY_ORDERS);
-  const [customers] = useState<Customer[]>(MOCKUP_CUSTOMERS);
+  // Dropdowns - fetch real data
+  const [deliveryOrders, setDeliveryOrders] = useState<DeliveryOrder[]>(MOCKUP_DELIVERY_ORDERS);
+  const [customers, setCustomers] = useState<Customer[]>(MOCKUP_CUSTOMERS);
+  const [loadingDropdowns, setLoadingDropdowns] = useState(false);
+  const [includeCompletedOrders, setIncludeCompletedOrders] = useState(false);
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sessionsPerPage] = useState(10);
+  const [totalSessions, setTotalSessions] = useState(0);
 
   // Fetch all sessions
   const fetchSessions = useCallback(async () => {
     try {
-      // Use mockup data for now - simulate API call
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Simulate some random updates to make it look "live"
-      const updatedSessions = MOCKUP_SESSIONS.map((session, index) => {
-        if (index === 0 && session.status === 'active') {
-          return {
-            ...session,
-            total_screenshots_captured: session.total_screenshots_captured + Math.floor(Math.random() * 2),
-            last_screenshot_at: new Date().toISOString(),
-            time_since_last_capture: 'Just now',
-          };
-        }
-        return session;
-      });
-      
-      setSessions(updatedSessions);
-      
-      // Calculate health stats
-      const stats = calculateHealthStats(updatedSessions);
-      setHealthStats(stats);
-      
-      // Uncomment when backend is ready:
-      // const response = await apiClient.get('/api/cctv-monitoring/sessions');
-      // setSessions(response.data.data || []);
-      // const stats = calculateHealthStats(response.data.data || []);
-      // setHealthStats(stats);
+      if (useRealData) {
+        // Use real API with pagination
+        const response = await apiClient.get('/cctv-monitoring/sessions', {
+          params: {
+            limit: sessionsPerPage,
+            offset: (currentPage - 1) * sessionsPerPage
+          }
+        });
+        setSessions(response.data.data || []);
+        setHealthStats(response.data.stats || {});
+        setTotalSessions(response.data.pagination?.total || response.data.data?.length || 0);
+      } else {
+        // Use mockup data - simulate API call
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Simulate some random updates to make it look "live"
+        const updatedSessions = MOCKUP_SESSIONS.map((session, index) => {
+          if (index === 0 && session.status === 'active') {
+            return {
+              ...session,
+              total_screenshots_captured: session.total_screenshots_captured + Math.floor(Math.random() * 2),
+              last_screenshot_at: new Date().toISOString(),
+              time_since_last_capture: 'Just now',
+            };
+          }
+          return session;
+        });
+        
+        setSessions(updatedSessions);
+        setTotalSessions(updatedSessions.length);
+        
+        // Calculate health stats
+        const stats = calculateHealthStats(updatedSessions);
+        setHealthStats(stats);
+      }
     } catch (error: any) {
       console.error('Error fetching sessions:', error);
       if (!loading) { // Don't show toast on initial load
@@ -240,7 +265,7 @@ const CCTVMonitoringPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [loading]);
+  }, [loading, useRealData, currentPage, sessionsPerPage]);
 
   // Calculate health statistics
   const calculateHealthStats = (sessionsList: CCTVSession[]): HealthStats => {
@@ -262,13 +287,15 @@ const CCTVMonitoringPage: React.FC = () => {
   const fetchSessionScreenshots = async (sessionId: number) => {
     setLoadingScreenshots(true);
     try {
-      // Use mockup data for now
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate loading
-      setScreenshots(MOCKUP_SCREENSHOTS);
-      
-      // Uncomment when backend is ready:
-      // const response = await apiClient.get(`/api/cctv-monitoring/sessions/${sessionId}/screenshots`);
-      // setScreenshots(response.data.data || []);
+      if (useRealData) {
+        // Use real API
+        const response = await apiClient.get(`/cctv-monitoring/sessions/${sessionId}/screenshots`);
+        setScreenshots(response.data.data || []);
+      } else {
+        // Use mockup data
+        await new Promise(resolve => setTimeout(resolve, 500)); // Simulate loading
+        setScreenshots(MOCKUP_SCREENSHOTS);
+      }
     } catch (error: any) {
       console.error('Error fetching screenshots:', error);
       toast.error('Failed to load screenshots');
@@ -291,12 +318,31 @@ const CCTVMonitoringPage: React.FC = () => {
     }
 
     try {
-      await apiClient.post(`/api/cctv-monitoring/sessions/${sessionId}/stop`);
+      await apiClient.post(`/cctv-monitoring/sessions/${sessionId}/stop`);
       toast.success('Session stopped successfully');
       fetchSessions();
     } catch (error: any) {
       console.error('Error stopping session:', error);
       toast.error(error.response?.data?.message || 'Failed to stop session');
+    }
+  };
+
+  // Manual snapshot capture
+  const handleManualSnapshot = async (sessionId: number) => {
+    try {
+      toast.loading('Capturing screenshot...', { id: 'manual-snapshot' });
+      await apiClient.post(`/cctv-monitoring/sessions/${sessionId}/capture`, {
+        process_ocr: true,
+        notes: 'Manual snapshot'
+      });
+      toast.success('Screenshot captured successfully', { id: 'manual-snapshot' });
+      if (selectedSession && selectedSession.id === sessionId) {
+        fetchSessionScreenshots(sessionId);
+      }
+      fetchSessions(); // Refresh to update screenshot count
+    } catch (error: any) {
+      console.error('Error capturing snapshot:', error);
+      toast.error(error.response?.data?.message || 'Failed to capture screenshot', { id: 'manual-snapshot' });
     }
   };
 
@@ -320,56 +366,92 @@ const CCTVMonitoringPage: React.FC = () => {
 
     setCreatingSession(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Create new session object
-      const newSession: CCTVSession = {
-        id: sessions.length + 1,
-        delivery_order_id: createForm.delivery_order_id,
-        customer_location_index: createForm.customer_location_index,
-        customer_name: createForm.customer_name,
-        device_id: createForm.device_id || `BARDI-CAM-${String(sessions.length + 1).padStart(3, '0')}`,
-        start_time: new Date().toISOString(),
-        end_time: null,
-        status: 'active',
-        total_screenshots_captured: 0,
-        last_screenshot_at: null,
-        session_notes: `Panel Location: Row ${createForm.panel_row}, Column ${createForm.panel_column}`,
-        created_nota_kecil_id: null,
-        delivery_order: deliveryOrders.find(d => d.id === createForm.delivery_order_id),
-        health_status: 'healthy',
-        time_since_last_capture: 'No captures yet',
-      };
+      if (useRealData) {
+        // Debug logging
+        console.log('🔍 DEBUG - Creating session with form data:', {
+          panel_row: createForm.panel_row,
+          panel_column: createForm.panel_column,
+          panel_row_type: typeof createForm.panel_row,
+          panel_column_type: typeof createForm.panel_column
+        });
+        
+        // Use real API
+        const requestBody = {
+          delivery_order_id: createForm.delivery_order_id,
+          customer_name: createForm.customer_name,
+          customer_location_index: createForm.customer_location_index,
+          device_id: createForm.device_id,
+          panel_row: createForm.panel_row,
+          panel_column: createForm.panel_column,
+        };
+        
+        console.log('🔍 DEBUG - Request body being sent:', requestBody);
+        
+        const response = await apiClient.post('/cctv-monitoring/sessions', requestBody);
+        
+        toast.success(`Monitoring session created for ${createForm.customer_name}!`);
+        setShowCreateModal(false);
+        
+        // Reset form
+        setCreateForm({
+          delivery_order_id: 0,
+          customer_name: '',
+          device_id: '',
+          panel_row: 1,
+          panel_column: 1,
+          customer_location_index: 0,
+        });
+        
+        // Refresh sessions list
+        fetchSessions();
+      } else {
+        // Mockup mode - simulate API call
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Create new session object
+        const newSession: CCTVSession = {
+          id: sessions.length + 1,
+          delivery_order_id: createForm.delivery_order_id,
+          customer_location_index: createForm.customer_location_index,
+          customer_name: createForm.customer_name,
+          device_id: createForm.device_id || `BARDI-CAM-${String(sessions.length + 1).padStart(3, '0')}`,
+          start_time: new Date().toISOString(),
+          end_time: null,
+          status: 'active',
+          total_screenshots_captured: 0,
+          last_screenshot_at: null,
+          session_notes: `Panel Location: Row ${createForm.panel_row}, Column ${createForm.panel_column}`,
+          created_nota_kecil_id: null,
+          delivery_order: deliveryOrders.find(d => d.id === createForm.delivery_order_id),
+          health_status: 'healthy',
+          time_since_last_capture: 'No captures yet',
+        };
 
-      // Add to sessions list
-      setSessions([...sessions, newSession]);
-      
-      // Update stats
-      const updatedStats = {
-        ...healthStats,
-        total_sessions: healthStats.total_sessions + 1,
-        active_sessions: healthStats.active_sessions + 1,
-        healthy_sessions: healthStats.healthy_sessions + 1,
-      };
-      setHealthStats(updatedStats);
+        // Add to sessions list
+        setSessions([...sessions, newSession]);
+        
+        // Update stats
+        const updatedStats = {
+          ...healthStats,
+          total_sessions: healthStats.total_sessions + 1,
+          active_sessions: healthStats.active_sessions + 1,
+          healthy_sessions: healthStats.healthy_sessions + 1,
+        };
+        setHealthStats(updatedStats);
 
-      toast.success(`Monitoring session created for ${createForm.customer_name}!`);
-      setShowCreateModal(false);
-      
-      // Reset form
-      setCreateForm({
-        delivery_order_id: 0,
-        customer_name: '',
-        device_id: '',
-        panel_row: 1,
-        panel_column: 1,
-        customer_location_index: 0,
-      });
-
-      // Uncomment when backend is ready:
-      // const response = await apiClient.post('/api/cctv-monitoring/sessions', createForm);
-      // fetchSessions();
+        toast.success(`Monitoring session created for ${createForm.customer_name}!`);
+        setShowCreateModal(false);
+        
+        // Reset form
+        setCreateForm({
+          delivery_order_id: 0,
+          customer_name: '',
+          device_id: '',
+          panel_row: 1,
+          panel_column: 1,
+          customer_location_index: 0,
+        });
+      }
     } catch (error: any) {
       console.error('Error creating session:', error);
       toast.error(error.response?.data?.message || 'Failed to create monitoring session');
@@ -378,21 +460,37 @@ const CCTVMonitoringPage: React.FC = () => {
     }
   };
 
+  // Delete session
+  const handleDeleteSession = async (sessionId: number) => {
+    if (!window.confirm('Are you sure you want to delete this session? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      if (useRealData) {
+        await apiClient.delete(`/cctv-monitoring/sessions/${sessionId}`);
+        toast.success('Session deleted successfully');
+        fetchSessions(); // Refresh list
+      } else {
+        // Mockup mode
+        setSessions(sessions.filter(s => s.id !== sessionId));
+        toast.success('Session deleted (mockup mode)');
+      }
+    } catch (error: any) {
+      console.error('Error deleting session:', error);
+      toast.error(error.response?.data?.message || 'Failed to delete session');
+    }
+  };
+
   // Update BARDI session token
   const handleUpdateToken = async (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
-      const payload = {
-        cookies: sessionToken,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'application/json, text/plain, */*',
-          'Accept-Language': 'en-US,en;q=0.9',
-        }
-      };
-
-      await apiClient.put('/api/bardi/session', payload);
+      // Use the CCTV monitoring endpoint for token update
+      await apiClient.put('/cctv-monitoring/bardi-token', {
+        session_token: sessionToken,
+      });
       toast.success('BARDI session token updated successfully!');
       setShowTokenModal(false);
       
@@ -404,19 +502,126 @@ const CCTVMonitoringPage: React.FC = () => {
     }
   };
 
-  // Auto-refresh effect (DISABLED FOR NOW)
+  // Fetch delivery orders and customers when using real data
   useEffect(() => {
-    // Initial load commented out - using static mockup data
-    // fetchSessions();
+    const fetchDropdownData = async () => {
+      if (useRealData) {
+        setLoadingDropdowns(true);
+        try {
+          // Fetch delivery orders (not completed or cancelled)
+          // Valid statuses: assigned, at_spbu, otw_to_unload_location, at_unload_location
+          const doResponse = await apiClient.get('/delivery-orders');
+          console.log('Delivery orders response:', doResponse.data);
+          
+          // Handle response format - could be {success: true, data: [...]} or just [...]
+          let orders = [];
+          if (doResponse.data?.success && doResponse.data?.data) {
+            orders = doResponse.data.data;
+          } else if (Array.isArray(doResponse.data)) {
+            orders = doResponse.data;
+          } else {
+            orders = [];
+          }
+          
+          console.log('All delivery orders:', orders.length, orders);
+          
+          // Filter out completed and cancelled orders (unless includeCompletedOrders is true)
+          const activeOrders = includeCompletedOrders 
+            ? orders 
+            : orders.filter(
+                (order: any) => order.status !== 'completed' && order.status !== 'cancelled'
+              );
+          
+          console.log('Active delivery orders (filtered):', activeOrders.length, activeOrders);
+          
+          if (!includeCompletedOrders && orders.length > 0 && activeOrders.length === 0) {
+            console.warn('All delivery orders are completed or cancelled. No active orders available.');
+            toast(`Found ${orders.length} delivery order(s), but all are completed/cancelled. Enable "Include Completed Orders" or create an active delivery order.`, {
+              icon: '⚠️',
+              duration: 5000,
+            });
+          }
+          
+          setDeliveryOrders(activeOrders);
+          
+          // Fetch customers
+          const customerResponse = await apiClient.get('/customers');
+          console.log('Customers response FULL:', customerResponse);
+          console.log('Customers response.data:', customerResponse.data);
+          console.log('Type of response.data:', typeof customerResponse.data);
+          console.log('response.data.customers exists?', !!customerResponse.data?.customers);
+          console.log('response.data.data exists?', !!customerResponse.data?.data);
+          
+          // Handle response format: {success: true, data: {customers: [...], pagination: {...}}}
+          // OR the axios interceptor might unwrap it to: {customers: [...], pagination: {...}}
+          let customersData = [];
+          
+          // Check if response.data.customers exists directly (interceptor unwrapped it)
+          if (customerResponse.data?.customers && Array.isArray(customerResponse.data.customers)) {
+            customersData = customerResponse.data.customers;
+            console.log('✅ Found customers in response.data.customers (unwrapped by interceptor):', customersData.length);
+          }
+          // Check if response.data.data.customers exists (full response)
+          else if (customerResponse.data?.success && customerResponse.data?.data?.customers && Array.isArray(customerResponse.data.data.customers)) {
+            customersData = customerResponse.data.data.customers;
+            console.log('✅ Found customers in data.data.customers:', customersData.length);
+          } 
+          // Check if data.data itself is an array
+          else if (customerResponse.data?.success && Array.isArray(customerResponse.data?.data)) {
+            customersData = customerResponse.data.data;
+            console.log('✅ Found customers in data.data (array):', customersData.length);
+          }
+          // Check if response.data is directly an array
+          else if (Array.isArray(customerResponse.data)) {
+            customersData = customerResponse.data;
+            console.log('✅ Found customers in root (array):', customersData.length);
+          } else {
+            console.warn('⚠️ Customer response not in expected format. Structure:', Object.keys(customerResponse.data || {}));
+          }
+          
+          console.log('Parsed customers:', customersData);
+          
+          if (customersData.length === 0) {
+            console.error('❌ No customers loaded from API');
+            toast('No customers found in database. Please create customers first.', {
+              icon: '⚠️',
+              duration: 4000,
+            });
+          }
+          
+          setCustomers(customersData);
+        } catch (error: any) {
+          console.error('Error fetching dropdown data:', error);
+          // Fall back to mockup data on error
+          setDeliveryOrders(MOCKUP_DELIVERY_ORDERS);
+          setCustomers(MOCKUP_CUSTOMERS);
+          toast.error('Failed to load delivery orders. Using demo data.');
+        } finally {
+          setLoadingDropdowns(false);
+        }
+      } else {
+        // Use mockup data when not in real data mode
+        setDeliveryOrders(MOCKUP_DELIVERY_ORDERS);
+        setCustomers(MOCKUP_CUSTOMERS);
+      }
+    };
+    
+    fetchDropdownData();
+  }, [useRealData, includeCompletedOrders]);
 
-    // Auto-refresh disabled
-    // if (autoRefresh) {
-    //   const interval = setInterval(() => {
-    //     fetchSessions();
-    //   }, 30000); // Refresh every 30 seconds
-    //   return () => clearInterval(interval);
-    // }
-  }, [autoRefresh, fetchSessions]);
+  // Auto-refresh effect
+  useEffect(() => {
+    // Initial load
+    fetchSessions();
+
+    // Auto-refresh if enabled
+    if (autoRefresh) {
+      const interval = setInterval(() => {
+        fetchSessions();
+      }, 30000); // Refresh every 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [autoRefresh, fetchSessions, useRealData]);
 
   // Get status badge color
   const getStatusBadge = (status: string, healthStatus?: string) => {
@@ -458,7 +663,7 @@ const CCTVMonitoringPage: React.FC = () => {
               <h1 className="text-3xl font-bold text-gray-900 mb-2">CCTV Monitoring System</h1>
               <p className="text-gray-600">Real-time monitoring of CNG meter readings via BARDI cameras</p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex items-center gap-6">
               <button
                 onClick={() => setShowCreateModal(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors"
@@ -466,26 +671,145 @@ const CCTVMonitoringPage: React.FC = () => {
                 <Plus className="w-4 h-4" />
                 Create Session
               </button>
-              <button
-                onClick={() => setAutoRefresh(!autoRefresh)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  autoRefresh 
-                    ? 'bg-green-100 text-green-700 border border-green-300' 
-                    : 'bg-gray-100 text-gray-700 border border-gray-300'
-                }`}
-              >
-                <RefreshCw className={`w-4 h-4 ${autoRefresh ? 'animate-spin' : ''}`} />
-                {autoRefresh ? 'Auto-Refresh ON' : 'Auto-Refresh OFF'}
-              </button>
+              
+              {/* Slide Toggle: Real Data */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700">Real Data:</span>
+                <button
+                  onClick={() => {
+                    setUseRealData(!useRealData);
+                    toast.success(useRealData ? 'Switched to Mockup Data' : 'Switched to Real API Data');
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${
+                    useRealData ? 'bg-purple-600' : 'bg-gray-300'
+                  }`}
+                  title={useRealData ? 'Using Real API Data' : 'Using Mockup Data'}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      useRealData ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className={`text-xs ${useRealData ? 'text-purple-600 font-semibold' : 'text-gray-500'}`}>
+                  {useRealData ? 'ON' : 'OFF'}
+                </span>
+              </div>
+
+              {/* Slide Toggle: Auto Snapshot */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700">Auto-Snapshot:</span>
+                <button
+                  onClick={async () => {
+                    const previousValue = autoSnapshot;
+                    const newValue = !autoSnapshot;
+                    
+                    if (useRealData) {
+                      try {
+                        if (newValue && !previousValue) {
+                          // Turning ON (OFF → ON): Start scheduler + immediate capture
+                          toast.loading('Starting scheduler...');
+                          
+                          await apiClient.post('/cctv-monitoring/scheduler/start');
+                          
+                          // Trigger immediate capture for all active sessions (runs in background)
+                          const captureResult = await apiClient.post('/cctv-monitoring/scheduler/capture-all', {}, {
+                            timeout: 5000 // 5 second timeout for initial response
+                          });
+                          
+                          setAutoSnapshot(newValue);
+                          toast.dismiss();
+                          
+                          const data = captureResult.data.data;
+                          if (data.status === 'processing') {
+                            toast.success(`Scheduler started! Capturing ${data.totalSessions} session(s) in background...`);
+                          } else if (data.totalSessions === 0) {
+                            toast.success('Scheduler started! No active sessions to capture');
+                          } else {
+                            toast.success(`Scheduler started! Captured ${data.captured || data.totalSessions} session(s)`);
+                          }
+                          
+                          // Refresh sessions after a delay to see captured screenshots
+                          setTimeout(() => fetchSessions(), 3000);
+                        } else if (!newValue && previousValue) {
+                          // Turning OFF (ON → OFF): Stop scheduler
+                          await apiClient.post('/cctv-monitoring/scheduler/stop');
+                          setAutoSnapshot(newValue);
+                          toast.success('Auto-snapshot disabled - scheduler stopped');
+                        }
+                      } catch (error: any) {
+                        console.error('Error toggling scheduler:', error);
+                        toast.dismiss();
+                        toast.error(`Failed to ${newValue ? 'start' : 'stop'} auto-snapshot: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
+                        // Don't change toggle state on error
+                      }
+                    } else {
+                      // Mockup mode
+                      setAutoSnapshot(newValue);
+                      toast.success(newValue ? 'Auto-snapshot enabled (mockup mode)' : 'Auto-snapshot disabled (mockup mode)');
+                    }
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                    autoSnapshot ? 'bg-blue-600' : 'bg-orange-500'
+                  }`}
+                  title={autoSnapshot ? 'Automatic snapshots enabled - captures every 10min and creates nota after 4hrs' : 'Manual snapshots only'}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      autoSnapshot ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className={`text-xs ${autoSnapshot ? 'text-blue-600 font-semibold' : 'text-orange-600 font-semibold'}`}>
+                  {autoSnapshot ? 'ON' : 'OFF'}
+                </span>
+              </div>
+
+              {/* Slide Toggle: Auto Refresh */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700">Auto-Refresh:</span>
+                <button
+                  onClick={() => setAutoRefresh(!autoRefresh)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+                    autoRefresh ? 'bg-green-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      autoRefresh ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className={`text-xs ${autoRefresh ? 'text-green-600 font-semibold' : 'text-gray-500'}`}>
+                  {autoRefresh ? 'ON' : 'OFF'}
+                </span>
+              </div>
+              
               <button
                 onClick={() => setShowTokenModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors ml-2"
               >
                 <Key className="w-4 h-4" />
-                Update Session Token
+                Update Token
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Mode Indicators */}
+        <div className="mb-4 flex gap-3">
+          {!useRealData && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm">
+              <AlertTriangle className="w-4 h-4 text-yellow-600" />
+              <span className="text-yellow-800 font-medium">Using Mockup Data - Switch to Real Data to connect to API</span>
+            </div>
+          )}
+          {!autoSnapshot && useRealData && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-orange-50 border border-orange-200 rounded-lg text-sm">
+              <Camera className="w-4 h-4 text-orange-600" />
+              <span className="text-orange-800 font-medium">Manual Snapshot Mode - Use the camera icon to capture screenshots</span>
+            </div>
+          )}
         </div>
 
         {/* Health Statistics Cards */}
@@ -645,6 +969,15 @@ const CCTVMonitoringPage: React.FC = () => {
                           >
                             <Eye className="w-4 h-4" />
                           </button>
+                          {session.status === 'active' && !autoSnapshot && useRealData && (
+                            <button
+                              onClick={() => handleManualSnapshot(session.id)}
+                              className="p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors"
+                              title="Manual Snapshot"
+                            >
+                              <Camera className="w-4 h-4" />
+                            </button>
+                          )}
                           {session.status === 'active' && (
                             <button
                               onClick={() => handleStopSession(session.id)}
@@ -654,12 +987,84 @@ const CCTVMonitoringPage: React.FC = () => {
                               <StopCircle className="w-4 h-4" />
                             </button>
                           )}
+                          <button
+                            onClick={() => handleDeleteSession(session.id)}
+                            className="p-1.5 text-gray-600 hover:bg-red-50 hover:text-red-600 rounded transition-colors"
+                            title="Delete Session"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+
+              {/* Pagination Controls */}
+              {totalSessions > sessionsPerPage && (
+                <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-t border-gray-200">
+                  <div className="text-sm text-gray-700">
+                    Showing <span className="font-medium">{(currentPage - 1) * sessionsPerPage + 1}</span> to{' '}
+                    <span className="font-medium">{Math.min(currentPage * sessionsPerPage, totalSessions)}</span> of{' '}
+                    <span className="font-medium">{totalSessions}</span> sessions
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="Previous Page"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.ceil(totalSessions / sessionsPerPage) }, (_, i) => i + 1)
+                        .filter(pageNum => {
+                          // Show first, last, current, and 1 before/after current
+                          const totalPages = Math.ceil(totalSessions / sessionsPerPage);
+                          return pageNum === 1 || 
+                                 pageNum === totalPages || 
+                                 Math.abs(pageNum - currentPage) <= 1;
+                        })
+                        .map((pageNum, idx, array) => {
+                          // Add ellipsis between non-consecutive pages
+                          const prevPage = array[idx - 1];
+                          const showEllipsis = prevPage && pageNum - prevPage > 1;
+                          
+                          return (
+                            <React.Fragment key={pageNum}>
+                              {showEllipsis && (
+                                <span className="px-2 text-gray-400">...</span>
+                              )}
+                              <button
+                                onClick={() => setCurrentPage(pageNum)}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                                  currentPage === pageNum
+                                    ? 'bg-blue-600 text-white'
+                                    : 'border border-gray-300 hover:bg-gray-100 text-gray-700'
+                                }`}
+                              >
+                                {pageNum}
+                              </button>
+                            </React.Fragment>
+                          );
+                        })}
+                    </div>
+                    
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalSessions / sessionsPerPage), prev + 1))}
+                      disabled={currentPage === Math.ceil(totalSessions / sessionsPerPage)}
+                      className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="Next Page"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -793,6 +1198,33 @@ const CCTVMonitoringPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleCreateSession} className="p-6">
+              {/* Real Data Mode Indicator */}
+              {useRealData && (
+                <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                  <p className="text-sm text-purple-800">
+                    <strong>Real Data Mode:</strong> Using actual delivery orders and customers from the database
+                  </p>
+                </div>
+              )}
+              
+              {/* Include Completed Orders Checkbox */}
+              {useRealData && (
+                <div className="mb-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={includeCompletedOrders}
+                      onChange={(e) => setIncludeCompletedOrders(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700">
+                      Include completed/cancelled delivery orders
+                    </span>
+                    <span className="text-xs text-gray-500">(for testing purposes)</span>
+                  </label>
+                </div>
+              )}
+              
               <div className="space-y-4">
                 {/* Delivery Order Dropdown */}
                 <div>
@@ -810,15 +1242,23 @@ const CCTVMonitoringPage: React.FC = () => {
                       });
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    disabled={loadingDropdowns}
                     required
                   >
-                    <option value="">Select Delivery Order</option>
+                    <option value="">
+                      {loadingDropdowns ? 'Loading delivery orders...' : 'Select Delivery Order'}
+                    </option>
                     {deliveryOrders.map(do_order => (
                       <option key={do_order.id} value={do_order.id}>
                         {do_order.do_number} - {do_order.do_name}
                       </option>
                     ))}
                   </select>
+                  {useRealData && deliveryOrders.length === 0 && !loadingDropdowns && (
+                    <p className="text-xs text-yellow-600 mt-1">
+                      No active delivery orders found. Create one first.
+                    </p>
+                  )}
                 </div>
 
                 {/* Customer Dropdown */}
@@ -830,15 +1270,28 @@ const CCTVMonitoringPage: React.FC = () => {
                     value={createForm.customer_name}
                     onChange={(e) => setCreateForm({...createForm, customer_name: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    disabled={loadingDropdowns}
                     required
                   >
-                    <option value="">Select Customer</option>
+                    <option value="">
+                      {loadingDropdowns ? 'Loading customers...' : 'Select Customer'}
+                    </option>
                     {customers.map(customer => (
-                      <option key={customer.id} value={customer.name}>
-                        {customer.name} {customer.address && `- ${customer.address}`}
+                      <option key={customer.id} value={customer.customer_name || customer.name || ''}>
+                        {customer.customer_name || customer.name || 'Unknown'} {customer.location && `- ${customer.location}`}
                       </option>
                     ))}
                   </select>
+                  {useRealData && customers.length === 0 && !loadingDropdowns && (
+                    <p className="text-xs text-yellow-600 mt-1">
+                      No customers found. Create a customer first.
+                    </p>
+                  )}
+                  {useRealData && !loadingDropdowns && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {customers.length} customer(s) loaded
+                    </p>
+                  )}
                 </div>
 
                 {/* Customer Location Index */}
@@ -868,7 +1321,10 @@ const CCTVMonitoringPage: React.FC = () => {
                       min="1"
                       max="10"
                       value={createForm.panel_row}
-                      onChange={(e) => setCreateForm({...createForm, panel_row: parseInt(e.target.value)})}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setCreateForm({...createForm, panel_row: isNaN(val) ? 1 : val});
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="1-10"
                       required
@@ -883,7 +1339,10 @@ const CCTVMonitoringPage: React.FC = () => {
                       min="1"
                       max="10"
                       value={createForm.panel_column}
-                      onChange={(e) => setCreateForm({...createForm, panel_column: parseInt(e.target.value)})}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setCreateForm({...createForm, panel_column: isNaN(val) ? 1 : val});
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="1-10"
                       required
@@ -953,7 +1412,7 @@ const CCTVMonitoringPage: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">Update BARDI Session Token</h2>
-                  <p className="text-gray-600 mt-1">Enter new session cookies from BARDI login</p>
+                  <p className="text-gray-600 mt-1">Only update the <strong>s-sid</strong> field - other fields use default values</p>
                 </div>
                 <button
                   onClick={() => setShowTokenModal(false)}
@@ -965,71 +1424,91 @@ const CCTVMonitoringPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleUpdateToken} className="p-6">
+              {/* Info Box */}
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Quick Update:</strong> Only the <strong>s-sid</strong> field needs to be updated regularly. 
+                  The other fields below already have default values pre-filled.
+                </p>
+              </div>
+
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    s-sid
+                {/* s-sid - PRIMARY FIELD TO UPDATE */}
+                <div className="p-3 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+                  <label className="block text-sm font-bold text-yellow-900 mb-1">
+                    s-sid <span className="text-red-500">*</span> <span className="text-xs font-normal">(Update this field)</span>
                   </label>
                   <input
                     type="text"
                     value={sessionToken['s-sid']}
                     onChange={(e) => setSessionToken({...sessionToken, 's-sid': e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="s%3Axxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    className="w-full px-3 py-2 border-2 border-yellow-400 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 bg-white"
+                    placeholder="Paste new s-sid value here"
                     required
                   />
+                  <p className="text-xs text-yellow-700 mt-1">
+                    Copy this from BARDI cookies (DevTools → Application → Cookies → s-sid)
+                  </p>
                 </div>
 
+                {/* Separator */}
+                <div className="border-t border-gray-200 pt-3">
+                  <p className="text-xs text-gray-500 mb-2">Default Values (Usually don't need to change):</p>
+                </div>
+
+                {/* s-sid.sig - DEFAULT */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    s-sid.sig
+                  <label className="block text-sm font-medium text-gray-600 mb-1">
+                    s-sid.sig <span className="text-xs text-gray-500">(Default value pre-filled)</span>
                   </label>
                   <input
                     type="text"
                     value={sessionToken['s-sid.sig']}
                     onChange={(e) => setSessionToken({...sessionToken, 's-sid.sig': e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                    placeholder="kP9rtKAn17znXSNWGWFHK2iuqOOusfuo"
                   />
                 </div>
 
+                {/* uid - DEFAULT */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    uid
+                  <label className="block text-sm font-medium text-gray-600 mb-1">
+                    uid <span className="text-xs text-gray-500">(Default value pre-filled)</span>
                   </label>
                   <input
                     type="text"
                     value={sessionToken['uid']}
                     onChange={(e) => setSessionToken({...sessionToken, 'uid': e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="xxxxx"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                    placeholder="az1760007796938NmNAy"
                   />
                 </div>
 
+                {/* clientId - DEFAULT */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    clientId
+                  <label className="block text-sm font-medium text-gray-600 mb-1">
+                    clientId <span className="text-xs text-gray-500">(Default value pre-filled)</span>
                   </label>
                   <input
                     type="text"
                     value={sessionToken['clientId']}
                     onChange={(e) => setSessionToken({...sessionToken, 'clientId': e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                    placeholder="u8aphxps48jv38uraqtf"
                   />
                 </div>
 
+                {/* deviceId - DEFAULT */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    deviceId
+                  <label className="block text-sm font-medium text-gray-600 mb-1">
+                    deviceId <span className="text-xs text-gray-500">(Default value pre-filled)</span>
                   </label>
                   <input
                     type="text"
                     value={sessionToken['deviceId']}
                     onChange={(e) => setSessionToken({...sessionToken, 'deviceId': e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                    placeholder="security-wisdom"
                   />
                 </div>
               </div>
@@ -1050,10 +1529,10 @@ const CCTVMonitoringPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-sm text-yellow-800">
-                  <strong>Note:</strong> To get these values, log in to BARDI web interface, open browser DevTools (F12),
-                  go to Application → Cookies → ipc.bardi.co.id, and copy the cookie values.
+              <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <p className="text-sm text-gray-700">
+                  <strong>How to get s-sid:</strong> Log in to BARDI web interface → Open DevTools (F12) → 
+                  Application tab → Cookies → ipc.bardi.co.id → Copy the <strong>s-sid</strong> value
                 </p>
               </div>
             </form>

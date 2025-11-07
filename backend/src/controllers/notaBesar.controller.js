@@ -1,4 +1,4 @@
-const { NotaBesar, NotaBesarItem, NotaKecil, DeliveryOrder, User } = require('../models');
+const { NotaBesar, NotaBesarItem, NotaKecil, DeliveryOrder, User, Customer } = require('../models');
 const billingCalculationService = require('../services/billingCalculationService');
 const { Op } = require('sequelize');
 
@@ -150,18 +150,32 @@ exports.calculateNotaBesar = async (req, res, next) => {
       });
     }
 
-    // Find the SPBG (deposit group) associated with this delivery order
-    const { DepositGroupMember, DepositGroup } = require('../models');
-    let spbgGroupId = null;
-    let spbgBalanceUpdated = false;
+    // Find or create customer from the first nota kecil
+    let customerId = null;
+    let customerBalanceUpdated = false;
     
-    const depositGroupMember = await DepositGroupMember.findOne({
-      where: { delivery_order_id: deliveryOrderId },
-      include: [{
-        model: DepositGroup,
-        as: 'group'
-      }]
+    // Get customer info from first nota kecil
+    const firstNotaKecil = notaKecils[0];
+    const customerName = firstNotaKecil.customer_name;
+    const customerLocation = firstNotaKecil.customer_address || 'Unknown Location';
+    
+    // Find or create customer
+    let customer = await Customer.findOne({
+      where: { customer_name: customerName }
     });
+    
+    if (!customer) {
+      // Create new customer if doesn't exist
+      customer = await Customer.create({
+        customer_name: customerName,
+        location: customerLocation,
+        nota_besar: 0,
+        nota_kecil: 0
+      });
+      console.log(`✅ Created new customer: ${customerName}`);
+    }
+    
+    customerId = customer.id;
 
     // Create nota besar in database
     const notaBesar = await NotaBesar.create({
@@ -172,8 +186,8 @@ exports.calculateNotaBesar = async (req, res, next) => {
       gas_price_per_m3: gasPrice,
       status: 'draft',
       notes: notes || null,
-      spbg_group_id: depositGroupMember ? depositGroupMember.group_id : null,
-      applied_to_spbg: false // Will be applied when confirmed
+      customer_id: customerId,
+      applied_to_customer: false // Will be applied when confirmed
     });
 
     // Create nota besar items
@@ -188,28 +202,31 @@ exports.calculateNotaBesar = async (req, res, next) => {
       notaBesarItems.push(notaBesarItem);
     }
 
-    // If SPBG exists and nota besar is confirmed, reduce balance immediately
-    // Otherwise, balance will be reduced when status changes to 'confirmed'
-    if (depositGroupMember && notaBesar.status === 'confirmed') {
-      const group = depositGroupMember.group;
-      const currentBalance = parseFloat(group.balance) || 0;
-      const notaBesarCost = parseFloat(calculationResult.totalPrice) || 0;
-      const newBalance = Math.max(0, currentBalance - notaBesarCost);
+    // If nota besar is confirmed, update customer balance immediately
+    // Otherwise, balance will be updated when status changes to 'confirmed'
+    if (notaBesar.status === 'confirmed') {
+      const currentNotaBesarBalance = parseFloat(customer.nota_besar) || 0;
+      const currentNotaKecilBalance = parseFloat(customer.nota_kecil) || 0;
+      const notaBesarAmount = parseFloat(calculationResult.totalPrice) || 0;
+      const notaKecilVolume = parseFloat(calculationResult.totalVolume) || 0;
       
-      await DepositGroup.update(
-        { balance: newBalance, updated_at: new Date() },
-        { where: { id: group.id } }
+      await Customer.update(
+        { 
+          nota_besar: currentNotaBesarBalance + notaBesarAmount,
+          nota_kecil: currentNotaKecilBalance + notaKecilVolume,
+          updated_at: new Date() 
+        },
+        { where: { id: customer.id } }
       );
       
       await notaBesar.update({
-        applied_to_spbg: true,
-        applied_to_spbg_at: new Date()
+        applied_to_customer: true,
+        applied_to_customer_at: new Date()
       });
       
-      spbgBalanceUpdated = true;
-      spbgGroupId = group.id;
+      customerBalanceUpdated = true;
       
-      console.log(`✅ Nota Besar #${notaBesar.id} cost (Rp ${notaBesarCost.toLocaleString('id-ID')}) deducted from SPBG "${group.spbg_location}"`);
+      console.log(`✅ Nota Besar #${notaBesar.id} added to customer "${customerName}": Rp ${notaBesarAmount.toLocaleString('id-ID')} (${notaKecilVolume.toFixed(2)} m³)`);
     }
 
     // Fetch the complete nota besar with associations
@@ -224,6 +241,11 @@ exports.calculateNotaBesar = async (req, res, next) => {
           model: User,
           as: 'creator',
           attributes: ['id', 'username', 'role']
+        },
+        {
+          model: Customer,
+          as: 'customer',
+          attributes: ['id', 'customer_name', 'location', 'nota_besar', 'nota_kecil']
         },
         {
           model: NotaBesarItem,
@@ -283,6 +305,11 @@ exports.getNotaBesars = async (req, res, next) => {
           model: User,
           as: 'creator',
           attributes: ['id', 'username', 'role']
+        },
+        {
+          model: Customer,
+          as: 'customer',
+          attributes: ['id', 'customer_name', 'location', 'nota_besar', 'nota_kecil']
         }
       ],
       order: [['created_at', 'DESC']]
@@ -317,6 +344,11 @@ exports.getNotaBesarDetail = async (req, res, next) => {
           model: User,
           as: 'creator',
           attributes: ['id', 'username', 'role']
+        },
+        {
+          model: Customer,
+          as: 'customer',
+          attributes: ['id', 'customer_name', 'location', 'nota_besar', 'nota_kecil']
         },
         {
           model: NotaBesarItem,
@@ -422,27 +454,69 @@ exports.updateNotaBesarStatus = async (req, res, next) => {
       notes: notes || notaBesar.notes
     });
 
-    // If status changed to 'confirmed' and not yet applied to SPBG, apply now
-    if (status === 'confirmed' && !notaBesar.applied_to_spbg && notaBesar.spbg_group_id) {
-      const { DepositGroup } = require('../models');
-      const group = await DepositGroup.findByPk(notaBesar.spbg_group_id);
+    // If status changed to 'confirmed' and not yet applied to customer, apply now
+    if (status === 'confirmed' && !notaBesar.applied_to_customer && notaBesar.customer_id) {
+      const customer = await Customer.findByPk(notaBesar.customer_id);
       
-      if (group) {
-        const currentBalance = parseFloat(group.balance) || 0;
-        const notaBesarCost = parseFloat(notaBesar.total_price) || 0;
-        const newBalance = Math.max(0, currentBalance - notaBesarCost);
+      if (customer) {
+        // Calculate total volume from nota besar items
+        const items = await NotaBesarItem.findAll({
+          where: { nota_besar_id: notaBesar.id }
+        });
         
-        await group.update({
-          balance: newBalance,
+        const totalVolume = items.reduce((sum, item) => {
+          return sum + parseFloat(item.volume_m3 || 0);
+        }, 0);
+        
+        const currentNotaBesarBalance = parseFloat(customer.nota_besar) || 0;
+        const currentNotaKecilBalance = parseFloat(customer.nota_kecil) || 0;
+        const notaBesarAmount = parseFloat(notaBesar.total_price) || 0;
+        
+        await customer.update({
+          nota_besar: currentNotaBesarBalance + notaBesarAmount,
+          nota_kecil: currentNotaKecilBalance + totalVolume,
           updated_at: new Date()
         });
         
         await notaBesar.update({
-          applied_to_spbg: true,
-          applied_to_spbg_at: new Date()
+          applied_to_customer: true,
+          applied_to_customer_at: new Date()
         });
         
-        console.log(`✅ Nota Besar #${notaBesar.id} confirmed: Rp ${notaBesarCost.toLocaleString('id-ID')} deducted from SPBG "${group.spbg_location}"`);
+        console.log(`✅ Nota Besar #${notaBesar.id} confirmed: Rp ${notaBesarAmount.toLocaleString('id-ID')} (${totalVolume.toFixed(2)} m³) added to customer "${customer.customer_name}"`);
+      }
+    }
+    
+    // If status changed to 'cancelled' and was previously applied to customer, reverse it
+    if (status === 'cancelled' && notaBesar.applied_to_customer && notaBesar.customer_id) {
+      const customer = await Customer.findByPk(notaBesar.customer_id);
+      
+      if (customer) {
+        // Calculate total volume from nota besar items
+        const items = await NotaBesarItem.findAll({
+          where: { nota_besar_id: notaBesar.id }
+        });
+        
+        const totalVolume = items.reduce((sum, item) => {
+          return sum + parseFloat(item.volume_m3 || 0);
+        }, 0);
+        
+        const currentNotaBesarBalance = parseFloat(customer.nota_besar) || 0;
+        const currentNotaKecilBalance = parseFloat(customer.nota_kecil) || 0;
+        const notaBesarAmount = parseFloat(notaBesar.total_price) || 0;
+        
+        await customer.update({
+          nota_besar: Math.max(0, currentNotaBesarBalance - notaBesarAmount),
+          nota_kecil: Math.max(0, currentNotaKecilBalance - totalVolume),
+          updated_at: new Date()
+        });
+        
+        await notaBesar.update({
+          applied_to_customer: false,
+          applied_to_customer_at: null
+        });
+        
+        console.log(`🔄 Nota Besar #${notaBesar.id} cancelled: Rp ${notaBesarAmount.toLocaleString('id-ID')} (${totalVolume.toFixed(2)} m³) removed from customer "${customer.customer_name}"`);
       }
     }
 

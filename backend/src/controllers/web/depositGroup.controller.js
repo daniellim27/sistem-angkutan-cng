@@ -914,7 +914,6 @@ async linkPOToGroup(req, res) {
       });
 
       let receiptsByDO = {};
-      let notaBesarsByDO = {};
       if (doIds.length > 0) {
         const client = await pool.connect();
         try {
@@ -937,27 +936,6 @@ async linkPOToGroup(req, res) {
               receiptsByDO[receipt.do_id] = [];
             }
             receiptsByDO[receipt.do_id].push(receipt);
-          });
-
-          // Fetch nota besars
-          const notaBesarQuery = `
-            SELECT 
-              nb.*,
-              u.username as created_by_name
-            FROM nota_besars nb
-            LEFT JOIN users u ON nb.created_by = u.id
-            WHERE nb.delivery_order_id = ANY($1)
-            AND nb.status != 'cancelled'
-            ORDER BY nb.created_at DESC
-          `;
-          const notaBesarResult = await client.query(notaBesarQuery, [doIds]);
-          
-          // Group nota besars by DO ID
-          notaBesarResult.rows.forEach(notaBesar => {
-            if (!notaBesarsByDO[notaBesar.delivery_order_id]) {
-              notaBesarsByDO[notaBesar.delivery_order_id] = [];
-            }
-            notaBesarsByDO[notaBesar.delivery_order_id].push(notaBesar);
           });
         } finally {
           client.release();
@@ -997,15 +975,8 @@ async linkPOToGroup(req, res) {
           const totalReceiptCost = doReceipts.reduce((sum, r) => 
             sum + (parseFloat(r.calculated_cost) || 0), 0);
           
-          // Get nota besars for this DO
-          const doNotaBesars = notaBesarsByDO[doItem.id] || [];
-          const totalNotaBesarVolume = doNotaBesars.reduce((sum, nb) => 
-            sum + (parseFloat(nb.total_volume) || 0), 0);
-          const totalNotaBesarCost = doNotaBesars.reduce((sum, nb) => 
-            sum + (parseFloat(nb.total_price) || 0), 0);
-          
-          // Total cost including selisih, receipts, and nota besars
-          const totalCost = gasCost + selisihCost + totalReceiptCost + totalNotaBesarCost;
+          // Total cost including selisih and receipts
+          const totalCost = gasCost + selisihCost + totalReceiptCost;
 
           return {
             ...doItem.get({ plain: true }),
@@ -1035,21 +1006,6 @@ async linkPOToGroup(req, res) {
             receipts_count: doReceipts.length,
             total_receipt_volume: totalReceiptVolume,
             total_receipt_cost: totalReceiptCost,
-            // Nota Besar fields
-            nota_besars: doNotaBesars.map(nb => ({
-              id: nb.id,
-              total_volume: parseFloat(nb.total_volume) || 0,
-              total_price: parseFloat(nb.total_price) || 0,
-              gas_price_per_m3: parseFloat(nb.gas_price_per_m3) || 0,
-              status: nb.status,
-              created_at: nb.created_at,
-              created_by_name: nb.created_by_name,
-              applied_to_spbg: nb.applied_to_spbg,
-              notes: nb.notes
-            })),
-            nota_besar_count: doNotaBesars.length,
-            total_nota_besar_volume: totalNotaBesarVolume,
-            total_nota_besar_cost: totalNotaBesarCost,
             total_cost: totalCost,
             has_surat_jalan: !!doItem.surat_jalan_photo_url,
             has_ocr_data: !!doItem.surat_jalan_ocr_data,
@@ -1079,13 +1035,6 @@ async linkPOToGroup(req, res) {
           sum + do_item.total_receipt_volume, 0),
         total_receipt_cost: processedDOs.reduce((sum, do_item) => 
           sum + do_item.total_receipt_cost, 0),
-        // Nota Besar statistics
-        total_nota_besars: processedDOs.reduce((sum, do_item) => 
-          sum + do_item.nota_besar_count, 0),
-        total_nota_besar_volume: processedDOs.reduce((sum, do_item) => 
-          sum + do_item.total_nota_besar_volume, 0),
-        total_nota_besar_cost: processedDOs.reduce((sum, do_item) => 
-          sum + do_item.total_nota_besar_cost, 0),
         // Total cost including all components
         total_cost: processedDOs.reduce((sum, do_item) => 
           sum + do_item.total_cost, 0),

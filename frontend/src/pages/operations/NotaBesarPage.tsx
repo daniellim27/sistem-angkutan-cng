@@ -17,6 +17,7 @@ interface NotaBesar {
   total_price: string;
   gas_price_per_m3: string;
   created_at: string;
+  status?: string;
   creator: {
     id: number;
     username: string;
@@ -24,6 +25,13 @@ interface NotaBesar {
   deliveryOrder: {
     id: number;
     do_number: string;
+  };
+  customer?: {
+    id: number;
+    customer_name: string;
+    location: string;
+    nota_besar: number;
+    nota_kecil: number;
   };
   items?: Array<{
     id: number;

@@ -111,4 +111,7 @@ const checkRole = (allowedRoles) => {
   };
 };
 
-module.exports = { verifyToken, checkRole };
+// Helper middleware for admin-only routes
+const isAdmin = checkRole(['admin']);
+
+module.exports = { verifyToken, checkRole, isAdmin };

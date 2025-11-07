@@ -65,6 +65,11 @@ const setupInfrastructureTransactionModel = require("./infrastructureTransaction
 
 // NEW: Customer Management Model
 const setupCustomerModel = require("./customer.model");
+
+// NEW: CCTV Monitoring Models
+const setupCCTVSessionModel = require("./cctvSession.model");
+const setupCCTVScreenshotModel = require("./cctvScreenshot.model");
+
 // Initialize Sequelize connection using your .env variables
 const sequelize = new Sequelize(
   process.env.DB_NAME,
@@ -161,6 +166,11 @@ db.InfrastructureTransaction = setupInfrastructureTransactionModel(sequelize);
 
 // Customer Management model
 db.Customer = setupCustomerModel(sequelize);
+
+// CCTV Monitoring models
+db.CCTVSession = setupCCTVSessionModel(sequelize);
+db.CCTVScreenshot = setupCCTVScreenshotModel(sequelize);
+
 const {
   User,
   DriverProfile,
@@ -202,6 +212,8 @@ const {
   InfrastructureBatch,
   InfrastructureTransaction,
   Customer,
+  CCTVSession,
+  CCTVScreenshot,
 } = db;
 
 // User <-> Profile Associations (One-to-One)
@@ -725,6 +737,58 @@ NotaKecil.hasMany(NotaBesarItem, {
 NotaBesarItem.belongsTo(NotaKecil, {
   foreignKey: "nota_kecil_id",
   as: "notaKecil",
+});
+
+// Customer to NotaBesar (One-to-Many)
+Customer.hasMany(NotaBesar, {
+  foreignKey: "customer_id",
+  as: "notaBesars",
+});
+NotaBesar.belongsTo(Customer, {
+  foreignKey: "customer_id",
+  as: "customer",
+});
+
+// === CCTV Monitoring Associations ===
+// DeliveryOrder to CCTVSession (One-to-Many)
+DeliveryOrder.hasMany(CCTVSession, {
+  foreignKey: "delivery_order_id",
+  as: "cctvSessions",
+});
+CCTVSession.belongsTo(DeliveryOrder, {
+  foreignKey: "delivery_order_id",
+  as: "delivery_order",
+});
+
+// NotaKecil to CCTVSession (One-to-One)
+CCTVSession.belongsTo(NotaKecil, {
+  foreignKey: "created_nota_kecil_id",
+  as: "created_nota_kecil",
+});
+NotaKecil.hasOne(CCTVSession, {
+  foreignKey: "created_nota_kecil_id",
+  as: "cctvSession",
+});
+
+// User to CCTVSession (One-to-Many) - created_by
+User.hasMany(CCTVSession, {
+  foreignKey: "created_by",
+  as: "createdCctvSessions",
+});
+CCTVSession.belongsTo(User, {
+  foreignKey: "created_by",
+  as: "creator",
+});
+
+// CCTVSession to CCTVScreenshot (One-to-Many)
+CCTVSession.hasMany(CCTVScreenshot, {
+  foreignKey: "session_id",
+  as: "screenshots",
+  onDelete: "CASCADE",
+});
+CCTVScreenshot.belongsTo(CCTVSession, {
+  foreignKey: "session_id",
+  as: "session",
 });
 
 module.exports = db;

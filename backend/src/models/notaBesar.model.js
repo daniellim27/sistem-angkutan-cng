@@ -51,6 +51,26 @@ module.exports = (sequelize) => {
       type: DataTypes.TEXT,
       allowNull: true,
       comment: 'Optional notes for this nota besar'
+    },
+    customer_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'customers',
+        key: 'id'
+      },
+      comment: 'Reference to customer who owns this nota besar'
+    },
+    applied_to_customer: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: 'Whether this nota besar has been applied to customer balance'
+    },
+    applied_to_customer_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Timestamp when this nota besar was applied to customer balance'
     }
   }, {
     tableName: "nota_besars",
@@ -69,6 +89,12 @@ module.exports = (sequelize) => {
       },
       {
         fields: ["created_at"]
+      },
+      {
+        fields: ["customer_id"]
+      },
+      {
+        fields: ["applied_to_customer"]
       }
     ]
   });

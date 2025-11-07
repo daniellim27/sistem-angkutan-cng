@@ -216,6 +216,31 @@ const CustomerManagement: React.FC = () => {
     navigate(`/customers/${customer.id}/nota-kecil`);
   };
 
+  // Auto-sync customer balances (runs in background when page loads)
+  const syncCustomerBalances = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(
+        `${process.env.REACT_APP_API_URL}/customers/recalculate-balances`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      
+      if (response.ok) {
+        // After sync completes, refresh customer list to show updated balances
+        fetchCustomers(currentPage, searchTerm);
+      }
+      // Silently sync - no toast notifications
+    } catch (err) {
+      // Silently fail - don't interrupt user experience
+      console.error('Background balance sync failed:', err);
+    }
+  };
+
   // Reset form
   const resetForm = () => {
     setFormData({
@@ -242,7 +267,13 @@ const CustomerManagement: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchCustomers();
+    const loadData = async () => {
+      // Sync balances first (runs in background, doesn't block)
+      syncCustomerBalances();
+      // Fetch customers immediately
+      fetchCustomers();
+    };
+    loadData();
   }, []);
 
   if (loading && customers.length === 0) {

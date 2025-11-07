@@ -95,7 +95,10 @@ const gasStationRoutes = require("./routes/gasStation.routes");
 const customerRoutes = require("./routes/customer.routes");
 const bardiScrapingRoutes = require("./routes/bardiScraping");
 const receiptOcrRoutes = require("./routes/receiptOcr");
+const cctvMonitoringRoutes = require("./routes/cctvMonitoring.routes");
+console.log('✓ CCTV monitoring routes module loaded:', typeof cctvMonitoringRoutes);
 const scheduledScrapingService = require("./services/scheduledScraper");
+const cctvScheduler = require("./services/cctvScheduler");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -356,11 +359,18 @@ initializeDatabase().then(() => {
 
   // Add Bardi scraping routes
   app.use("/api/bardi", bardiScrapingRoutes);
+  app.use("/api/web/bardi", bardiScrapingRoutes);
 
   // Add receipt OCR routes (for mobile app)
   app.use("/api/receipt-ocr", receiptOcrRoutes);
   // Also register for web admin interface
   app.use("/api/web/receipt-ocr", receiptOcrRoutes);
+
+  // Add CCTV monitoring routes
+  console.log('📹 Registering CCTV monitoring routes...');
+  app.use("/api/cctv-monitoring", cctvMonitoringRoutes);
+  app.use("/api/web/cctv-monitoring", cctvMonitoringRoutes);
+  console.log('✓ CCTV routes registered at /api/cctv-monitoring and /api/web/cctv-monitoring');
 
   app.use("/api/utils", utilsRoutes);
 
@@ -397,6 +407,14 @@ function startServer() {
       console.log("🗺️ GPS tracking service initialized");
     } else {
       console.log("⚠️ GPS tracking service not started - missing Inovatracks credentials");
+    }
+
+    // Start CCTV Auto-Capture Scheduler (enabled by default)
+    if (process.env.ENABLE_CCTV_SCHEDULER !== 'false') {
+      console.log("🎬 Starting CCTV Auto-Capture Scheduler...");
+      cctvScheduler.start();
+    } else {
+      console.log("ℹ️ CCTV Scheduler disabled (ENABLE_CCTV_SCHEDULER set to 'false')");
     }
   });
 }

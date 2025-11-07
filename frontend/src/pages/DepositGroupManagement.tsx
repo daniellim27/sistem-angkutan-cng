@@ -1563,7 +1563,7 @@ const DepositGroupManagement = () => {
                   </div>
 
                   {/* Additional Costs Summary */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="bg-pink-50 p-4 rounded-lg border-2 border-pink-200">
                       <div className="text-xs text-gray-600 mb-1">Receipt Cost</div>
                       <div className="text-lg font-bold text-pink-600">
@@ -1573,22 +1573,13 @@ const DepositGroupManagement = () => {
                         {tagihanData.summary.total_receipts || 0} receipt{(tagihanData.summary.total_receipts || 0) !== 1 ? 's' : ''}
                       </div>
                     </div>
-                    <div className="bg-indigo-50 p-4 rounded-lg border-2 border-indigo-200">
-                      <div className="text-xs text-gray-600 mb-1">Nota Besar Cost</div>
-                      <div className="text-lg font-bold text-indigo-600">
-                        {formatCurrency(tagihanData.summary.total_nota_besar_cost || 0)}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {tagihanData.summary.total_nota_besars || 0} nota besar{(tagihanData.summary.total_nota_besars || 0) !== 1 ? 's' : ''}
-                      </div>
-                    </div>
                     <div className="bg-purple-50 p-4 rounded-lg border-4 border-purple-300">
                       <div className="text-xs text-gray-600 mb-1">💰 Grand Total Cost</div>
                       <div className="text-xl font-bold text-purple-600">
                         {formatCurrency(tagihanData.summary.total_cost)}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
-                        All costs combined
+                        Gas + Selisih + Receipts
                       </div>
                     </div>
                   </div>
@@ -1645,9 +1636,6 @@ const DepositGroupManagement = () => {
                           </th>
                           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">
                             🧾 Receipts
-                          </th>
-                          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                            📊 Nota Besar
                           </th>
                           <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                             Total Cost
@@ -1725,23 +1713,6 @@ const DepositGroupManagement = () => {
                                   </span>
                                   <span className="font-semibold text-pink-700">
                                     {formatCurrency(do_item.total_receipt_cost)}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span className="text-gray-400">-</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-sm text-center">
-                              {do_item.nota_besar_count > 0 ? (
-                                <div className="flex flex-col items-center">
-                                  <span className="font-medium text-indigo-600">
-                                    {do_item.nota_besar_count} nota{do_item.nota_besar_count > 1 ? 's' : ''}
-                                  </span>
-                                  <span className="text-xs text-gray-500">
-                                    {do_item.total_nota_besar_volume.toFixed(2)} m³
-                                  </span>
-                                  <span className="font-semibold text-indigo-700">
-                                    {formatCurrency(do_item.total_nota_besar_cost)}
                                   </span>
                                 </div>
                               ) : (

@@ -591,11 +591,11 @@ exports.confirmReceiptAdmin = async (req, res) => {
 
       // Get the delivery order to find the SPBG (deposit group)
       const doQuery = `
-        SELECT do.id, do.do_number, dgm.group_id, dg.spbg_location, dg.balance
-        FROM delivery_orders do
-        JOIN deposit_group_members dgm ON do.id = dgm.delivery_order_id
+        SELECT d.id, d.do_number, dgm.group_id, dg.spbg_location, dg.balance
+        FROM delivery_orders d
+        JOIN deposit_group_members dgm ON d.id = dgm.delivery_order_id
         JOIN deposit_groups dg ON dgm.group_id = dg.id
-        WHERE do.id = $1
+        WHERE d.id = $1
       `;
       const doResult = await client.query(doQuery, [receipt.do_id]);
 

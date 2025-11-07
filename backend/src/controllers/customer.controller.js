@@ -1,5 +1,5 @@
 // src/controllers/customer.controller.js
-const { Customer } = require("../models");
+const { Customer, NotaBesar, NotaBesarItem, NotaKecil, DeliveryOrder, User } = require("../models");
 const { Op } = require("sequelize");
 
 // GET /api/customers - Get all customers with pagination and search
@@ -466,6 +466,271 @@ const getCustomerSummary = async (req, res) => {
   }
 };
 
+// GET /api/customers/:id/nota-besars - Get all nota besars for a customer
+const getCustomerNotaBesars = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify customer exists
+    const customer = await Customer.findByPk(id);
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    // Get all nota besars for this customer
+    const notaBesars = await NotaBesar.findAll({
+      where: { customer_id: id },
+      include: [
+        {
+          model: DeliveryOrder,
+          as: 'deliveryOrder',
+          attributes: ['id', 'do_number', 'status']
+        },
+        {
+          model: User,
+          as: 'creator',
+          attributes: ['id', 'username', 'role']
+        },
+        {
+          model: NotaBesarItem,
+          as: 'items',
+          include: [
+            {
+              model: NotaKecil,
+              as: 'notaKecil',
+              attributes: ['id', 'customer_name', 'customer_location_index', 'stan_awal', 'stan_akhir', 'tekanan_operasi', 'temperatur_operasi', 'Vt', 'k', 'V']
+            }
+          ]
+        }
+      ],
+      order: [['created_at', 'DESC']]
+    });
+
+    // Calculate totals
+    const confirmedNotaBesars = notaBesars.filter(nb => nb.status === 'confirmed');
+    const totalPrice = confirmedNotaBesars.reduce((sum, nb) => sum + parseFloat(nb.total_price || 0), 0);
+    const totalVolume = confirmedNotaBesars.reduce((sum, nb) => sum + parseFloat(nb.total_volume || 0), 0);
+
+    res.json({
+      success: true,
+      data: {
+        customer: {
+          id: customer.id,
+          customer_name: customer.customer_name,
+          location: customer.location,
+          nota_besar: customer.nota_besar,
+          nota_kecil: customer.nota_kecil
+        },
+        notaBesars,
+        summary: {
+          total_nota_besars: notaBesars.length,
+          confirmed_nota_besars: confirmedNotaBesars.length,
+          total_price: totalPrice,
+          total_volume: totalVolume
+        }
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching customer nota besars:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch customer nota besars",
+      error: error.message,
+    });
+  }
+};
+
+// GET /api/customers/:id/nota-kecils - Get all nota kecils from confirmed nota besars for a customer
+const getCustomerNotaKecils = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify customer exists
+    const customer = await Customer.findByPk(id);
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    // Get all nota kecils from confirmed nota besars for this customer
+    const notaKecils = await NotaBesarItem.findAll({
+      include: [
+        {
+          model: NotaBesar,
+          as: 'notaBesar',
+          where: { 
+            customer_id: id,
+            status: 'confirmed'
+          },
+          attributes: ['id', 'total_volume', 'total_price', 'gas_price_per_m3', 'status', 'created_at'],
+          include: [
+            {
+              model: DeliveryOrder,
+              as: 'deliveryOrder',
+              attributes: ['id', 'do_number']
+            }
+          ]
+        },
+        {
+          model: NotaKecil,
+          as: 'notaKecil',
+          attributes: [
+            'id', 'customer_name', 'customer_address', 'customer_location_index',
+            'stan_awal', 'stan_akhir', 'tekanan_operasi', 'temperatur_operasi',
+            'Vt', 'k', 'V', 'created_at'
+          ]
+        }
+      ],
+      order: [[{ model: NotaBesar, as: 'notaBesar' }, 'created_at', 'DESC']]
+    });
+
+    // Calculate totals
+    const totalVolume = notaKecils.reduce((sum, item) => {
+      return sum + parseFloat(item.volume_m3 || 0);
+    }, 0);
+
+    const totalPrice = notaKecils.reduce((sum, item) => {
+      return sum + parseFloat(item.price || 0);
+    }, 0);
+
+    // Group by nota besar
+    const groupedByNotaBesar = notaKecils.reduce((acc, item) => {
+      const notaBesarId = item.notaBesar.id;
+      if (!acc[notaBesarId]) {
+        acc[notaBesarId] = {
+          notaBesar: item.notaBesar,
+          items: []
+        };
+      }
+      acc[notaBesarId].items.push({
+        id: item.id,
+        volume_m3: item.volume_m3,
+        price: item.price,
+        notaKecil: item.notaKecil
+      });
+      return acc;
+    }, {});
+
+    res.json({
+      success: true,
+      data: {
+        customer: {
+          id: customer.id,
+          customer_name: customer.customer_name,
+          location: customer.location,
+          nota_besar: customer.nota_besar,
+          nota_kecil: customer.nota_kecil
+        },
+        notaKecils: Object.values(groupedByNotaBesar),
+        summary: {
+          total_nota_kecils: notaKecils.length,
+          total_volume: totalVolume,
+          total_price: totalPrice,
+          from_nota_besars: Object.keys(groupedByNotaBesar).length
+        }
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching customer nota kecils:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch customer nota kecils",
+      error: error.message,
+    });
+  }
+};
+
+// POST /api/customers/recalculate-balances - Recalculate balances for all customers
+const recalculateCustomerBalances = async (req, res) => {
+  try {
+    console.log('🔄 Starting customer balance recalculation...');
+
+    // Get all customers with their confirmed nota besars
+    const customers = await Customer.findAll({
+      include: [
+        {
+          model: NotaBesar,
+          as: 'notaBesars',
+          where: { status: 'confirmed' },
+          required: false,
+          attributes: ['id', 'total_price', 'total_volume']
+        }
+      ]
+    });
+
+    let updatedCount = 0;
+    let skippedCount = 0;
+    const updates = [];
+
+    for (const customer of customers) {
+      // Calculate totals from confirmed nota besars
+      const totalNotaBesar = customer.notaBesars.reduce((sum, nb) => {
+        return sum + parseFloat(nb.total_price || 0);
+      }, 0);
+
+      const totalNotaKecil = customer.notaBesars.reduce((sum, nb) => {
+        return sum + parseFloat(nb.total_volume || 0);
+      }, 0);
+
+      // Check if update is needed
+      const currentNotaBesar = parseFloat(customer.nota_besar || 0);
+      const currentNotaKecil = parseFloat(customer.nota_kecil || 0);
+
+      if (currentNotaBesar !== totalNotaBesar || currentNotaKecil !== totalNotaKecil) {
+        // Update customer balances
+        await customer.update({
+          nota_besar: totalNotaBesar,
+          nota_kecil: totalNotaKecil,
+          updated_at: new Date()
+        });
+
+        updatedCount++;
+        updates.push({
+          customer_id: customer.id,
+          customer_name: customer.customer_name,
+          old_nota_besar: currentNotaBesar,
+          new_nota_besar: totalNotaBesar,
+          old_nota_kecil: currentNotaKecil,
+          new_nota_kecil: totalNotaKecil,
+          confirmed_nota_besars: customer.notaBesars.length
+        });
+
+        console.log(`  ✅ Updated: ${customer.customer_name}`);
+        console.log(`     Nota Besar: Rp ${currentNotaBesar.toLocaleString('id-ID')} → Rp ${totalNotaBesar.toLocaleString('id-ID')}`);
+        console.log(`     Nota Kecil: ${currentNotaKecil.toFixed(2)} m³ → ${totalNotaKecil.toFixed(2)} m³`);
+      } else {
+        skippedCount++;
+      }
+    }
+
+    console.log(`\n✅ Recalculation complete: ${updatedCount} updated, ${skippedCount} unchanged`);
+
+    res.json({
+      success: true,
+      message: `Successfully recalculated balances for ${updatedCount} customers`,
+      data: {
+        total_customers: customers.length,
+        updated: updatedCount,
+        unchanged: skippedCount,
+        updates: updates
+      }
+    });
+
+  } catch (error) {
+    console.error("Error recalculating customer balances:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to recalculate customer balances",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   getCustomers,
   getCustomerById,
@@ -477,4 +742,7 @@ module.exports = {
   getCustomerLocationsWithCoords,
   updateCustomerCoordinates,
   getCustomerSummary,
+  getCustomerNotaBesars,
+  getCustomerNotaKecils,
+  recalculateCustomerBalances,
 };

@@ -4,7 +4,8 @@ import PaymentsOverview from "./pages/Overview";
 import DeliveryList from "./pages/DeliveryList";
 import InvoiceList from "./pages/InvoiceList";
 import BulkInvoiceWizard from "./pages/BulkInvoiceWizard";
-import CreateInvoice from "./pages/CreateInvoice"; // <-- Tambahkan ini
+import CreateInvoice from "./pages/CreateInvoice";
+import NotaBesarList from "./pages/NotaBesarList";
 
 const PaymentsRoutes: React.FC = () => {
   return (
@@ -12,6 +13,7 @@ const PaymentsRoutes: React.FC = () => {
       <Route path="" element={<PaymentsOverview />} />
       <Route path="deliveries" element={<DeliveryList />} />
       <Route path="invoices" element={<InvoiceList />} />
+      <Route path="nota-besar" element={<NotaBesarList />} />
       <Route path="bulk" element={<BulkInvoiceWizard />} />
       <Route
         path="delivery-orders/:doId/invoices/create"

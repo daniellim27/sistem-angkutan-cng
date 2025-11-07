@@ -12,6 +12,9 @@ const {
   getCustomerLocationsWithCoords,
   updateCustomerCoordinates,
   getCustomerSummary,
+  getCustomerNotaBesars,
+  getCustomerNotaKecils,
+  recalculateCustomerBalances,
 } = require("../controllers/customer.controller");
 const { verifyToken } = require("../middlewares/auth.middleware");
 
@@ -20,6 +23,9 @@ router.use(verifyToken);
 
 // GET /api/customers/summary - Get customer summary statistics
 router.get("/summary", getCustomerSummary);
+
+// POST /api/customers/recalculate-balances - Recalculate balances for all customers
+router.post("/recalculate-balances", recalculateCustomerBalances);
 
 // GET /api/customers/locations-with-coords - Get customer locations with coordinates for map display
 router.get("/locations-with-coords", getCustomerLocationsWithCoords);
@@ -35,6 +41,12 @@ router.get("/search", searchCustomers);
 
 // GET /api/customers - Get all customers with pagination and search
 router.get("/", getCustomers);
+
+// GET /api/customers/:id/nota-besars - Get all nota besars for a customer
+router.get("/:id/nota-besars", getCustomerNotaBesars);
+
+// GET /api/customers/:id/nota-kecils - Get all nota kecils for a customer
+router.get("/:id/nota-kecils", getCustomerNotaKecils);
 
 // GET /api/customers/:id - Get customer by ID
 router.get("/:id", getCustomerById);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { paymentsApi } from "../api";
+import { authClient } from "../../../api/axiosConfig";
 
 interface PaymentStats {
   totalOutstanding: number;
@@ -21,6 +22,7 @@ const PaymentsOverview: React.FC = () => {
   const [stats, setStats] = useState<PaymentStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [totalNotaBesarPrice, setTotalNotaBesarPrice] = useState<number>(0);
   // SPBG Filter State
   const [spbgFilter, setSpbgFilter] = useState({
     spbg_only: false,
@@ -30,7 +32,25 @@ const PaymentsOverview: React.FC = () => {
 
   useEffect(() => {
     fetchOverviewData();
+    fetchNotaBesarTotal();
   }, [spbgFilter]);
+
+  const fetchNotaBesarTotal = async () => {
+    try {
+      // Fetch all nota besars to calculate total price
+      const notaBesarResponse = await authClient.get('/nota-besars');
+      
+      if (notaBesarResponse.data.success && notaBesarResponse.data.data) {
+        const total = notaBesarResponse.data.data.reduce((sum: number, nb: any) => {
+          return sum + parseFloat(nb.total_price || 0);
+        }, 0);
+        setTotalNotaBesarPrice(total);
+      }
+    } catch (err) {
+      console.error("Error fetching nota besar total:", err);
+      setTotalNotaBesarPrice(0);
+    }
+  };
 
   const fetchOverviewData = async () => {
     try {
@@ -179,7 +199,7 @@ const PaymentsOverview: React.FC = () => {
                     Outstanding Amount
                   </dt>
                   <dd className="text-lg font-medium text-gray-900">
-                    Rp {(stats?.totalOutstanding || 0).toLocaleString("id-ID")}
+                    Rp {((stats?.totalOutstanding || 0) + totalNotaBesarPrice).toLocaleString("id-ID")}
                   </dd>
                 </dl>
               </div>
@@ -426,6 +446,50 @@ const PaymentsOverview: React.FC = () => {
                   </p>
                   <p className="text-sm text-gray-500">
                     Create invoice for multiple deliveries
+                  </p>
+                </div>
+              </div>
+              <svg
+                className="w-5 h-5 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </Link>
+
+            <Link
+              to="/payments/nota-besar"
+              className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center">
+                <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center mr-3">
+                  <svg
+                    className="w-5 h-5 text-orange-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    Nota Besar
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    View nota besars and outstanding amounts
                   </p>
                 </div>
               </div>

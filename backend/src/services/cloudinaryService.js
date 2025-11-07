@@ -405,6 +405,62 @@ class CloudinaryService {
       throw error;
     }
   }
+
+  /**
+   * Upload CCTV screenshot to Cloudinary
+   * @param {Buffer} imageBuffer - Image buffer
+   * @param {number} sessionId - CCTV session ID
+   * @param {number} sequenceNumber - Screenshot sequence number
+   * @returns {Promise<Object>} Upload result
+   */
+  async uploadCCTVScreenshot(imageBuffer, sessionId, sequenceNumber) {
+    try {
+      if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
+        throw new Error('Invalid image buffer provided');
+      }
+
+      console.log(`📸 Uploading CCTV screenshot to Cloudinary...`);
+      console.log(`Session: ${sessionId}, Sequence: ${sequenceNumber}, Size: ${imageBuffer.length} bytes`);
+
+      // Generate filename and folder
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `screenshot_${sequenceNumber}_${timestamp}`;
+      const folderPath = `cctv/session_${sessionId}`;
+
+      // Upload to Cloudinary
+      const uploadResult = await cloudinary.uploader.upload(
+        `data:image/jpeg;base64,${imageBuffer.toString('base64')}`,
+        {
+          folder: folderPath,
+          public_id: filename,
+          resource_type: 'image',
+          format: 'jpg',
+          quality: 'auto:good',
+          transformation: [
+            { width: 1920, height: 1080, crop: 'limit' }, // Max size
+            { quality: 'auto:good' }
+          ]
+        }
+      );
+
+      console.log(`✅ CCTV screenshot uploaded: ${uploadResult.public_id}`);
+
+      return {
+        success: true,
+        publicId: uploadResult.public_id,
+        secureUrl: uploadResult.secure_url,
+        url: uploadResult.url,
+        format: uploadResult.format,
+        width: uploadResult.width,
+        height: uploadResult.height,
+        bytes: uploadResult.bytes,
+      };
+
+    } catch (error) {
+      console.error('Cloudinary CCTV screenshot upload error:', error);
+      throw new Error(`Failed to upload CCTV screenshot: ${error.message}`);
+    }
+  }
 }
 
 module.exports = new CloudinaryService();

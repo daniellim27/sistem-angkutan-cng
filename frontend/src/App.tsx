@@ -32,8 +32,8 @@ import ServiceCreatePage from "./pages/ServiceCreate";
 import ServiceDetailPage from "./pages/ServiceDetail";
 import ServiceEditPage from "./pages/ServiceEdit";
 import CustomerManagement from "./pages/CustomerManagement";
-import NotaBesarManagement from "./pages/NotaBesarManagement";
-import NotaKecilManagement from "./pages/NotaKecilManagement";
+import CustomerNotaBesarPage from "./pages/CustomerNotaBesarPage";
+import CustomerNotaKecilPage from "./pages/CustomerNotaKecilPage";
 import NotaManagementPage from "./pages/operations/NotaManagementPage";
 import NotaBesarDetailPage from "./pages/operations/NotaBesarDetailPage";
 import CCTVMonitoringPage from "./pages/operations/CCTVMonitoringPage";
@@ -112,8 +112,8 @@ function App() {
 
           {/* Customer Management Routes */}
           <Route path="customers" element={<CustomerManagement />} />
-          <Route path="customers/:customerId/nota-besar" element={<NotaBesarManagement />} />
-          <Route path="customers/:customerId/nota-kecil" element={<NotaKecilManagement />} />
+          <Route path="customers/:id/nota-besar" element={<CustomerNotaBesarPage />} />
+          <Route path="customers/:id/nota-kecil" element={<CustomerNotaKecilPage />} />
 
           {/* Trips Routes - PO routes removed, DOs are now standalone */}
           <Route path="trips" element={<TripsPage />} />
