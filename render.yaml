@@ -1,9 +1,9 @@
 services:
   - type: web
     name: frontend-angkutan
-    env: static
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./build
+    env: node
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: cd frontend && node server.js
     envVars:
       - key: NODE_ENV
         value: production
