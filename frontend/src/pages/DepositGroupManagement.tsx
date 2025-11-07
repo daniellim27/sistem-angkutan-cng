@@ -126,7 +126,7 @@ const DepositGroupManagement = () => {
   // Form data for creating DOs - match delivery orders page structure
   const [doFormData, setDOFormData] = useState({
     unit: 'kubik', // DOs always use kubik
-    unit_price: '',
+    unit_price: '0',
     load_location: '', // Will be auto-set from selectedGroup.spbg_location
     driver_id: '',
     vehicle_id: '',
@@ -474,7 +474,7 @@ const DepositGroupManagement = () => {
   const resetDOForm = () => {
     setDOFormData({
       unit: 'kubik',
-      unit_price: '',
+      unit_price: '0',
       load_location: '', // Will be auto-set from selectedGroup
       driver_id: '',
       vehicle_id: '',

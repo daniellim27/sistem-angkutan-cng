@@ -34,7 +34,8 @@ const calculateOngkosan = (totalAmount, tripAllowance, gaji) => {
   const allowance = parseFloat(tripAllowance) || 0;
   const salary = parseFloat(gaji) || 0;
 
-  return total - allowance - salary;
+  // Ensure ongkosan is never negative (min validation requirement)
+  return Math.max(0, total - allowance - salary);
 };
 
 /**
@@ -88,10 +89,13 @@ exports.createDeliveryOrder = async (req, res, next) => {
     }
 
     // Enhanced validation with numeric checks
+    // Allow 0 as a valid unit_price value
     if (
       !vehicle_id ||
       !driver_id ||
-      !unit_price ||
+      unit_price === null ||
+      unit_price === undefined ||
+      unit_price === '' ||
       isNaN(parseFloat(unit_price))
     ) {
       await transaction.rollback();
@@ -181,8 +185,9 @@ exports.createDeliveryOrder = async (req, res, next) => {
     let calculatedTotalAmount =
       total_amount || finalUnitPrice; // Use unit price as base amount
     let calculatedOngkosan =
-      ongkosan ||
-      calculateOngkosan(calculatedTotalAmount, trip_allowance, gaji);
+      ongkosan !== undefined && ongkosan !== null
+        ? Math.max(0, parseFloat(ongkosan) || 0) // Ensure provided ongkosan is not negative
+        : calculateOngkosan(calculatedTotalAmount, trip_allowance, gaji);
 
     // Generate DO number if not provided
     let finalDoNumber = do_number;
@@ -801,6 +806,9 @@ exports.updateDeliveryOrder = async (req, res, next) => {
         proposedData.gaji
       );
     }
+
+    // Ensure ongkosan is never negative (min validation requirement)
+    calculatedOngkosan = Math.max(0, parseFloat(calculatedOngkosan) || 0);
 
     proposedData.total_amount = calculatedTotalAmount;
     proposedData.ongkosan = calculatedOngkosan;
