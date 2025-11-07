@@ -53,8 +53,7 @@ interface Customer {
   location: string;
   display_name: string;
 }
-
-
+ 
 const DepositGroupManagement = () => {
   const [groups, setGroups] = useState<DepositGroupWithMembers[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1111,24 +1110,6 @@ const DepositGroupManagement = () => {
                     <p className="text-xs text-gray-500 mt-1">
                       Only vehicles with 'available' status are shown. Vehicles with 'in use' or 'maintenance' status are automatically filtered out by the system.
                     </p>
-                  </div>
-
-
-                  {/* Unit Price */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Unit Price (IDR) *
-                    </label>
-                    <input
-                      type="number"
-                      value={doFormData.unit_price}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, unit_price: e.target.value }))}
-                      placeholder="Enter unit price"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      min="0"
-                      step="0.01"
-                      required
-                    />
                   </div>
 
                   {/* Trip Allowance */}
