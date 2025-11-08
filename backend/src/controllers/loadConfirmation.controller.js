@@ -25,8 +25,8 @@ exports.confirmLoad = async (req, res, next) => {
     console.log("Request body:", req.body);
     console.log("Content-Type:", req.headers['content-type']);
 
-    // Validasi input
-    if (!actual_load_quantity) {
+    // Validasi input - allow 0 as valid value
+    if (actual_load_quantity === null || actual_load_quantity === undefined) {
       return res.status(400).json({
         message: "Berat muatan aktual harus diisi.",
       });
@@ -111,11 +111,18 @@ exports.confirmLoad = async (req, res, next) => {
       });
     }
 
-    // Validasi quantity
+    // Validasi quantity - allow 0 to bypass minimal check
     const actualQuantity = parseFloat(actual_load_quantity);
     const minimalQuantity = parseFloat(deliveryOrder.minimal_load_quantity);
 
-    if (actualQuantity < minimalQuantity) {
+    if (isNaN(actualQuantity)) {
+      return res.status(400).json({
+        message: "Volume muatan aktual harus berupa angka yang valid.",
+      });
+    }
+
+    // Allow 0 to bypass minimal quantity check (for quick confirmation)
+    if (actualQuantity > 0 && actualQuantity < minimalQuantity) {
       return res.status(400).json({
         message: `Muatan aktual (${actualQuantity} ton) kurang dari minimal yang ditetapkan (${minimalQuantity} ton).`,
       });

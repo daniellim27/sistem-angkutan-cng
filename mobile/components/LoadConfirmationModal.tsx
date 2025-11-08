@@ -32,7 +32,7 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
   onConfirm,
   isLoading,
 }) => {
-  const [actualQuantity, setActualQuantity] = useState("");
+  const [actualQuantity, setActualQuantity] = useState("0");
   const [suratJalanPhotos, setSuratJalanPhotos] = useState<any[]>([]);
   
   const handleImagePicker = () => {
@@ -118,8 +118,9 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
   };
 
   const handleConfirm = () => {
-    const quantity = parseFloat(actualQuantity);
-    if (!actualQuantity || isNaN(quantity)) {
+    // Volume Muatan is optional, default to 0 if empty
+    const quantity = actualQuantity.trim() === "" ? 0 : parseFloat(actualQuantity);
+    if (isNaN(quantity)) {
       Alert.alert("Error", "Masukkan volume muatan aktual yang valid");
       return;
     }
@@ -135,7 +136,7 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
   };
 
   const resetForm = () => {
-    setActualQuantity("");
+    setActualQuantity("0");
     setSuratJalanPhotos([]);
   };
 
@@ -162,18 +163,18 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
           <View style={styles.infoSection}>
             <FontAwesome5 name="info-circle" size={20} color="#3b82f6" />
             <Text style={styles.infoText}>
-              Masukkan volume muatan aktual yang sudah dimuat ke kendaraan. 
+              Masukkan volume muatan aktual yang sudah dimuat ke kendaraan (opsional, default: 0). 
               Foto surat jalan dapat diambil sekarang atau nanti di halaman detail perjalanan.
             </Text>
           </View>
 
           <View style={styles.quantitySection}>
-            <Text style={styles.label}>Volume Muatan</Text>
+            <Text style={styles.label}>Volume Muatan (Opsional)</Text>
             <TextInput
               style={styles.input}
               value={actualQuantity}
               onChangeText={setActualQuantity}
-              placeholder="Contoh: 3.2"
+              placeholder="0"
               keyboardType="numeric"
               editable={!isLoading}
             />
@@ -247,11 +248,10 @@ const LoadConfirmationModal: React.FC<LoadConfirmationModalProps> = ({
           <TouchableOpacity
             style={[
               styles.confirmButton,
-              (!actualQuantity || isLoading) &&
-                styles.disabledButton,
+              isLoading && styles.disabledButton,
             ]}
             onPress={handleConfirm}
-            disabled={!actualQuantity || isLoading}
+            disabled={isLoading}
           >
             {isLoading ? (
               <ActivityIndicator color="#fff" />

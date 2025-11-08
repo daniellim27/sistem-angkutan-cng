@@ -1642,7 +1642,11 @@ const TripDetailScreen = () => {
         return (
           <TouchableOpacity
             style={[styles.statusActionButton, { backgroundColor: "#e67e22" }]}
-            onPress={() => setShowLoadConfirmation(true)}
+            onPress={() => handleLoadConfirmation({
+              actual_load_quantity: 0,
+              surat_jalan_photo: []
+            })}
+            disabled={submittingLoad}
           >
             <FontAwesome5 name="clipboard-check" size={20} color="#fff" />
             <Text style={styles.statusActionText}>
