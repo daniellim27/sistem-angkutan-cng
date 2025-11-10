@@ -2,6 +2,77 @@
 const { Customer, NotaBesar, NotaBesarItem, NotaKecil, DeliveryOrder, User } = require("../models");
 const { Op } = require("sequelize");
 
+const coordinateRegex = /^-?\d{1,3}(?:\.\d+)?\s*,\s*-?\d{1,3}(?:\.\d+)?$/;
+
+const coordinateErrorMessages = {
+  BOTH_COORDS_REQUIRED: "Both latitude and longitude must be provided when specifying coordinates.",
+  INVALID_COORDS: "Invalid coordinate values. Use numeric latitude and longitude.",
+  LAT_OUT_OF_RANGE: "Latitude must be between -90 and 90.",
+  LNG_OUT_OF_RANGE: "Longitude must be between -180 and 180.",
+};
+
+const normalizeCoordinateValue = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "number") {
+    return Number.isNaN(value) ? null : value;
+  }
+  const parsed = parseFloat(String(value).trim());
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const extractCoordinates = (locationInput, latitudeInput, longitudeInput) => {
+  const hasLatitudeInput =
+    latitudeInput !== undefined && latitudeInput !== null && String(latitudeInput).trim() !== "";
+  const hasLongitudeInput =
+    longitudeInput !== undefined && longitudeInput !== null && String(longitudeInput).trim() !== "";
+
+  if (hasLatitudeInput || hasLongitudeInput) {
+    if (!hasLatitudeInput || !hasLongitudeInput) {
+      return { error: "BOTH_COORDS_REQUIRED" };
+    }
+
+    const lat = normalizeCoordinateValue(latitudeInput);
+    const lng = normalizeCoordinateValue(longitudeInput);
+
+    if (lat === null || lng === null) {
+      return { error: "INVALID_COORDS" };
+    }
+    if (lat < -90 || lat > 90) {
+      return { error: "LAT_OUT_OF_RANGE" };
+    }
+    if (lng < -180 || lng > 180) {
+      return { error: "LNG_OUT_OF_RANGE" };
+    }
+
+    return { latitude: lat, longitude: lng, source: "explicit" };
+  }
+
+  if (locationInput && typeof locationInput === "string") {
+    const trimmed = locationInput.trim();
+    if (coordinateRegex.test(trimmed)) {
+      const [latStr, lngStr] = trimmed.split(",");
+      const lat = normalizeCoordinateValue(latStr);
+      const lng = normalizeCoordinateValue(lngStr);
+
+      if (lat === null || lng === null) {
+        return { error: "INVALID_COORDS" };
+      }
+      if (lat < -90 || lat > 90) {
+        return { error: "LAT_OUT_OF_RANGE" };
+      }
+      if (lng < -180 || lng > 180) {
+        return { error: "LNG_OUT_OF_RANGE" };
+      }
+
+      return { latitude: lat, longitude: lng, source: "location_field" };
+    }
+  }
+
+  return { source: null };
+};
+
 // GET /api/customers - Get all customers with pagination and search
 const getCustomers = async (req, res) => {
   try {
@@ -102,7 +173,15 @@ const getCustomerById = async (req, res) => {
 // POST /api/customers - Create new customer
 const createCustomer = async (req, res) => {
   try {
-    const { customer_name, location, phone, nota_besar = 0, nota_kecil = 0 } = req.body;
+    const {
+      customer_name,
+      location,
+      phone,
+      nota_besar = 0,
+      nota_kecil = 0,
+      latitude,
+      longitude,
+    } = req.body;
 
     // Validation
     if (!customer_name || !location) {
@@ -143,13 +222,31 @@ const createCustomer = async (req, res) => {
       });
     }
 
-    const customer = await Customer.create({
+    const coordinateResult = extractCoordinates(location, latitude, longitude);
+    if (coordinateResult.error) {
+      return res.status(400).json({
+        success: false,
+        message: coordinateErrorMessages[coordinateResult.error] || "Invalid coordinates provided",
+      });
+    }
+
+    const customerPayload = {
       customer_name: customer_name.trim(),
       location: location.trim(),
       phone: phone ? phone.trim() : null,
       nota_besar: parsedNotaBesar,
       nota_kecil: parsedNotaKecil,
-    });
+    };
+
+    if (
+      coordinateResult.latitude !== undefined &&
+      coordinateResult.longitude !== undefined
+    ) {
+      customerPayload.latitude = coordinateResult.latitude;
+      customerPayload.longitude = coordinateResult.longitude;
+    }
+
+    const customer = await Customer.create(customerPayload);
 
     res.status(201).json({
       success: true,
@@ -183,7 +280,15 @@ const createCustomer = async (req, res) => {
 const updateCustomer = async (req, res) => {
   try {
     const { id } = req.params;
-    const { customer_name, location, phone, nota_besar, nota_kecil } = req.body;
+    const {
+      customer_name,
+      location,
+      phone,
+      nota_besar,
+      nota_kecil,
+      latitude,
+      longitude,
+    } = req.body;
 
     const customer = await Customer.findByPk(id);
 
@@ -234,14 +339,32 @@ const updateCustomer = async (req, res) => {
       });
     }
 
+    const coordinateResult = extractCoordinates(location, latitude, longitude);
+    if (coordinateResult.error) {
+      return res.status(400).json({
+        success: false,
+        message: coordinateErrorMessages[coordinateResult.error] || "Invalid coordinates provided",
+      });
+    }
+
     // Update customer
-    await customer.update({
+    const updatePayload = {
       customer_name: customer_name.trim(),
       location: location.trim(),
       phone: phone ? phone.trim() : null,
       nota_besar: parsedNotaBesar,
       nota_kecil: parsedNotaKecil,
-    });
+    };
+
+    if (
+      coordinateResult.latitude !== undefined &&
+      coordinateResult.longitude !== undefined
+    ) {
+      updatePayload.latitude = coordinateResult.latitude;
+      updatePayload.longitude = coordinateResult.longitude;
+    }
+
+    await customer.update(updatePayload);
 
     res.json({
       success: true,

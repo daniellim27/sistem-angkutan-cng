@@ -7,6 +7,8 @@ interface Customer {
   id: number;
   customer_name: string;
   location: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   phone?: string;
   nota_besar: number;
   nota_kecil: number;
@@ -19,6 +21,49 @@ interface CustomerFormData {
   location: string;
   phone: string;
 }
+
+const coordinateRegex = /^-?\d{1,3}(?:\.\d+)?\s*,\s*-?\d{1,3}(?:\.\d+)?$/;
+
+const parseCoordinateInput = (input: string) => {
+  if (!input) {
+    return null;
+  }
+
+  const trimmed = input.trim();
+  if (!coordinateRegex.test(trimmed)) {
+    return null;
+  }
+
+  const [latStr, lngStr] = trimmed.split(",");
+  const latitude = parseFloat(latStr.trim());
+  const longitude = parseFloat(lngStr.trim());
+
+  if (
+    Number.isNaN(latitude) ||
+    Number.isNaN(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null;
+  }
+
+  return { latitude, longitude };
+};
+
+const formatCoordinateDisplay = (value?: number | string | null): string | null => {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const numeric = typeof value === "number" ? value : parseFloat(value);
+  if (Number.isNaN(numeric)) {
+    return null;
+  }
+
+  return numeric.toFixed(6);
+};
 
 interface CustomerResponse {
   success: boolean;
@@ -103,6 +148,8 @@ const CustomerManagement: React.FC = () => {
     e.preventDefault();
     setSubmitting(true);
 
+    const manualCoordinates = parseCoordinateInput(formData.location);
+
     try {
       const token = localStorage.getItem("token");
       const url = editingCustomer
@@ -111,17 +158,30 @@ const CustomerManagement: React.FC = () => {
 
       const method = editingCustomer ? "PUT" : "POST";
 
+      const payload: Record<string, unknown> = {
+        customer_name: formData.customer_name.trim(),
+        location: formData.location.trim(),
+      };
+
+      const trimmedPhone = formData.phone.trim();
+      if (trimmedPhone) {
+        payload.phone = trimmedPhone;
+      } else if (editingCustomer) {
+        payload.phone = "";
+      }
+
+      if (manualCoordinates) {
+        payload.latitude = manualCoordinates.latitude;
+        payload.longitude = manualCoordinates.longitude;
+      }
+
       const response = await fetch(url, {
         method,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          customer_name: formData.customer_name,
-          location: formData.location,
-          phone: formData.phone,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -133,23 +193,25 @@ const CustomerManagement: React.FC = () => {
             : "Customer created successfully"
         );
         // Auto-geocode customers without coordinates so Live Tracking can show markers
-        try {
-          const geocodeRes = await fetch(
-            `${process.env.REACT_APP_API_URL}/customers/update-coordinates`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            }
-          );
-          const geocodeData = await geocodeRes.json().catch(() => null);
-          if (geocodeRes.ok && geocodeData?.success) {
-            toast.success(
-              `Updated ${geocodeData.data?.updated || 0} customer coordinate(s)`
+        if (!manualCoordinates) {
+          try {
+            const geocodeRes = await fetch(
+              `${process.env.REACT_APP_API_URL}/customers/update-coordinates`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              }
             );
-          }
-        } catch {}
+            const geocodeData = await geocodeRes.json().catch(() => null);
+            if (geocodeRes.ok && geocodeData?.success) {
+              toast.success(
+                `Updated ${geocodeData.data?.updated || 0} customer coordinate(s)`
+              );
+            }
+          } catch {}
+        }
         setShowForm(false);
         setEditingCustomer(null);
         resetForm();
@@ -276,6 +338,13 @@ const CustomerManagement: React.FC = () => {
     loadData();
   }, []);
 
+  const existingLatitude = editingCustomer
+    ? formatCoordinateDisplay(editingCustomer.latitude)
+    : null;
+  const existingLongitude = editingCustomer
+    ? formatCoordinateDisplay(editingCustomer.longitude)
+    : null;
+
   if (loading && customers.length === 0) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -385,8 +454,16 @@ const CustomerManagement: React.FC = () => {
                     setFormData({ ...formData, location: e.target.value })
                   }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter customer location"
+                  placeholder='Enter customer location or coordinates (e.g. "-6.200000, 106.816666")'
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  You can enter coordinates in the format "latitude, longitude" to use an exact map location.
+                </p>
+                {editingCustomer && existingLatitude && existingLongitude && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Current coordinates: {existingLatitude}, {existingLongitude}
+                  </p>
+                )}
               </div>
 
               <div>
