@@ -1,0 +1,27 @@
+{
+  "watch": ["src"],
+  "ext": "js,json",
+  "ignore": [
+    "node_modules",
+    "uploads/**",
+    "screenshots/**",
+    ".local-chromium/**",
+    ".cache/**",
+    "*.log",
+    "session.json",
+    "test-codes/**",
+    "tests/**",
+    "*.test.js",
+    "*.spec.js",
+    "**/puppeteer-*/**",
+    "**/playwright-*/**",
+    "**/tmp/**",
+    "**/temp/**"
+  ],
+  "delay": 2000,
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "legacyWatch": false
+}
+
