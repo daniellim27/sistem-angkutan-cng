@@ -71,6 +71,7 @@ class MigrationRunner {
       '20250115_add_phone_to_customers.js',
       '20250120_add_surat_jalan_ocr_fields.js',
       '20250123_add_gdrive_image_urls_to_nota_kecils.js',
+      '20250124_add_cctv_sessions_nota_kecil_fk.js',
       '20251105_set_null_on_delete_driver_id_in_delivery_orders.sql',
     ];
   }

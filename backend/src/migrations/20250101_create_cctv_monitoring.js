@@ -90,12 +90,7 @@ module.exports = {
       created_nota_kecil_id: {
         type: Sequelize.INTEGER,
         allowNull: true,
-        references: {
-          model: 'nota_kecils',
-          key: 'id'
-        },
-        onUpdate: 'CASCADE',
-        onDelete: 'SET NULL',
+        // Foreign key constraint will be added in a later migration after nota_kecils table exists
         comment: 'Nota Kecil created from this monitoring session'
       },
       panel_row: {
