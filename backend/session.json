@@ -1,0 +1,17 @@
+{
+  "cookies": {
+    "s-sid": "s:e9ec0369-e974-4ce1-923c-b2656b063ba5.xMmlaVXakjPYg09sTzwFhu0y4eyaMBeM2DdoaF2qaU4",
+    "s-sid.sig": "kP9rtKAn17znXSNWGWFHK2iuqOOusfuo",
+    "uid": "az1760007796938NmNAy",
+    "clientId": "u8aphxps48jv38uraqtf",
+    "deviceId": "security-wisdom"
+  },
+  "headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Referer": "https://ipc.bardi.co.id/",
+    "Origin": "https://ipc.bardi.co.id",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br"
+  }
+}
