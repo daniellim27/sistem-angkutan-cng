@@ -64,6 +64,7 @@ class MigrationRunner {
       '20250121_create_nota_besars_table.js',
       '20250121_create_nota_besar_items_table.js',
       '20250122_create_customers_table.js',
+      '20250102_add_customer_id_to_nota_besars.js',
       '20250122_add_customer_location_to_delivery_orders.js',
       '20250122_update_deposit_groups_to_spbg.js',
       '20250122_add_departed_from_spbu_at_column.js',
