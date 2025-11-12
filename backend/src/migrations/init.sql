@@ -30,6 +30,7 @@ CREATE TABLE driver_profiles (
   address TEXT NOT NULL,
   id_card_number VARCHAR(50) UNIQUE NOT NULL,
   sim_number VARCHAR(50) UNIQUE,
+  sim_expiry_date DATE,
   license_type VARCHAR(10),
   status driver_status NOT NULL DEFAULT 'available',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
