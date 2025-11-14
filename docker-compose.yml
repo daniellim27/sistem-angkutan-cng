@@ -15,7 +15,9 @@ services:
       - "5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/src/migrations:/docker-entrypoint-initdb.d/migrations:ro
+      # REMOVE THE MIGRATION FOLDER (Postgres cannot run JS migrations)
+      # - ./backend/src/migrations:/docker-entrypoint-initdb.d/migrations:ro
+      # Seeder is OK ONLY if it's SQL
       - ./backend/src/migrations/seeder.sql:/docker-entrypoint-initdb.d/seeder.sql:ro
     networks:
       - angkutan_network
@@ -34,6 +36,8 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: development
+
+      # DATABASE CONFIG (CORRECT)
       DB_HOST: postgres
       DB_NAME: cng_db
       DB_PASSWORD: awak1234
@@ -41,6 +45,10 @@ services:
       DB_USER: cng_user
       DB_DIALECT: postgres
       DB_SSL: "false"
+
+      # IMPORTANT: ENABLE AUTOMATIC MIGRATION
+      AUTO_MIGRATE: "true"
+
     ports:
       - "3000:3000"
     volumes:
