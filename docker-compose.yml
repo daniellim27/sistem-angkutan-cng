@@ -1,57 +1,65 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:17.5
+    container_name: cng-api-container
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cng_db
+      POSTGRES_USER: cng_user
+      POSTGRES_PASSWORD: awak1234
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/src/migrations:/docker-entrypoint-initdb.d/migrations:ro
+      - ./backend/src/migrations/seeder.sql:/docker-entrypoint-initdb.d/seeder.sql:ro
+    networks:
+      - angkutan_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d angkutan_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: angkutan_backend
+    container_name: cng-api-container
     restart: unless-stopped
     environment:
       NODE_ENV: development
-
-      # 🌐 Use PostgreSQL installed on the VPS
-      DB_HOST: host.docker.internal
-      DB_PORT: 5432
+      DB_HOST=127.0.0.1
       DB_NAME: cng_db
-      DB_USER: cng_user
       DB_PASSWORD: awak1234
+      DB_PORT: 5432
+      DB_USER: cng_user
+      DB_DIALECT: postgres
       DB_SSL: "false"
-
-      PORT: 3000
-      HOST: "0.0.0.0"
-      JWT_SECRET: your_super_secret_jwt_key_here_make_it_long_and_complex
-
-      BASE_URL: http://localhost:3000
-
-      GOOGLE_APPLICATION_CREDENTIALS: /app/src/config/angkutan-system-d87e3-ef128576fdb9.json
-      FIREBASE_PROJECT_ID: angkutan-system
-
-      OPENAI_API_KEY:
-
-      AUTO_MIGRATE: "true"
-
-      CLOUDINARY_CLOUD_NAME: dvfxozwnt
-      CLOUDINARY_API_KEY: 587735263442828
-      CLOUDINARY_API_SECRET: mL-6CD2443SJgsDrIdTGBtNePgk
-
     ports:
       - "3000:3000"
-
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/src/config:/app/src/config:ro
-
     networks:
       - angkutan_network
-
-    depends_on: []
-
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
 
 networks:
   angkutan_network:
