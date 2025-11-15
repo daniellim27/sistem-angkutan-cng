@@ -8,6 +8,7 @@
  * - Integration with BARDI API and OCR processing
  */
 
+const { Op } = require('sequelize');
 const db = require('../models');
 const bardiScrapingService = require('./bardiScrapingService');
 const meterOcrService = require('./meterOcrService');
@@ -148,11 +149,34 @@ class CCTVMonitoringService {
         offset: parseInt(offset),
       });
 
+      // Pre-compute nota kecil counts for each session (count nota created after session start)
+      const notaCounts = {};
+      await Promise.all(
+        sessions.map(async (session) => {
+          try {
+            const count = await NotaKecil.count({
+              where: {
+                delivery_order_id: session.delivery_order_id,
+                customer_location_index: session.customer_location_index,
+                created_at: {
+                  [Op.gte]: session.start_time,
+                },
+              },
+            });
+            notaCounts[session.id] = count;
+          } catch (error) {
+            console.error(`Error counting nota kecils for session ${session.id}:`, error.message);
+            notaCounts[session.id] = 0;
+          }
+        })
+      );
+
       // Calculate health status for each session
       const sessionsWithHealth = sessions.map((session) => {
         const sessionData = session.toJSON();
         sessionData.health_status = session.getHealthStatus();
         sessionData.time_since_last_capture = session.getTimeSinceLastCapture();
+        sessionData.nota_kecil_count = notaCounts[session.id] || 0;
         return sessionData;
       });
 
@@ -564,6 +588,47 @@ class CCTVMonitoringService {
       };
     } catch (error) {
       console.error('Error restarting session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Complete a monitoring session
+   * @param {number} sessionId - Session ID
+   * @param {Object} options - Complete options
+   * @returns {Promise<Object>} Updated session
+   */
+  async completeSession(sessionId, options = {}) {
+    try {
+      const { reason = null } = options;
+
+      const session = await CCTVSession.findByPk(sessionId);
+      if (!session) {
+        throw new Error(`Session ${sessionId} not found`);
+      }
+
+      if (session.status === 'completed') {
+        throw new Error(`Session ${sessionId} is already completed`);
+      }
+
+      // Update session to completed
+      await session.update({
+        status: 'completed',
+        end_time: new Date(),
+        session_notes: reason 
+          ? `${session.session_notes || ''}\nCompleted: ${reason}`.trim()
+          : `${session.session_notes || ''}\nCompleted at ${new Date().toISOString()}`.trim(),
+      });
+
+      console.log(`✅ Session ${sessionId} marked as completed`);
+
+      return {
+        success: true,
+        session: session.toJSON(),
+        message: 'Session completed successfully',
+      };
+    } catch (error) {
+      console.error('Error completing session:', error);
       throw error;
     }
   }

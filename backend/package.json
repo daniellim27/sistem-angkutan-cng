@@ -36,7 +36,8 @@
     "test:button": "node test-screenshot-button.js",
     "bardi:target": "node bardi-targeted-screenshot.js",
     "bardi:final": "node bardi-final-screenshot.js",
-    "bardi:login-test": "node test-bardi-login.js"
+    "bardi:login-test": "node test-bardi-login.js",
+    "cctv:process-nota": "node scripts/process-nota-backlog.js"
   },
   "keywords": [],
   "author": "",

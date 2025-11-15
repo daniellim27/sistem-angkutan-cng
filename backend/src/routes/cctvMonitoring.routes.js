@@ -40,6 +40,10 @@ router.put('/sessions/:id', cctvController.updateSession);
 // Stop an active monitoring session
 router.post('/sessions/:id/stop', cctvController.stopSession);
 
+// POST /api/cctv-monitoring/sessions/:id/complete
+// Mark a session as completed
+router.post('/sessions/:id/complete', cctvController.completeSession);
+
 // POST /api/cctv-monitoring/sessions/:id/restart
 // Restart a stopped or dead session
 router.post('/sessions/:id/restart', cctvController.restartSession);
@@ -91,6 +95,10 @@ router.get('/sessions/:id/health', cctvController.getSessionHealth);
 /**
  * BARDI Token Management Routes
  */
+
+// GET /api/cctv-monitoring/bardi-token
+// Retrieve the persisted BARDI session token
+router.get('/bardi-token', cctvController.getBardiToken);
 
 // PUT /api/cctv-monitoring/bardi-token
 // Update BARDI session token for active sessions

@@ -5,10 +5,44 @@
  * Connects service layer to API endpoints
  */
 
+const { Op } = require('sequelize');
 const cctvMonitoringService = require('../services/cctvMonitoringService');
 const cctvScheduler = require('../services/cctvScheduler');
 const db = require('../models');
-const { CCTVSession, CCTVScreenshot } = db;
+const { CCTVSession, CCTVScreenshot, SystemSettings } = db;
+
+const BARDI_TOKEN_SETTING_KEY = 'cctv.bardi_session_token';
+
+const persistBardiToken = async (sessionToken) => {
+  if (!SystemSettings) return null;
+
+  const stringValue = JSON.stringify(sessionToken);
+  const defaults = {
+    setting_key: BARDI_TOKEN_SETTING_KEY,
+    setting_value: stringValue,
+    data_type: 'json',
+    description: 'Latest BARDI session token (cookies from ipc.bardi.co.id)',
+    is_editable: false,
+  };
+
+  const [setting, created] = await SystemSettings.findOrCreate({
+    where: { setting_key: BARDI_TOKEN_SETTING_KEY },
+    defaults,
+  });
+
+  if (!created) {
+    await setting.update({
+      setting_value: stringValue,
+      data_type: 'json',
+      description: setting.description || defaults.description,
+      is_editable: setting.is_editable ?? false,
+      updated_at: new Date(),
+    });
+    return setting;
+  }
+
+  return setting;
+};
 
 /**
  * Get all monitoring sessions
@@ -278,7 +312,7 @@ exports.stopSession = async (req, res) => {
       });
     }
 
-    const { reason = null, create_nota_kecil = false } = req.body;
+    const { reason = null, create_nota_kecil = false } = req.body || {};
 
     const result = await cctvMonitoringService.stopSession(sessionId, {
       reason,
@@ -310,6 +344,58 @@ exports.stopSession = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to stop session',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Complete a session
+ * POST /api/cctv-monitoring/sessions/:id/complete
+ */
+exports.completeSession = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const sessionId = parseInt(id);
+
+    if (isNaN(sessionId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid session ID',
+      });
+    }
+
+    const { reason = null } = req.body || {};
+
+    const result = await cctvMonitoringService.completeSession(sessionId, {
+      reason,
+    });
+
+    res.json({
+      success: true,
+      message: 'Session completed successfully',
+      data: result.session,
+    });
+  } catch (error) {
+    console.error('Error in completeSession:', error);
+    
+    if (error.message.includes('not found')) {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    if (error.message.includes('already completed')) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to complete session',
       error: error.message,
     });
   }
@@ -478,6 +564,18 @@ exports.manualCapture = async (req, res) => {
       processOcr: process_ocr,
       notes,
     });
+
+    // Track batch for nota kecil creation (manual captures also count)
+    const session = await CCTVSession.findByPk(sessionId);
+    if (session && session.status === 'active') {
+      const cctvScheduler = require('../services/cctvScheduler');
+      try {
+        await cctvScheduler.processPendingNotaBatches(session);
+      } catch (batchError) {
+        console.error('Error processing nota batches for manual capture:', batchError);
+        // Don't fail the request if batch processing fails
+      }
+    }
 
     res.json({
       success: true,
@@ -740,11 +838,15 @@ exports.updateBardiToken = async (req, res) => {
       });
     }
 
+    // Persist token first to guarantee availability for future requests
+    await persistBardiToken(session_token);
+
     let sessionsAffected = 0;
+    let restartedSessions = 0;
 
     if (apply_to_session_id) {
-      // Update specific session
-      const session = await CCTVSession.findByPk(parseInt(apply_to_session_id));
+      const sessionId = parseInt(apply_to_session_id);
+      const session = await CCTVSession.findByPk(sessionId);
       if (!session) {
         return res.status(404).json({
           success: false,
@@ -752,25 +854,45 @@ exports.updateBardiToken = async (req, res) => {
         });
       }
 
-      // Store token (in production, encrypt this!)
       await session.update({
         bardi_session_token: JSON.stringify(session_token),
       });
 
       sessionsAffected = 1;
+
+      if (session.status === 'dead') {
+        try {
+          await cctvMonitoringService.restartSession(session.id);
+          restartedSessions = 1;
+        } catch (restartError) {
+          console.warn(`Failed to restart session ${session.id}:`, restartError.message);
+        }
+      }
     } else {
-      // Update all active sessions
-      const activeSessions = await CCTVSession.findAll({
-        where: { status: 'active' },
+      const sessionsToUpdate = await CCTVSession.findAll({
+        where: {
+          status: {
+            [Op.in]: ['active', 'dead'],
+          },
+        },
       });
 
-      for (const session of activeSessions) {
+      for (const session of sessionsToUpdate) {
         await session.update({
           bardi_session_token: JSON.stringify(session_token),
         });
+
+        if (session.status === 'dead') {
+          try {
+            await cctvMonitoringService.restartSession(session.id);
+            restartedSessions++;
+          } catch (restartError) {
+            console.warn(`Failed to restart session ${session.id}:`, restartError.message);
+          }
+        }
       }
 
-        sessionsAffected = activeSessions.length;
+      sessionsAffected = sessionsToUpdate.length;
     }
     
     // IMPORTANT: Also update the session.json file that bardiScrapingService uses
@@ -802,12 +924,21 @@ exports.updateBardiToken = async (req, res) => {
       // Continue anyway - database is updated
     }
 
+    let captureTrigger = null;
+    try {
+      captureTrigger = await cctvScheduler.captureAllActiveSessions(true);
+    } catch (captureError) {
+      console.error('Error triggering immediate capture after token update:', captureError);
+    }
+
     res.json({
       success: true,
       message: 'BARDI token updated successfully (database + session.json file)',
       data: {
         token_updated_at: new Date().toISOString(),
         sessions_affected: sessionsAffected,
+        sessions_restarted: restartedSessions,
+        capture_trigger: captureTrigger,
       },
     });
   } catch (error) {
@@ -815,6 +946,54 @@ exports.updateBardiToken = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update BARDI token',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get the persisted BARDI session token
+ * GET /api/cctv-monitoring/bardi-token
+ */
+exports.getBardiToken = async (req, res) => {
+  try {
+    const setting = SystemSettings
+      ? await SystemSettings.findOne({ where: { setting_key: BARDI_TOKEN_SETTING_KEY } })
+      : null;
+
+    if (!setting) {
+      return res.json({
+        success: true,
+        data: null,
+        message: 'No BARDI token saved yet',
+      });
+    }
+
+    let parsedToken = null;
+    try {
+      parsedToken = setting.data_type === 'json'
+        ? JSON.parse(setting.setting_value)
+        : setting.setting_value;
+    } catch (parseError) {
+      console.error('Failed to parse saved BARDI token:', parseError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to parse stored BARDI token',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        session_token: parsedToken,
+        updated_at: setting.updated_at,
+      },
+    });
+  } catch (error) {
+    console.error('Error in getBardiToken:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch BARDI token',
       error: error.message,
     });
   }

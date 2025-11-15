@@ -109,6 +109,32 @@ module.exports = (sequelize) => {
         key: 'id'
       },
       comment: 'User who created this monitoring session'
+    },
+    nota_batch_start_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Timestamp when current nota kecil batch started (first capture)'
+    },
+    nota_batch_start_sequence: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Sequence number of first capture in current batch'
+    },
+    nota_batch_capture_count: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+      comment: 'Number of successful captures in current batch (0-24)'
+    },
+    nota_batch_end_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Timestamp when current batch ended (when count reached 24)'
+    },
+    nota_batch_end_sequence: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Sequence number of last capture in current batch (when count reached 24)'
     }
   }, {
     tableName: 'cctv_sessions',

@@ -106,14 +106,6 @@ class CCTVScheduler {
    */
   async processSession(session) {
     try {
-      const now = new Date();
-      const sessionStart = new Date(session.start_time);
-      const sessionDurationMinutes = Math.floor((now - sessionStart) / (1000 * 60));
-      const sessionDurationHours = sessionDurationMinutes / 60;
-
-      // Check if it's time to create a nota kecil (every 4 hours)
-      await this.checkAndCreateNotaKecil(session, sessionDurationHours);
-
       // Check if it's time for a screenshot
       const shouldCapture = await this.shouldCaptureScreenshot(session);
       
@@ -124,6 +116,10 @@ class CCTVScheduler {
           await cctvMonitoringService.captureScreenshot(session.id);
           this.stats.successfulCaptures++;
           console.log(`   ✅ Screenshot captured successfully`);
+
+          // After every capture, reconcile pending nota kecil batches
+          await this.processPendingNotaBatches(session);
+          
         } catch (error) {
           this.stats.failedCaptures++;
           console.error(`   ❌ Screenshot capture failed:`, error.message);
@@ -138,6 +134,8 @@ class CCTVScheduler {
           }
         }
       } else {
+        // Even if we don't capture now, check if there are pending nota batches (e.g., from manual captures)
+        await this.processPendingNotaBatches(session);
         console.log(`   ⏭️  Session ${session.id} - not yet time for next capture`);
       }
 
@@ -166,91 +164,136 @@ class CCTVScheduler {
   }
 
   /**
-   * Check if it's time to create a nota kecil (every 4 hours)
-   * Track which period we're in and create nota for completed periods
+   * Process pending nota kecil batches for a session
+   * Handles both backlog (existing captures) and new captures
    */
-  async checkAndCreateNotaKecil(session, sessionDurationHours) {
+  async processPendingNotaBatches(session) {
     try {
-      // Calculate how many 4-hour periods have passed
-      const periodsCompleted = Math.floor(sessionDurationHours / 4);
-      
-      if (periodsCompleted === 0) {
-        // Haven't reached 4 hours yet
-        return;
-      }
+      await session.reload();
+      const totalCaptures = session.total_screenshots_captured || 0;
 
-      // Check how many nota kecils we've already created for this session
-      const existingNotas = await NotaKecil.findAll({
+      // Count how many nota kecils already exist for this session
+      const existingNotas = await NotaKecil.count({
         where: {
           delivery_order_id: session.delivery_order_id,
-          customer_location_index: session.customer_location_index
-        },
-        order: [['created_at', 'DESC']]
+          customer_location_index: session.customer_location_index,
+          created_at: {
+            [Op.gte]: session.start_time
+          }
+        }
       });
 
-      // Filter notas that were created during this session
-      const sessionStart = new Date(session.start_time);
-      const notasFromThisSession = existingNotas.filter(nota => 
-        new Date(nota.created_at) >= sessionStart
-      );
+      const expectedNotas = Math.floor(totalCaptures / 24);
+      let processedNotas = existingNotas;
 
-      const notasCreatedCount = notasFromThisSession.length;
+      if (processedNotas < expectedNotas) {
+        console.log(`   📦 Session ${session.id} has ${expectedNotas - processedNotas} pending nota kecil batch(es). Processing backlog...`);
+      }
 
-      // Should we create a new nota kecil?
-      if (periodsCompleted > notasCreatedCount) {
-        const periodNumber = notasCreatedCount + 1;
-        console.log(`\n⏰ Session ${session.id} - Creating Nota Kecil for period ${periodNumber} (hours ${(periodNumber-1)*4}-${periodNumber*4})`);
-        
-        await this.createNotaKecilForPeriod(session, periodNumber);
+      while (processedNotas < expectedNotas) {
+        const batchNumber = processedNotas + 1;
+        const startSequence = (batchNumber - 1) * 24 + 1;
+        const endSequence = batchNumber * 24;
+
+        const created = await this.createNotaKecilFromBatch(session, {
+          startSequence,
+          endSequence,
+          batchNumber,
+        });
+
+        if (!created) {
+          console.log(`   ⚠️  Unable to create nota kecil for batch ${batchNumber}. Will retry later.`);
+          break;
+        }
+
         this.stats.notasCreated++;
+        processedNotas++;
+      }
+
+      const remainder = totalCaptures % 24;
+      if (remainder === 0) {
+        await session.update({
+          nota_batch_start_at: null,
+          nota_batch_start_sequence: null,
+          nota_batch_capture_count: 0,
+          nota_batch_end_at: null,
+          nota_batch_end_sequence: null,
+        });
+      } else {
+        const remainderStartSequence = totalCaptures - remainder + 1;
+        const remainderStartScreenshot = await CCTVScreenshot.findOne({
+          where: {
+            session_id: session.id,
+            sequence_number: remainderStartSequence,
+            is_deleted: false,
+          },
+          order: [['sequence_number', 'ASC']],
+        });
+
+        await session.update({
+          nota_batch_start_sequence: remainderStartSequence,
+          nota_batch_capture_count: remainder,
+          nota_batch_start_at: remainderStartScreenshot?.captured_at || session.nota_batch_start_at,
+          nota_batch_end_at: null,
+          nota_batch_end_sequence: null,
+        });
+
+        console.log(`   📊 Batch progress for session ${session.id}: ${remainder}/24 captures (start sequence ${remainderStartSequence})`);
       }
 
     } catch (error) {
-      console.error(`   ❌ Error checking nota kecil for session ${session.id}:`, error);
+      console.error(`   ❌ Error processing nota batches for session ${session.id}:`, error);
     }
   }
 
   /**
-   * Create Nota Kecil for a specific 4-hour period
+   * Create Nota Kecil from a completed batch (24 captures)
    */
-  async createNotaKecilForPeriod(session, periodNumber) {
+  async createNotaKecilFromBatch(session, options = {}) {
     try {
-      console.log(`\n📊 Creating Nota Kecil for session ${session.id}, period ${periodNumber}...`);
+      await session.reload();
 
-      // Calculate time range for this period
-      const sessionStart = new Date(session.start_time);
-      const periodStartHours = (periodNumber - 1) * 4;
-      const periodEndHours = periodNumber * 4;
-      
-      const periodStart = new Date(sessionStart.getTime() + periodStartHours * 60 * 60 * 1000);
-      const periodEnd = new Date(sessionStart.getTime() + periodEndHours * 60 * 60 * 1000);
+      const startSequence = options.startSequence ?? session.nota_batch_start_sequence;
+      const endSequence = options.endSequence ?? session.nota_batch_end_sequence;
 
-      console.log(`   Period ${periodNumber}: ${periodStart.toLocaleTimeString()} - ${periodEnd.toLocaleTimeString()}`);
-
-      // Get screenshots for this specific 4-hour period
-      const screenshots = await CCTVScreenshot.findAll({
-        where: {
-          session_id: session.id,
-          ocr_status: 'success',
-          is_deleted: false,
-          captured_at: {
-            [Op.gte]: periodStart,
-            [Op.lt]: periodEnd
-          }
-        },
-        order: [['captured_at', 'ASC']]
-      });
-
-      if (screenshots.length === 0) {
-        console.log(`   ⚠️  No successful OCR data found for period ${periodNumber} - skipping nota kecil creation`);
-        return;
+      if (!startSequence || !endSequence) {
+        console.log(`   ⚠️  Batch markers missing - cannot create nota kecil`);
+        return false;
       }
 
-      console.log(`   Found ${screenshots.length} screenshot(s) with successful OCR`);
+      const batchNumber = options.batchNumber ?? Math.floor((startSequence - 1) / 24) + 1;
+
+      console.log(`\n📊 Creating Nota Kecil for session ${session.id}, batch ${batchNumber} (sequences ${startSequence}-${endSequence})...`);
+
+      // Get screenshots for this batch range
+      const batchScreenshots = await CCTVScreenshot.findAll({
+        where: {
+          session_id: session.id,
+          sequence_number: {
+            [Op.gte]: startSequence,
+            [Op.lte]: endSequence
+          }
+        },
+        order: [['sequence_number', 'ASC']]
+      });
+
+      if (batchScreenshots.length === 0) {
+        console.log(`   ⚠️  No successful OCR data found in batch - skipping nota kecil creation`);
+        return false;
+      }
+
+      const successfulScreenshots = batchScreenshots.filter(screenshot => screenshot.ocr_status === 'success');
+
+      if (successfulScreenshots.length === 0) {
+        console.log(`   ⚠️  No successful OCR data found in batch - skipping nota kecil creation`);
+        return false;
+      }
+
+      console.log(`   Found ${successfulScreenshots.length} screenshot(s) with successful OCR in batch`);
 
       // Extract meter readings from OCR results
       const meterReadings = [];
-      for (const screenshot of screenshots) {
+      for (const screenshot of successfulScreenshots) {
         try {
           // Handle JSONB - might be a string that needs parsing
           let ocrResult = screenshot.ocr_result;
@@ -279,12 +322,17 @@ class CCTVScheduler {
       }
 
       if (meterReadings.length < 2) {
-        console.log(`   ⚠️  Insufficient meter readings for period ${periodNumber} (need at least 2, found ${meterReadings.length})`);
-        console.log(`   ⚠️  Skipping nota kecil creation for this period. Session continues...`);
+        console.log(`   ⚠️  Insufficient meter readings in batch (need at least 2, found ${meterReadings.length})`);
+        console.log(`   ⚠️  Skipping nota kecil creation for this batch. Resetting batch for next cycle...`);
         await session.update({
-          session_notes: `${session.session_notes || ''}\nPeriod ${periodNumber}: Insufficient OCR data (${meterReadings.length} readings). Skipped nota kecil creation.`.trim()
+          session_notes: `${session.session_notes || ''}\nBatch ${startSequence}-${endSequence}: Insufficient OCR data (${meterReadings.length} readings). Skipped nota kecil creation.`.trim(),
+          nota_batch_start_at: null,
+          nota_batch_start_sequence: null,
+          nota_batch_capture_count: 0,
+          nota_batch_end_at: null,
+          nota_batch_end_sequence: null
         });
-        return;
+        return false;
       }
 
       // Calculate averages (use first and last readings for stan_awal and stan_akhir)
@@ -297,7 +345,7 @@ class CCTVScheduler {
       let pressureCount = 0;
       let temperatureCount = 0;
 
-      for (const screenshot of screenshots) {
+      for (const screenshot of successfulScreenshots) {
         try {
           // Handle JSONB - might be a string that needs parsing
           let ocrResult = screenshot.ocr_result;
@@ -339,17 +387,17 @@ class CCTVScheduler {
       if (avgPressure <= 0) {
         console.log(`   ⚠️  Invalid average pressure (${avgPressure}). Skipping nota kecil creation.`);
         await session.update({
-          session_notes: `${session.session_notes || ''}\nPeriod ${periodNumber}: Invalid pressure data. Skipped nota kecil creation.`.trim()
+          session_notes: `${session.session_notes || ''}\nBatch ${startSequence}-${endSequence}: Invalid pressure data. Skipped nota kecil creation.`.trim()
         });
-        return;
+        return false;
       }
 
       if (avgTemperature < -50 || avgTemperature > 100) {
         console.log(`   ⚠️  Invalid average temperature (${avgTemperature}°C). Skipping nota kecil creation.`);
         await session.update({
-          session_notes: `${session.session_notes || ''}\nPeriod ${periodNumber}: Invalid temperature data (${avgTemperature}°C). Skipped nota kecil creation.`.trim()
+          session_notes: `${session.session_notes || ''}\nBatch ${startSequence}-${endSequence}: Invalid temperature data (${avgTemperature}°C). Skipped nota kecil creation.`.trim()
         });
-        return;
+        return false;
       }
 
       // Calculate gas volume
@@ -368,12 +416,15 @@ class CCTVScheduler {
       } catch (calcError) {
         console.error(`   ❌ Gas calculation failed:`, calcError.message);
         await session.update({
-          session_notes: `${session.session_notes || ''}\nPeriod ${periodNumber}: Gas calculation failed (${calcError.message}). Skipped nota kecil creation.`.trim()
+          session_notes: `${session.session_notes || ''}\nBatch ${startSequence}-${endSequence}: Gas calculation failed (${calcError.message}). Skipped nota kecil creation.`.trim()
         });
-        return;
+        return false;
       }
 
-      // Create Nota Kecil for this period
+      const batchStartAt = batchScreenshots[0]?.captured_at || session.nota_batch_start_at;
+      const batchEndAt = batchScreenshots[batchScreenshots.length - 1]?.captured_at || session.nota_batch_end_at;
+
+      // Create Nota Kecil for this batch
       const notaKecil = await NotaKecil.create({
         delivery_order_id: session.delivery_order_id,
         customer_location_index: session.customer_location_index,
@@ -389,31 +440,31 @@ class CCTVScheduler {
         ocr_processing_status: 'completed',
         ocr_processed_at: new Date(),
         driver_confirmed: false, // Auto-created, needs driver confirmation
-        driver_notes: `Auto-created from CCTV session ${session.id}, period ${periodNumber} (hours ${(periodNumber-1)*4}-${periodNumber*4}), ${screenshots.length} screenshots`
+        driver_notes: `Auto-created from CCTV session ${session.id}, batch ${batchNumber} (sequences ${startSequence}-${endSequence}), ${successfulScreenshots.length} successful OCR screenshots. Time range: ${batchStartAt?.toLocaleString()} to ${batchEndAt?.toLocaleString()}`
       });
 
       console.log(`   ✅ Nota Kecil #${notaKecil.id} created successfully`);
       console.log(`   📊 Volume: Vt=${gasCalculation.Vt.toFixed(3)}m³, k=${gasCalculation.k.toFixed(6)}, V=${gasCalculation.V.toFixed(3)}m³`);
 
       // Update session notes to track nota kecil creation (but keep session active!)
-      const updatedNotes = `${session.session_notes || ''}\nNota Kecil #${notaKecil.id} created at ${periodNumber*4}h (period ${periodNumber}).`.trim();
+      const updatedNotes = `${session.session_notes || ''}\nNota Kecil #${notaKecil.id} created from batch ${batchNumber} (sequences ${startSequence}-${endSequence}).`.trim();
       
       await session.update({
         session_notes: updatedNotes,
-        // Keep session ACTIVE - don't stop it!
-        // Only update the last created nota kecil reference
         created_nota_kecil_id: notaKecil.id
       });
 
-      console.log(`   ✅ Nota Kecil created for period ${periodNumber}. Session continues...\n`);
+      console.log(`   ✅ Nota Kecil created for batch ${batchNumber}. Session continues...\n`);
+      return true;
 
     } catch (error) {
-      console.error(`   ❌ Error creating nota kecil for session ${session.id}, period ${periodNumber}:`, error);
+      console.error(`   ❌ Error creating nota kecil for session ${session.id} from batch:`, error);
       
       // Don't stop the session - just log the error and continue
       await session.update({
-        session_notes: `${session.session_notes || ''}\nFailed to create nota kecil for period ${periodNumber}: ${error.message}`.trim()
+        session_notes: `${session.session_notes || ''}\nFailed to create nota kecil from batch: ${error.message}`.trim()
       });
+      return false;
     }
   }
 
@@ -515,6 +566,13 @@ class CCTVScheduler {
         console.log(`   📸 Capturing session ${session.id} (${session.customer_name})`);
         
         await cctvMonitoringService.captureScreenshot(session.id);
+        
+        // Process pending nota batches after manual capture run
+        try {
+          await this.processPendingNotaBatches(session);
+        } catch (batchError) {
+          console.error(`   ⚠️  Batch processing failed for session ${session.id}:`, batchError.message);
+        }
         
         results.captured++;
         results.sessions.push({

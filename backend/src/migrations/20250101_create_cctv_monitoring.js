@@ -241,33 +241,45 @@ module.exports = {
 
     console.log('✓ cctv_screenshots table created');
 
-    // Create indexes for cctv_sessions
-    await queryInterface.addIndex('cctv_sessions', ['delivery_order_id'], {
+    // Helper to create indexes only if they don't already exist
+    const ensureIndex = async (tableName, fields, options) => {
+      const existingIndexes = await queryInterface.showIndex(tableName);
+      const exists = existingIndexes.some(index => index.name === options.name);
+      if (!exists) {
+        await queryInterface.addIndex(tableName, fields, options);
+        console.log(`✓ Created index ${options.name} on ${tableName}`);
+      } else {
+        console.log(`⏭️  Skipping index ${options.name} on ${tableName} (already exists)`);
+      }
+    };
+
+    // Create indexes for cctv_sessions (idempotent)
+    await ensureIndex('cctv_sessions', ['delivery_order_id'], {
       name: 'idx_cctv_sessions_delivery_order'
     });
-    await queryInterface.addIndex('cctv_sessions', ['status'], {
+    await ensureIndex('cctv_sessions', ['status'], {
       name: 'idx_cctv_sessions_status'
     });
-    await queryInterface.addIndex('cctv_sessions', ['start_time'], {
+    await ensureIndex('cctv_sessions', ['start_time'], {
       name: 'idx_cctv_sessions_start_time'
     });
-    await queryInterface.addIndex('cctv_sessions', ['created_by'], {
+    await ensureIndex('cctv_sessions', ['created_by'], {
       name: 'idx_cctv_sessions_created_by'
     });
 
     console.log('✓ cctv_sessions indexes created');
 
     // Create indexes for cctv_screenshots
-    await queryInterface.addIndex('cctv_screenshots', ['session_id', 'sequence_number'], {
+    await ensureIndex('cctv_screenshots', ['session_id', 'sequence_number'], {
       name: 'idx_cctv_screenshots_session_sequence'
     });
-    await queryInterface.addIndex('cctv_screenshots', ['captured_at'], {
+    await ensureIndex('cctv_screenshots', ['captured_at'], {
       name: 'idx_cctv_screenshots_captured_at'
     });
-    await queryInterface.addIndex('cctv_screenshots', ['ocr_status'], {
+    await ensureIndex('cctv_screenshots', ['ocr_status'], {
       name: 'idx_cctv_screenshots_ocr_status'
     });
-    await queryInterface.addIndex('cctv_screenshots', ['session_id'], {
+    await ensureIndex('cctv_screenshots', ['session_id'], {
       name: 'idx_cctv_screenshots_session_id'
     });
 

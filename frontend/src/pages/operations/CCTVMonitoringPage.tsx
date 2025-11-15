@@ -18,7 +18,9 @@ import {
   Plus,
   Trash2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ClipboardList,
+  MoreHorizontal
 } from 'lucide-react';
 
 interface CCTVSession {
@@ -40,6 +42,7 @@ interface CCTVSession {
   };
   health_status?: 'healthy' | 'warning' | 'critical' | 'dead';
   time_since_last_capture?: string;
+  nota_kecil_count?: number;
 }
 
 interface CCTVScreenshot {
@@ -90,49 +93,7 @@ interface CreateSessionForm {
   customer_location_index: number;
 }
 
-// Mockup data for demonstration
-const MOCKUP_SESSIONS: CCTVSession[] = [
-  {
-    id: 1,
-    delivery_order_id: 123,
-    customer_location_index: 0,
-    customer_name: 'PT Qurpol Indonesia',
-    device_id: 'BARDI-CAM-001',
-    start_time: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-    end_time: null,
-    status: 'active',
-    total_screenshots_captured: 12,
-    last_screenshot_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(), // 10 mins ago
-    session_notes: null,
-    created_nota_kecil_id: null,
-    delivery_order: {
-      do_number: 'DO-2025-001',
-      do_name: 'CNG Delivery - PT Qurpol',
-    },
-    health_status: 'healthy',
-    time_since_last_capture: '10 minutes ago',
-  },
-  {
-    id: 2,
-    delivery_order_id: 124,
-    customer_location_index: 0,
-    customer_name: 'PT Angkasa Jaya',
-    device_id: 'BARDI-CAM-002',
-    start_time: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), // 3 hours ago
-    end_time: null,
-    status: 'dead',
-    total_screenshots_captured: 8,
-    last_screenshot_at: new Date(Date.now() - 45 * 60 * 1000).toISOString(), // 45 mins ago
-    session_notes: 'Session died - BARDI token may have expired',
-    created_nota_kecil_id: null,
-    delivery_order: {
-      do_number: 'DO-2025-002',
-      do_name: 'CNG Delivery - PT Angkasa',
-    },
-    health_status: 'dead',
-    time_since_last_capture: '45 minutes ago',
-  },
-];
+// Session mockup data removed per requirement.
 
 const MOCKUP_SCREENSHOTS: CCTVScreenshot[] = Array.from({ length: 12 }, (_, i) => ({
   id: i + 1,
@@ -165,22 +126,31 @@ const MOCKUP_CUSTOMERS: Customer[] = [
   { id: 4, name: 'PT Maju Jaya', address: 'Bekasi' },
 ];
 
+const DEFAULT_SESSION_TOKEN = {
+  's-sid': '',
+  's-sid.sig': 'kP9rtKAn17znXSNWGWFHK2iuqOOusfuo',
+  'uid': 'az1760007796938NmNAy',
+  'clientId': 'u8aphxps48jv38uraqtf',
+  'deviceId': 'security-wisdom'
+};
+
 const CCTVMonitoringPage: React.FC = () => {
   // Configuration toggles
   const [useRealData, setUseRealData] = useState(true); // Toggle: false = mockup, true = real API (DEFAULT: ON)
   const [autoSnapshot, setAutoSnapshot] = useState(true); // Toggle: auto screenshot capture (DEFAULT: ON)
+  const [devModeEnabled, setDevModeEnabled] = useState(false); // Toggle: show/hide dev controls
   
-  // Initialize with mockup data
-  const [sessions, setSessions] = useState<CCTVSession[]>(MOCKUP_SESSIONS);
+  // Initialize without mock sessions
+  const [sessions, setSessions] = useState<CCTVSession[]>([]);
   const [healthStats, setHealthStats] = useState<HealthStats>({
-    total_sessions: 2,
-    active_sessions: 1,
-    healthy_sessions: 1,
-    dead_sessions: 1,
-    total_screenshots_today: 20,
+    total_sessions: 0,
+    active_sessions: 0,
+    healthy_sessions: 0,
+    dead_sessions: 0,
+    total_screenshots_today: 0,
   });
-  const [loading, setLoading] = useState(false); // Set to false to show mockup immediately
-  const [autoRefresh, setAutoRefresh] = useState(false); // Disabled by default
+  const [loading, setLoading] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true); // Enabled by default
   const [selectedSession, setSelectedSession] = useState<CCTVSession | null>(null);
   const [screenshots, setScreenshots] = useState<CCTVScreenshot[]>([]);
   const [showSessionModal, setShowSessionModal] = useState(false);
@@ -189,14 +159,9 @@ const CCTVMonitoringPage: React.FC = () => {
   const [loadingScreenshots, setLoadingScreenshots] = useState(false);
   const [creatingSession, setCreatingSession] = useState(false);
 
-  // Session token form - with default values (only s-sid needs to be updated)
-  const [sessionToken, setSessionToken] = useState({
-    's-sid': '', // This is the only field that needs to be updated regularly
-    's-sid.sig': 'kP9rtKAn17znXSNWGWFHK2iuqOOusfuo',
-    'uid': 'az1760007796938NmNAy',
-    'clientId': 'u8aphxps48jv38uraqtf',
-    'deviceId': 'security-wisdom'
-  });
+  // Session token form - default values, will be replaced by persisted token if available
+  const [sessionToken, setSessionToken] = useState(DEFAULT_SESSION_TOKEN);
+  const [mockDataNoticeShown, setMockDataNoticeShown] = useState(false);
 
   // Create session form
   const [createForm, setCreateForm] = useState<CreateSessionForm>({
@@ -218,45 +183,42 @@ const CCTVMonitoringPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [sessionsPerPage] = useState(10);
   const [totalSessions, setTotalSessions] = useState(0);
+  const [actionMenuOpenId, setActionMenuOpenId] = useState<number | null>(null);
 
   // Fetch all sessions
   const fetchSessions = useCallback(async () => {
     try {
-      if (useRealData) {
-        // Use real API with pagination
-        const response = await apiClient.get('/cctv-monitoring/sessions', {
-          params: {
-            limit: sessionsPerPage,
-            offset: (currentPage - 1) * sessionsPerPage
-          }
+      if (!useRealData) {
+        setSessions([]);
+        setHealthStats({
+          total_sessions: 0,
+          active_sessions: 0,
+          healthy_sessions: 0,
+          dead_sessions: 0,
+          total_screenshots_today: 0,
         });
-        setSessions(response.data.data || []);
-        setHealthStats(response.data.stats || {});
-        setTotalSessions(response.data.pagination?.total || response.data.data?.length || 0);
-      } else {
-        // Use mockup data - simulate API call
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        // Simulate some random updates to make it look "live"
-        const updatedSessions = MOCKUP_SESSIONS.map((session, index) => {
-          if (index === 0 && session.status === 'active') {
-            return {
-              ...session,
-              total_screenshots_captured: session.total_screenshots_captured + Math.floor(Math.random() * 2),
-              last_screenshot_at: new Date().toISOString(),
-              time_since_last_capture: 'Just now',
-            };
-          }
-          return session;
-        });
-        
-        setSessions(updatedSessions);
-        setTotalSessions(updatedSessions.length);
-        
-        // Calculate health stats
-        const stats = calculateHealthStats(updatedSessions);
-        setHealthStats(stats);
+        setTotalSessions(0);
+        if (!mockDataNoticeShown) {
+          toast('Dev mode mock sessions removed. Enable Real Data to see sessions.', {
+            icon: 'ℹ️',
+          });
+          setMockDataNoticeShown(true);
+        }
+        return;
+      } else if (mockDataNoticeShown) {
+        setMockDataNoticeShown(false);
       }
+
+      // Use real API with pagination
+      const response = await apiClient.get('/cctv-monitoring/sessions', {
+        params: {
+          limit: sessionsPerPage,
+          offset: (currentPage - 1) * sessionsPerPage
+        }
+      });
+      setSessions(response.data.data || []);
+      setHealthStats(response.data.stats || {});
+      setTotalSessions(response.data.pagination?.total || response.data.data?.length || 0);
     } catch (error: any) {
       console.error('Error fetching sessions:', error);
       if (!loading) { // Don't show toast on initial load
@@ -324,6 +286,36 @@ const CCTVMonitoringPage: React.FC = () => {
     } catch (error: any) {
       console.error('Error stopping session:', error);
       toast.error(error.response?.data?.message || 'Failed to stop session');
+    }
+  };
+
+  // Resume a stopped/dead session
+  const handleResumeSession = async (sessionId: number) => {
+    try {
+      toast.loading('Resuming session...', { id: `resume-${sessionId}` });
+      await apiClient.post(`/cctv-monitoring/sessions/${sessionId}/restart`);
+      toast.success('Session resumed successfully', { id: `resume-${sessionId}` });
+      fetchSessions();
+    } catch (error: any) {
+      console.error('Error resuming session:', error);
+      toast.error(error.response?.data?.message || 'Failed to resume session', { id: `resume-${sessionId}` });
+    }
+  };
+
+  // Complete a session
+  const handleCompleteSession = async (sessionId: number) => {
+    if (!window.confirm('Are you sure you want to mark this session as completed? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      toast.loading('Completing session...', { id: `complete-${sessionId}` });
+      await apiClient.post(`/cctv-monitoring/sessions/${sessionId}/complete`);
+      toast.success('Session marked as completed', { id: `complete-${sessionId}` });
+      fetchSessions();
+    } catch (error: any) {
+      console.error('Error completing session:', error);
+      toast.error(error.response?.data?.message || 'Failed to complete session', { id: `complete-${sessionId}` });
     }
   };
 
@@ -494,8 +486,10 @@ const CCTVMonitoringPage: React.FC = () => {
       toast.success('BARDI session token updated successfully!');
       setShowTokenModal(false);
       
-      // Refresh sessions to check if dead ones are now alive
-      setTimeout(fetchSessions, 2000);
+      // Refresh sessions immediately and again after captures finish
+      fetchSessions();
+      setTimeout(fetchSessions, 3000);
+      setTimeout(fetchSessions, 10000);
     } catch (error: any) {
       console.error('Error updating token:', error);
       toast.error(error.response?.data?.message || 'Failed to update session token');
@@ -622,17 +616,54 @@ const CCTVMonitoringPage: React.FC = () => {
       return () => clearInterval(interval);
     }
   }, [autoRefresh, fetchSessions, useRealData]);
+  
+  // Load persisted BARDI session token on mount
+  useEffect(() => {
+    const loadSavedToken = async () => {
+      try {
+        const response = await apiClient.get('/cctv-monitoring/bardi-token');
+        const savedToken = response.data?.data?.session_token;
+        if (savedToken) {
+          setSessionToken(prev => ({
+            ...prev,
+            ...savedToken,
+          }));
+        }
+      } catch (error) {
+        console.error('Error loading saved BARDI token:', error);
+      }
+    };
+
+    loadSavedToken();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.session-actions-menu')) {
+        setActionMenuOpenId(null);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   // Get status badge color
   const getStatusBadge = (status: string, healthStatus?: string) => {
-    if (status === 'dead' || healthStatus === 'dead') {
+    if (status === 'dead') {
       return 'bg-red-100 text-red-800 border border-red-300';
     }
-    if (status === 'active' && healthStatus === 'healthy') {
-      return 'bg-green-100 text-green-800 border border-green-300';
-    }
-    if (status === 'active' && healthStatus === 'warning') {
-      return 'bg-yellow-100 text-yellow-800 border border-yellow-300';
+    if (status === 'active') {
+      if (healthStatus === 'dead' || healthStatus === 'critical') {
+        return 'bg-orange-100 text-orange-800 border border-orange-300';
+      }
+      if (healthStatus === 'warning') {
+        return 'bg-yellow-100 text-yellow-800 border border-yellow-300';
+      }
+      if (healthStatus === 'healthy') {
+        return 'bg-green-100 text-green-800 border border-green-300';
+      }
     }
     if (status === 'completed') {
       return 'bg-blue-100 text-blue-800 border border-blue-300';
@@ -641,16 +672,25 @@ const CCTVMonitoringPage: React.FC = () => {
   };
 
   const getStatusIcon = (status: string, healthStatus?: string) => {
-    if (status === 'dead' || healthStatus === 'dead') {
+    if (status === 'dead') {
       return <XCircle className="w-4 h-4" />;
     }
-    if (status === 'active' && healthStatus === 'healthy') {
-      return <CheckCircle className="w-4 h-4" />;
-    }
-    if (status === 'active' && healthStatus === 'warning') {
-      return <AlertTriangle className="w-4 h-4" />;
+    if (status === 'active') {
+      if (healthStatus === 'dead' || healthStatus === 'critical') {
+        return <AlertTriangle className="w-4 h-4" />;
+      }
+      if (healthStatus === 'warning') {
+        return <AlertTriangle className="w-4 h-4" />;
+      }
+      if (healthStatus === 'healthy') {
+        return <CheckCircle className="w-4 h-4" />;
+      }
     }
     return <Activity className="w-4 h-4" />;
+  };
+
+  const handleOpenNotaManagement = () => {
+    window.open('http://localhost:3001/operations/nota-management', '_blank');
   };
 
   return (
@@ -663,135 +703,163 @@ const CCTVMonitoringPage: React.FC = () => {
               <h1 className="text-3xl font-bold text-gray-900 mb-2">CCTV Monitoring System</h1>
               <p className="text-gray-600">Real-time monitoring of CNG meter readings via BARDI cameras</p>
             </div>
-            <div className="flex items-center gap-6">
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Create Session
-              </button>
-              
-              {/* Slide Toggle: Real Data */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700">Real Data:</span>
+            <div className="flex flex-col gap-3 items-end">
+              <div className="flex flex-wrap items-center gap-3 justify-end">
                 <button
-                  onClick={() => {
-                    setUseRealData(!useRealData);
-                    toast.success(useRealData ? 'Switched to Mockup Data' : 'Switched to Real API Data');
-                  }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${
-                    useRealData ? 'bg-purple-600' : 'bg-gray-300'
-                  }`}
-                  title={useRealData ? 'Using Real API Data' : 'Using Mockup Data'}
+                  onClick={() => setShowCreateModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors"
                 >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      useRealData ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
+                  <Plus className="w-4 h-4" />
+                  Create Session
                 </button>
-                <span className={`text-xs ${useRealData ? 'text-purple-600 font-semibold' : 'text-gray-500'}`}>
-                  {useRealData ? 'ON' : 'OFF'}
-                </span>
-              </div>
-
-              {/* Slide Toggle: Auto Snapshot */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700">Auto-Snapshot:</span>
                 <button
-                  onClick={async () => {
-                    const previousValue = autoSnapshot;
-                    const newValue = !autoSnapshot;
-                    
-                    if (useRealData) {
-                      try {
-                        if (newValue && !previousValue) {
-                          // Turning ON (OFF → ON): Start scheduler + immediate capture
-                          toast.loading('Starting scheduler...');
+                  onClick={() => setShowTokenModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+                >
+                  <Key className="w-4 h-4" />
+                  Update Token
+                </button>
+              </div>
+              
+              <div className="flex flex-wrap items-center gap-4 justify-end">
+                {devModeEnabled && (
+                  <>
+                    {/* Slide Toggle: Real Data */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-700">Real Data:</span>
+                      <button
+                        onClick={() => {
+                          setUseRealData(!useRealData);
+                          toast.success(useRealData ? 'Switched to Mockup Data' : 'Switched to Real API Data');
+                        }}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${
+                          useRealData ? 'bg-purple-600' : 'bg-gray-300'
+                        }`}
+                        title={useRealData ? 'Using Real API Data' : 'Using Mockup Data'}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            useRealData ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                      <span className={`text-xs ${useRealData ? 'text-purple-600 font-semibold' : 'text-gray-500'}`}>
+                        {useRealData ? 'ON' : 'OFF'}
+                      </span>
+                    </div>
+
+                    {/* Slide Toggle: Auto Snapshot */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-700">Auto-Snapshot:</span>
+                      <button
+                        onClick={async () => {
+                          const previousValue = autoSnapshot;
+                          const newValue = !autoSnapshot;
                           
-                          await apiClient.post('/cctv-monitoring/scheduler/start');
-                          
-                          // Trigger immediate capture for all active sessions (runs in background)
-                          const captureResult = await apiClient.post('/cctv-monitoring/scheduler/capture-all', {}, {
-                            timeout: 5000 // 5 second timeout for initial response
-                          });
-                          
-                          setAutoSnapshot(newValue);
-                          toast.dismiss();
-                          
-                          const data = captureResult.data.data;
-                          if (data.status === 'processing') {
-                            toast.success(`Scheduler started! Capturing ${data.totalSessions} session(s) in background...`);
-                          } else if (data.totalSessions === 0) {
-                            toast.success('Scheduler started! No active sessions to capture');
+                          if (useRealData) {
+                            try {
+                              if (newValue && !previousValue) {
+                                // Turning ON (OFF → ON): Start scheduler + immediate capture
+                                toast.loading('Starting scheduler...');
+                                
+                                await apiClient.post('/cctv-monitoring/scheduler/start');
+                                
+                                // Trigger immediate capture for all active sessions (runs in background)
+                                const captureResult = await apiClient.post('/cctv-monitoring/scheduler/capture-all', {}, {
+                                  timeout: 5000 // 5 second timeout for initial response
+                                });
+                                
+                                setAutoSnapshot(newValue);
+                                toast.dismiss();
+                                
+                                const data = captureResult.data.data;
+                                if (data.status === 'processing') {
+                                  toast.success(`Scheduler started! Capturing ${data.totalSessions} session(s) in background...`);
+                                } else if (data.totalSessions === 0) {
+                                  toast.success('Scheduler started! No active sessions to capture');
+                                } else {
+                                  toast.success(`Scheduler started! Captured ${data.captured || data.totalSessions} session(s)`);
+                                }
+                                
+                                // Refresh sessions after a delay to see captured screenshots
+                                setTimeout(() => fetchSessions(), 3000);
+                              } else if (!newValue && previousValue) {
+                                // Turning OFF (ON → OFF): Stop scheduler
+                                await apiClient.post('/cctv-monitoring/scheduler/stop');
+                                setAutoSnapshot(newValue);
+                                toast.success('Auto-snapshot disabled - scheduler stopped');
+                              }
+                            } catch (error: any) {
+                              console.error('Error toggling scheduler:', error);
+                              toast.dismiss();
+                              toast.error(`Failed to ${newValue ? 'start' : 'stop'} auto-snapshot: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
+                              // Don't change toggle state on error
+                            }
                           } else {
-                            toast.success(`Scheduler started! Captured ${data.captured || data.totalSessions} session(s)`);
+                            // Mockup mode
+                            setAutoSnapshot(newValue);
+                            toast.success(newValue ? 'Auto-snapshot enabled (mockup mode)' : 'Auto-snapshot disabled (mockup mode)');
                           }
-                          
-                          // Refresh sessions after a delay to see captured screenshots
-                          setTimeout(() => fetchSessions(), 3000);
-                        } else if (!newValue && previousValue) {
-                          // Turning OFF (ON → OFF): Stop scheduler
-                          await apiClient.post('/cctv-monitoring/scheduler/stop');
-                          setAutoSnapshot(newValue);
-                          toast.success('Auto-snapshot disabled - scheduler stopped');
-                        }
-                      } catch (error: any) {
-                        console.error('Error toggling scheduler:', error);
-                        toast.dismiss();
-                        toast.error(`Failed to ${newValue ? 'start' : 'stop'} auto-snapshot: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
-                        // Don't change toggle state on error
-                      }
-                    } else {
-                      // Mockup mode
-                      setAutoSnapshot(newValue);
-                      toast.success(newValue ? 'Auto-snapshot enabled (mockup mode)' : 'Auto-snapshot disabled (mockup mode)');
-                    }
-                  }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                    autoSnapshot ? 'bg-blue-600' : 'bg-orange-500'
-                  }`}
-                  title={autoSnapshot ? 'Automatic snapshots enabled - captures every 10min and creates nota after 4hrs' : 'Manual snapshots only'}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      autoSnapshot ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-                <span className={`text-xs ${autoSnapshot ? 'text-blue-600 font-semibold' : 'text-orange-600 font-semibold'}`}>
-                  {autoSnapshot ? 'ON' : 'OFF'}
-                </span>
-              </div>
+                        }}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                          autoSnapshot ? 'bg-blue-600' : 'bg-orange-500'
+                        }`}
+                        title={autoSnapshot ? 'Automatic snapshots enabled - captures every 10min and creates nota after 4hrs' : 'Manual snapshots only'}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            autoSnapshot ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                      <span className={`text-xs ${autoSnapshot ? 'text-blue-600 font-semibold' : 'text-orange-600 font-semibold'}`}>
+                        {autoSnapshot ? 'ON' : 'OFF'}
+                      </span>
+                    </div>
 
-              {/* Slide Toggle: Auto Refresh */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700">Auto-Refresh:</span>
-                <button
-                  onClick={() => setAutoRefresh(!autoRefresh)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-                    autoRefresh ? 'bg-green-600' : 'bg-gray-300'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      autoRefresh ? 'translate-x-6' : 'translate-x-1'
+                    {/* Slide Toggle: Auto Refresh */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-700">Auto-Refresh:</span>
+                      <button
+                        onClick={() => setAutoRefresh(!autoRefresh)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+                          autoRefresh ? 'bg-green-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            autoRefresh ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                      <span className={`text-xs ${autoRefresh ? 'text-green-600 font-semibold' : 'text-gray-500'}`}>
+                        {autoRefresh ? 'ON' : 'OFF'}
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {/* Slide Toggle: Dev Mode */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-700">Dev Mode:</span>
+                  <button
+                    onClick={() => setDevModeEnabled(!devModeEnabled)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 ${
+                      devModeEnabled ? 'bg-gray-800' : 'bg-gray-300'
                     }`}
-                  />
-                </button>
-                <span className={`text-xs ${autoRefresh ? 'text-green-600 font-semibold' : 'text-gray-500'}`}>
-                  {autoRefresh ? 'ON' : 'OFF'}
-                </span>
+                    title="Toggle developer tools visibility"
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        devModeEnabled ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <span className={`text-xs ${devModeEnabled ? 'text-gray-900 font-semibold' : 'text-gray-500'}`}>
+                    {devModeEnabled ? 'ON' : 'OFF'}
+                  </span>
+                </div>
               </div>
-              
-              <button
-                onClick={() => setShowTokenModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors ml-2"
-              >
-                <Key className="w-4 h-4" />
-                Update Token
-              </button>
             </div>
           </div>
         </div>
@@ -917,6 +985,7 @@ const CCTVMonitoringPage: React.FC = () => {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Started</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Capture</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Screenshots</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nota Kecils</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -961,39 +1030,107 @@ const CCTVMonitoringPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleOpenNotaManagement}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 text-purple-700 rounded-full text-sm font-medium hover:bg-purple-100 transition-colors"
+                          title="View Nota Management"
+                        >
+                          <ClipboardList className="w-3 h-3" />
+                          {session.nota_kecil_count ?? 0}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="relative session-actions-menu inline-block text-left">
                           <button
-                            onClick={() => viewSessionDetails(session)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                            title="View Details"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setActionMenuOpenId(actionMenuOpenId === session.id ? null : session.id);
+                            }}
+                            className="p-1.5 rounded-full text-gray-600 hover:bg-gray-100 transition-colors"
+                            title="Open actions menu"
                           >
-                            <Eye className="w-4 h-4" />
+                            <MoreHorizontal className="w-5 h-5" />
                           </button>
-                          {session.status === 'active' && !autoSnapshot && useRealData && (
-                            <button
-                              onClick={() => handleManualSnapshot(session.id)}
-                              className="p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors"
-                              title="Manual Snapshot"
-                            >
-                              <Camera className="w-4 h-4" />
-                            </button>
+
+                          {actionMenuOpenId === session.id && (
+                            <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-20">
+                              <div className="py-1">
+                                <button
+                                  onClick={() => {
+                                    setActionMenuOpenId(null);
+                                    viewSessionDetails(session);
+                                  }}
+                                  className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                                >
+                                  <Eye className="w-4 h-4 text-blue-500" />
+                                  View Details
+                                </button>
+
+                                {session.status === 'active' && !autoSnapshot && useRealData && (
+                                  <button
+                                    onClick={() => {
+                                      setActionMenuOpenId(null);
+                                      handleManualSnapshot(session.id);
+                                    }}
+                                    className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                                  >
+                                    <Camera className="w-4 h-4 text-green-500" />
+                                    Manual Snapshot
+                                  </button>
+                                )}
+
+                                {session.status === 'active' && (
+                                  <button
+                                    onClick={() => {
+                                      setActionMenuOpenId(null);
+                                      handleStopSession(session.id);
+                                    }}
+                                    className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                                  >
+                                    <StopCircle className="w-4 h-4 text-red-500" />
+                                    Stop Session
+                                  </button>
+                                )}
+
+                                {['stopped', 'dead'].includes(session.status) && (
+                                  <button
+                                    onClick={() => {
+                                      setActionMenuOpenId(null);
+                                      handleResumeSession(session.id);
+                                    }}
+                                    className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                                  >
+                                    <PlayCircle className="w-4 h-4 text-green-500" />
+                                    Resume Session
+                                  </button>
+                                )}
+
+                                {session.status !== 'completed' && (
+                                  <button
+                                    onClick={() => {
+                                      setActionMenuOpenId(null);
+                                      handleCompleteSession(session.id);
+                                    }}
+                                    className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                                  >
+                                    <CheckCircle className="w-4 h-4 text-blue-500" />
+                                    Mark Completed
+                                  </button>
+                                )}
+
+                                <button
+                                  onClick={() => {
+                                    setActionMenuOpenId(null);
+                                    handleDeleteSession(session.id);
+                                  }}
+                                  className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  Delete Session
+                                </button>
+                              </div>
+                            </div>
                           )}
-                          {session.status === 'active' && (
-                            <button
-                              onClick={() => handleStopSession(session.id)}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
-                              title="Stop Session"
-                            >
-                              <StopCircle className="w-4 h-4" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleDeleteSession(session.id)}
-                            className="p-1.5 text-gray-600 hover:bg-red-50 hover:text-red-600 rounded transition-colors"
-                            title="Delete Session"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1103,6 +1240,16 @@ const CCTVMonitoringPage: React.FC = () => {
                 <div>
                   <p className="text-sm text-gray-500">Total Screenshots</p>
                   <p className="font-medium text-gray-900">{selectedSession.total_screenshots_captured}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Nota Kecils Created</p>
+                  <button
+                    onClick={handleOpenNotaManagement}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-full text-sm font-semibold hover:bg-purple-100 transition-colors mt-1"
+                  >
+                    <ClipboardList className="w-4 h-4" />
+                    {selectedSession.nota_kecil_count ?? 0}
+                  </button>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Device ID</p>
