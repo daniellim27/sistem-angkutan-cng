@@ -184,6 +184,7 @@ const CCTVMonitoringPage: React.FC = () => {
   const [sessionsPerPage] = useState(10);
   const [totalSessions, setTotalSessions] = useState(0);
   const [actionMenuOpenId, setActionMenuOpenId] = useState<number | null>(null);
+  const [actionMenuPosition, setActionMenuPosition] = useState<{ top: number; left: number } | null>(null);
 
   // Fetch all sessions
   const fetchSessions = useCallback(async () => {
@@ -318,6 +319,65 @@ const CCTVMonitoringPage: React.FC = () => {
       toast.error(error.response?.data?.message || 'Failed to complete session', { id: `complete-${sessionId}` });
     }
   };
+
+  const calculateActionMenuCoordinates = (trigger: HTMLElement) => {
+    const menuWidth = 220;
+    const padding = 8;
+    const rect = trigger.getBoundingClientRect();
+    const top = rect.bottom + 6;
+    const left = Math.min(
+      window.innerWidth - menuWidth - padding,
+      Math.max(padding, rect.right - menuWidth)
+    );
+    return { top, left };
+  };
+
+  const handleActionMenuToggle = (sessionId: number, event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+
+    if (actionMenuOpenId === sessionId) {
+      setActionMenuOpenId(null);
+      setActionMenuPosition(null);
+      return;
+    }
+
+    setActionMenuOpenId(sessionId);
+    setActionMenuPosition(calculateActionMenuCoordinates(event.currentTarget));
+  };
+
+  const closeActionMenu = () => {
+    setActionMenuOpenId(null);
+    setActionMenuPosition(null);
+  };
+
+  useEffect(() => {
+    if (!actionMenuOpenId) {
+      return;
+    }
+
+    const handleReposition = () => {
+      const trigger = document.querySelector(
+        `[data-session-action-trigger="${actionMenuOpenId}"]`
+      ) as HTMLElement | null;
+
+      if (!trigger) {
+        closeActionMenu();
+        return;
+      }
+
+      setActionMenuPosition(calculateActionMenuCoordinates(trigger));
+    };
+
+    handleReposition();
+
+    window.addEventListener('scroll', handleReposition, true);
+    window.addEventListener('resize', handleReposition);
+
+    return () => {
+      window.removeEventListener('scroll', handleReposition, true);
+      window.removeEventListener('resize', handleReposition);
+    };
+  }, [actionMenuOpenId]);
 
   // Manual snapshot capture
   const handleManualSnapshot = async (sessionId: number) => {
@@ -640,8 +700,9 @@ const CCTVMonitoringPage: React.FC = () => {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (!target.closest('.session-actions-menu')) {
+      if (!target.closest('.session-actions-trigger') && !target.closest('.session-actions-dropdown')) {
         setActionMenuOpenId(null);
+        setActionMenuPosition(null);
       }
     };
 
@@ -650,25 +711,19 @@ const CCTVMonitoringPage: React.FC = () => {
   }, []);
 
   // Get status badge color
-  const getStatusBadge = (status: string, healthStatus?: string) => {
-    if (status === 'dead') {
-      return 'bg-red-100 text-red-800 border border-red-300';
-    }
-    if (status === 'active') {
-      if (healthStatus === 'dead' || healthStatus === 'critical') {
-        return 'bg-orange-100 text-orange-800 border border-orange-300';
-      }
-      if (healthStatus === 'warning') {
-        return 'bg-yellow-100 text-yellow-800 border border-yellow-300';
-      }
-      if (healthStatus === 'healthy') {
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'active':
         return 'bg-green-100 text-green-800 border border-green-300';
-      }
+      case 'completed':
+        return 'bg-blue-100 text-blue-800 border border-blue-300';
+      case 'dead':
+        return 'bg-red-100 text-red-800 border border-red-300';
+      case 'stopped':
+        return 'bg-gray-100 text-gray-800 border border-gray-300';
+      default:
+        return 'bg-gray-100 text-gray-800 border border-gray-300';
     }
-    if (status === 'completed') {
-      return 'bg-blue-100 text-blue-800 border border-blue-300';
-    }
-    return 'bg-gray-100 text-gray-800 border border-gray-300';
   };
 
   const getStatusIcon = (status: string, healthStatus?: string) => {
@@ -676,22 +731,24 @@ const CCTVMonitoringPage: React.FC = () => {
       return <XCircle className="w-4 h-4" />;
     }
     if (status === 'active') {
-      if (healthStatus === 'dead' || healthStatus === 'critical') {
-        return <AlertTriangle className="w-4 h-4" />;
-      }
-      if (healthStatus === 'warning') {
-        return <AlertTriangle className="w-4 h-4" />;
-      }
-      if (healthStatus === 'healthy') {
-        return <CheckCircle className="w-4 h-4" />;
-      }
+      return <CheckCircle className="w-4 h-4" />;
+    }
+    if (status === 'completed') {
+      return <CheckCircle className="w-4 h-4" />;
+    }
+    if (status === 'stopped') {
+      return <StopCircle className="w-4 h-4" />;
     }
     return <Activity className="w-4 h-4" />;
   };
 
   const handleOpenNotaManagement = () => {
-    window.open('http://localhost:3001/operations/nota-management', '_blank');
+    window.open('/operations/nota-management', '_blank');
   };
+
+  const activeActionMenuSession = actionMenuOpenId
+    ? sessions.find((session) => session.id === actionMenuOpenId)
+    : null;
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -974,7 +1031,7 @@ const CCTVMonitoringPage: React.FC = () => {
               <p className="text-sm text-gray-400 mt-2">Sessions will appear here when monitoring starts</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-visible relative">
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -1001,7 +1058,7 @@ const CCTVMonitoringPage: React.FC = () => {
                         {session.delivery_order?.do_number || 'N/A'}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(session.status, session.health_status)}`}>
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(session.status)}`}>
                           {getStatusIcon(session.status, session.health_status)}
                           {session.status.toUpperCase()}
                         </span>
@@ -1040,98 +1097,14 @@ const CCTVMonitoringPage: React.FC = () => {
                         </button>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="relative session-actions-menu inline-block text-left">
-                          <button
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setActionMenuOpenId(actionMenuOpenId === session.id ? null : session.id);
-                            }}
-                            className="p-1.5 rounded-full text-gray-600 hover:bg-gray-100 transition-colors"
-                            title="Open actions menu"
-                          >
-                            <MoreHorizontal className="w-5 h-5" />
-                          </button>
-
-                          {actionMenuOpenId === session.id && (
-                            <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-20">
-                              <div className="py-1">
-                                <button
-                                  onClick={() => {
-                                    setActionMenuOpenId(null);
-                                    viewSessionDetails(session);
-                                  }}
-                                  className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                                >
-                                  <Eye className="w-4 h-4 text-blue-500" />
-                                  View Details
-                                </button>
-
-                                {session.status === 'active' && !autoSnapshot && useRealData && (
-                                  <button
-                                    onClick={() => {
-                                      setActionMenuOpenId(null);
-                                      handleManualSnapshot(session.id);
-                                    }}
-                                    className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                                  >
-                                    <Camera className="w-4 h-4 text-green-500" />
-                                    Manual Snapshot
-                                  </button>
-                                )}
-
-                                {session.status === 'active' && (
-                                  <button
-                                    onClick={() => {
-                                      setActionMenuOpenId(null);
-                                      handleStopSession(session.id);
-                                    }}
-                                    className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                                  >
-                                    <StopCircle className="w-4 h-4 text-red-500" />
-                                    Stop Session
-                                  </button>
-                                )}
-
-                                {['stopped', 'dead'].includes(session.status) && (
-                                  <button
-                                    onClick={() => {
-                                      setActionMenuOpenId(null);
-                                      handleResumeSession(session.id);
-                                    }}
-                                    className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                                  >
-                                    <PlayCircle className="w-4 h-4 text-green-500" />
-                                    Resume Session
-                                  </button>
-                                )}
-
-                                {session.status !== 'completed' && (
-                                  <button
-                                    onClick={() => {
-                                      setActionMenuOpenId(null);
-                                      handleCompleteSession(session.id);
-                                    }}
-                                    className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                                  >
-                                    <CheckCircle className="w-4 h-4 text-blue-500" />
-                                    Mark Completed
-                                  </button>
-                                )}
-
-                                <button
-                                  onClick={() => {
-                                    setActionMenuOpenId(null);
-                                    handleDeleteSession(session.id);
-                                  }}
-                                  className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                  Delete Session
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                        <button
+                          data-session-action-trigger={session.id}
+                          onClick={(event) => handleActionMenuToggle(session.id, event)}
+                          className="session-actions-trigger p-1.5 rounded-full text-gray-600 hover:bg-gray-100 transition-colors"
+                          title="Open actions menu"
+                        >
+                          <MoreHorizontal className="w-5 h-5" />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1204,10 +1177,93 @@ const CCTVMonitoringPage: React.FC = () => {
               )}
             </div>
           )}
+      </div>
+    </div>
+
+    {actionMenuOpenId && actionMenuPosition && activeActionMenuSession && (
+      <div
+        className="session-actions-dropdown fixed z-50 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5"
+        style={{ top: actionMenuPosition.top, left: actionMenuPosition.left }}
+      >
+        <div className="py-1">
+          <button
+            onClick={() => {
+              closeActionMenu();
+              viewSessionDetails(activeActionMenuSession);
+            }}
+            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+          >
+            <Eye className="w-4 h-4 text-blue-500" />
+            View Details
+          </button>
+
+          {activeActionMenuSession.status === 'active' && !autoSnapshot && useRealData && (
+            <button
+              onClick={() => {
+                closeActionMenu();
+                handleManualSnapshot(activeActionMenuSession.id);
+              }}
+              className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+            >
+              <Camera className="w-4 h-4 text-green-500" />
+              Manual Snapshot
+            </button>
+          )}
+
+          {activeActionMenuSession.status === 'active' && (
+            <button
+              onClick={() => {
+                closeActionMenu();
+                handleStopSession(activeActionMenuSession.id);
+              }}
+              className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+            >
+              <StopCircle className="w-4 h-4 text-red-500" />
+              Stop Session
+            </button>
+          )}
+
+          {['stopped', 'dead'].includes(activeActionMenuSession.status) && (
+            <button
+              onClick={() => {
+                closeActionMenu();
+                handleResumeSession(activeActionMenuSession.id);
+              }}
+              className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+            >
+              <PlayCircle className="w-4 h-4 text-green-500" />
+              Resume Session
+            </button>
+          )}
+
+          {activeActionMenuSession.status !== 'completed' && (
+            <button
+              onClick={() => {
+                closeActionMenu();
+                handleCompleteSession(activeActionMenuSession.id);
+              }}
+              className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+            >
+              <CheckCircle className="w-4 h-4 text-blue-500" />
+              Mark Completed
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              closeActionMenu();
+              handleDeleteSession(activeActionMenuSession.id);
+            }}
+            className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete Session
+          </button>
         </div>
       </div>
+    )}
 
-      {/* Session Details Modal */}
+    {/* Session Details Modal */}
       {showSessionModal && selectedSession && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
@@ -1233,7 +1289,7 @@ const CCTVMonitoringPage: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Status</p>
-                  <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium mt-1 ${getStatusBadge(selectedSession.status, selectedSession.health_status)}`}>
+                  <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium mt-1 ${getStatusBadge(selectedSession.status)}`}>
                     {selectedSession.status.toUpperCase()}
                   </span>
                 </div>
@@ -1691,4 +1747,5 @@ const CCTVMonitoringPage: React.FC = () => {
 };
 
 export default CCTVMonitoringPage;
+
 
