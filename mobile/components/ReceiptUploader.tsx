@@ -68,7 +68,7 @@ const ReceiptUploader: React.FC<ReceiptUploaderProps> = ({
     value: string;
   } | null>(null);
   const [driverNotes, setDriverNotes] = useState('');
-  const [useRealOCR, setUseRealOCR] = useState(false);
+  const [useRealOCR, setUseRealOCR] = useState(true);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
 
   const takePhoto = async () => {

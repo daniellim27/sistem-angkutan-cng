@@ -29,7 +29,6 @@ const MainLayout = () => {
     if (path === "/") return "CNG Dashboard";
     if (path.startsWith("/delivery-orders")) return "Delivery Orders";
     if (path.startsWith("/ocr-processing")) return "OCR Processing";
-    if (path.startsWith("/operations/cctv-monitoring")) return "CCTV Monitoring";
     if (path.startsWith("/operations/nota-management")) return "Nota Management";
     if (path.startsWith("/live-tracking")) return "Live GPS Tracking";
     if (path.startsWith("/vehicles/tires")) return "Tire Management";
@@ -237,12 +236,6 @@ const MainLayout = () => {
                   title: "Nota Management",
                   icon: "📋",
                   label: "Nota Management"
-                },
-                {
-                  to: "/operations/cctv-monitoring",
-                  title: "CCTV Monitoring",
-                  icon: "📹",
-                  label: "CCTV Monitoring"
                 },
               ]}
               sidebarMinimized={sidebarMinimized}

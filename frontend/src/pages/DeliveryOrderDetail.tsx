@@ -1313,15 +1313,23 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-2 items-end">
                       {receipt.receipt_photo_url && (
                         <a
-                          href={receipt.receipt_photo_url}
+                          href={getImageUrl(receipt.receipt_photo_url)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                          title="Open full-size receipt"
+                          className="block"
                         >
-                          📷 Photo
+                          <img
+                            src={getImageUrl(receipt.receipt_photo_url)}
+                            alt="Receipt thumbnail"
+                            className="w-28 h-28 object-cover rounded-md border border-gray-200 hover:opacity-90 transition-opacity"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
                         </a>
                       )}
                       <button
@@ -1454,10 +1462,10 @@ const DeliveryOrderDetail: React.FC<DeliveryOrderDetailProps> = () => {
                   <h4 className="text-lg font-semibold text-gray-900 mb-4">📷 Receipt Photo</h4>
                   <div className="border border-gray-200 rounded-lg overflow-hidden">
                     <img
-                      src={selectedReceipt.receipt_photo_url}
+                      src={getImageUrl(selectedReceipt.receipt_photo_url)}
                       alt="Receipt"
                       className="w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
-                      onClick={() => window.open(selectedReceipt.receipt_photo_url, '_blank')}
+                      onClick={() => window.open(getImageUrl(selectedReceipt.receipt_photo_url), '_blank')}
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-2 text-center">

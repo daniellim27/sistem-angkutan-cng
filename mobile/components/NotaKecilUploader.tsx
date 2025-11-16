@@ -106,7 +106,7 @@ const NotaKecilUploader: React.FC<NotaKecilUploaderProps> = ({
     value: string;
   } | null>(null);
   const [driverNotes, setDriverNotes] = useState('');
-  const [useRealOCR, setUseRealOCR] = useState(false); // Toggle for real OCR processing
+  const [useRealOCR, setUseRealOCR] = useState(true); // Toggle for real OCR processing
   const [photoUrls, setPhotoUrls] = useState<{
     pressure_bar: string | null;
     temperature: string | null;

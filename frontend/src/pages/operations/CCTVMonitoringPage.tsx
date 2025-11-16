@@ -601,10 +601,10 @@ const CCTVMonitoringPage: React.FC = () => {
           
           if (!includeCompletedOrders && orders.length > 0 && activeOrders.length === 0) {
             console.warn('All delivery orders are completed or cancelled. No active orders available.');
-            toast(`Found ${orders.length} delivery order(s), but all are completed/cancelled. Enable "Include Completed Orders" or create an active delivery order.`, {
-              icon: '⚠️',
-              duration: 5000,
-            });
+            // toast(`Found ${orders.length} delivery order(s), but all are completed/cancelled. Enable "Include Completed Orders" or create an active delivery order.`, {
+            //   icon: '⚠️',
+            //   duration: 5000,
+            // });
           }
           
           setDeliveryOrders(activeOrders);
@@ -1362,7 +1362,7 @@ const CCTVMonitoringPage: React.FC = () => {
                           )}
                         </div>
                         {/* Per-screenshot actions */}
-                        {screenshot.ocr_status !== 'success' && (
+                        {(
                           <div className="absolute top-2 right-2">
                             <div className="relative inline-block text-left">
                               <button
@@ -1397,16 +1397,16 @@ const CCTVMonitoringPage: React.FC = () => {
                                       setScreenshotMenuOpenId(null);
                                       setManualOcrTarget(screenshot);
                                       setManualForm({
-                                        meter_reading: '',
-                                        pressure: '',
-                                        temperature: '',
-                                        flow_rate: '',
+                                        meter_reading: (screenshot.ocr_result?.meter_reading ?? '') as any,
+                                        pressure: (screenshot.ocr_result?.pressure ?? '') as any,
+                                        temperature: (screenshot.ocr_result?.temperature ?? '') as any,
+                                        flow_rate: '' as any,
                                         unit: 'm³',
                                       });
                                     }}
                                     className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 border-t"
                                   >
-                                    Set Manual
+                                    Edit values
                                   </button>
                                 </div>
                               )}

@@ -1,58 +1,151 @@
 const receiptOcrService = require('../services/receiptOcrService');
-const { Pool } = require('pg');
+const db = require('../utils/db');
 
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 5435,
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'password',
-  database: process.env.DB_NAME || 'angkutan_ewaldo',
-});
-
-// Database helper functions
-
-async function saveReceiptToDatabase(doId, receiptData) {
-  const client = await pool.connect();
-  
+// Ensure table exists in the active database connection (safety net if migrations missed)
+let receiptOcrSchemaChecked = false;
+async function ensureReceiptOcrSchema() {
+  if (receiptOcrSchemaChecked) return;
+  const client = await db.getClient();
   try {
-    const query = `
-      INSERT INTO receipt_ocr (
-        do_id, filling_station_name, customer_name, filling_date,
-        filling_time_start, filling_time_end, initial_pressure,
-        final_pressure, total_volume, customer_signatory,
-        provider_signatory, receipt_photo_url, ocr_confidence_score,
-        driver_notes
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-      RETURNING id
-    `;
-
-    const values = [
-      doId,
-      receiptData.filling_station_name,
-      receiptData.customer_name,
-      receiptData.filling_date,
-      receiptData.filling_time_start,
-      receiptData.filling_time_end,
-      receiptData.initial_pressure,
-      receiptData.final_pressure,
-      receiptData.total_volume,
-      receiptData.customer_signatory,
-      receiptData.provider_signatory,
-      receiptData.receipt_photo_url,
-      receiptData.ocr_confidence_score || 0.8,
-      receiptData.driver_notes || null
-    ];
-
-    const result = await client.query(query, values);
-    return result.rows[0].id;
-
+    await client.query('BEGIN');
+    // Create table if not exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS receipt_ocr (
+        id SERIAL PRIMARY KEY,
+        do_id INTEGER REFERENCES delivery_orders(id) ON DELETE CASCADE,
+        filling_station_name VARCHAR(255),
+        customer_name VARCHAR(255),
+        filling_date DATE,
+        filling_time_start TIME,
+        filling_time_end TIME,
+        initial_pressure DECIMAL(10,2),
+        final_pressure DECIMAL(10,2),
+        total_volume DECIMAL(10,3),
+        customer_signatory VARCHAR(255),
+        provider_signatory VARCHAR(255),
+        receipt_photo_url TEXT,
+        ocr_confidence_score DECIMAL(5,2),
+        is_verified BOOLEAN DEFAULT FALSE,
+        verified_by INTEGER REFERENCES users(id),
+        verified_at TIMESTAMP,
+        verification_notes TEXT,
+        driver_notes TEXT,
+        admin_confirmed BOOLEAN DEFAULT FALSE,
+        confirmed_by INTEGER REFERENCES users(id),
+        confirmed_at TIMESTAMP,
+        pricing_method VARCHAR(20),
+        jisdor_rate DECIMAL(10,2),
+        fixed_rate_per_m3 DECIMAL(10,2),
+        calculated_cost DECIMAL(15,2),
+        applied_to_spbg BOOLEAN DEFAULT FALSE,
+        applied_to_spbg_at TIMESTAMP,
+        admin_notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    // Indices
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_receipt_ocr_do_id ON receipt_ocr(do_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_receipt_ocr_filling_date ON receipt_ocr(filling_date)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_receipt_ocr_is_verified ON receipt_ocr(is_verified)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_receipt_ocr_admin_confirmed ON receipt_ocr(admin_confirmed)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_receipt_ocr_applied_to_spbg ON receipt_ocr(applied_to_spbg)`);
+    // Idempotency: prevent duplicate uploads of the same photo for the same DO
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM   pg_indexes
+          WHERE  schemaname = 'public'
+          AND    indexname = 'uniq_receipt_per_do_photo'
+        ) THEN
+          CREATE UNIQUE INDEX uniq_receipt_per_do_photo ON receipt_ocr (do_id, receipt_photo_url);
+        END IF;
+      END $$;
+    `);
+    // Constraint for pricing_method
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'receipt_ocr_pricing_method_check'
+        ) THEN
+          ALTER TABLE receipt_ocr
+          ADD CONSTRAINT receipt_ocr_pricing_method_check 
+          CHECK (pricing_method IS NULL OR pricing_method IN ('jisdor', 'fixed'));
+        END IF;
+      END $$;
+    `);
+    await client.query('COMMIT');
+    receiptOcrSchemaChecked = true;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    // Log but proceed; original error will surface if truly missing
+    console.error('ensureReceiptOcrSchema failed:', e.message);
   } finally {
     client.release();
   }
 }
 
+// Database helper functions
+
+async function saveReceiptToDatabase(doId, receiptData) {
+  const insertOnce = async () => {
+    const client = await db.getClient();
+    try {
+      // Use UPSERT to avoid duplicates when the same image is sent twice
+      const query = `
+        INSERT INTO receipt_ocr (
+          do_id, filling_station_name, customer_name, filling_date,
+          filling_time_start, filling_time_end, initial_pressure,
+          final_pressure, total_volume, customer_signatory,
+          provider_signatory, receipt_photo_url, ocr_confidence_score,
+          driver_notes
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        ON CONFLICT (do_id, receipt_photo_url)
+        DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+        RETURNING id
+      `;
+  
+      const values = [
+        doId,
+        receiptData.filling_station_name,
+        receiptData.customer_name,
+        receiptData.filling_date,
+        receiptData.filling_time_start,
+        receiptData.filling_time_end,
+        receiptData.initial_pressure,
+        receiptData.final_pressure,
+        receiptData.total_volume,
+        receiptData.customer_signatory,
+        receiptData.provider_signatory,
+        receiptData.receipt_photo_url,
+        receiptData.ocr_confidence_score || 0.8,
+        receiptData.driver_notes || null
+      ];
+  
+      const result = await client.query(query, values);
+      return result.rows[0].id;
+    } finally {
+      client.release();
+    }
+  };
+
+  try {
+    return await insertOnce();
+  } catch (e) {
+    // Retry once if table missing
+    if (e && e.code === '42P01') {
+      console.warn('receipt_ocr table missing; creating schema and retrying insert...');
+      await ensureReceiptOcrSchema();
+      return await insertOnce();
+    }
+    throw e;
+  }
+}
+
 async function getReceiptsFromDatabase(doId) {
-  const client = await pool.connect();
+  await ensureReceiptOcrSchema();
+  const client = await db.getClient();
   
   try {
     const query = `
@@ -72,7 +165,8 @@ async function getReceiptsFromDatabase(doId) {
 }
 
 async function getReceiptFromDatabase(receiptId) {
-  const client = await pool.connect();
+  await ensureReceiptOcrSchema();
+  const client = await db.getClient();
   
   try {
     const query = `
@@ -91,7 +185,8 @@ async function getReceiptFromDatabase(receiptId) {
 }
 
 async function updateReceiptInDatabase(receiptId, updatedData) {
-  const client = await pool.connect();
+  await ensureReceiptOcrSchema();
+  const client = await db.getClient();
   
   try {
     const fields = [];
@@ -128,7 +223,7 @@ async function updateReceiptInDatabase(receiptId, updatedData) {
 }
 
 async function updateReceiptVerification(receiptId, verificationData) {
-  const client = await pool.connect();
+  const client = await db.getClient();
   
   try {
     const query = `
@@ -155,7 +250,7 @@ async function updateReceiptVerification(receiptId, verificationData) {
 }
 
 async function deleteReceiptFromDatabase(receiptId) {
-  const client = await pool.connect();
+  const client = await db.getClient();
   
   try {
     const query = 'DELETE FROM receipt_ocr WHERE id = $1 RETURNING id';
@@ -346,7 +441,7 @@ exports.getReceiptById = async (req, res) => {
         ORDER BY rate_date DESC 
         LIMIT 1
       `;
-      const client = await pool.connect();
+      const client = await db.getClient();
       const rateResult = await client.query(rateQuery);
       client.release();
       
@@ -528,7 +623,7 @@ exports.confirmReceiptAdmin = async (req, res) => {
       });
     }
 
-    const client = await pool.connect();
+    const client = await db.getClient();
     
     try {
       await client.query('BEGIN');

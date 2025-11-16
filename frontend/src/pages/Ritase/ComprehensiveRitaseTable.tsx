@@ -16,14 +16,14 @@ interface ComprehensiveRitaseData {
   do_number: string;
   customer_name: string;
 
-  vehicle: {
-    license_plate: string;
-    type: string;
-  };
+  vehicle?: {
+    license_plate?: string;
+    type?: string;
+  } | null;
   driver: {
-    username: string;
-    driverProfile: {
-      full_name: string;
+    username?: string;
+    driverProfile?: {
+      full_name?: string;
     };
   };
   created_at: string;
@@ -933,11 +933,11 @@ const ComprehensiveRitaseTable: React.FC = () => {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-gray-900">
                               <div className="font-bold bg-gray-100 px-2 py-1 rounded">
-                                {record.vehicle.license_plate}
+                                {record.vehicle?.license_plate || '-'}
                               </div>
                               <div className="font-medium px-2">
-                                {record.driver.driverProfile.full_name ||
-                                  record.driver.username}
+                                {record.driver?.driverProfile?.full_name ||
+                                  record.driver?.username || '-'}
                               </div>
                             </div>
                           </td>
