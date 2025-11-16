@@ -36,6 +36,7 @@ interface CCTVSession {
   last_screenshot_at: string | null;
   session_notes: string | null;
   created_nota_kecil_id: number | null;
+  meter_type?: 'temperature' | 'pressure' | 'stan_awal' | 'stan_akhir' | 'other' | null;
   delivery_order?: {
     do_number: string;
     do_name: string;
@@ -48,15 +49,21 @@ interface CCTVSession {
 interface CCTVScreenshot {
   id: number;
   session_id: number;
-  screenshot_url: string;
+  screenshot_url: string | null;
   captured_at: string;
   ocr_status: 'pending' | 'processing' | 'success' | 'failed';
   ocr_result: {
     meter_reading?: number;
     pressure?: number;
     temperature?: number;
+    tekanan_operasi?: number;
+    temperatur_operasi?: number;
+    [key: string]: any; // Allow other fields
   } | null;
   ocr_confidence_score: number | null;
+  ocr_raw_response?: any;
+  ocr_error_message?: string | null;
+  ocr_processed_at?: string | null;
   sequence_number: number;
 }
 
@@ -91,6 +98,7 @@ interface CreateSessionForm {
   panel_row: number;
   panel_column: number;
   customer_location_index: number;
+  meter_type: 'temperature' | 'pressure' | 'stan_awal' | 'stan_akhir' | 'other';
 }
 
 // Session mockup data removed per requirement.
@@ -169,6 +177,8 @@ const CCTVMonitoringPage: React.FC = () => {
   });
   // Screenshot actions menu state
   const [screenshotMenuOpenId, setScreenshotMenuOpenId] = useState<number | null>(null);
+  // OCR details view modal state
+  const [viewingOcrDetails, setViewingOcrDetails] = useState<CCTVScreenshot | null>(null);
 
   // Session token form - default values, will be replaced by persisted token if available
   const [sessionToken, setSessionToken] = useState(DEFAULT_SESSION_TOKEN);
@@ -182,6 +192,7 @@ const CCTVMonitoringPage: React.FC = () => {
     panel_row: 1,
     panel_column: 1,
     customer_location_index: 0,
+    meter_type: 'stan_awal',
   });
 
   // Dropdowns - fetch real data
@@ -446,6 +457,7 @@ const CCTVMonitoringPage: React.FC = () => {
           device_id: createForm.device_id,
           panel_row: createForm.panel_row,
           panel_column: createForm.panel_column,
+          meter_type: createForm.meter_type,
         };
         
         console.log('🔍 DEBUG - Request body being sent:', requestBody);
@@ -463,6 +475,7 @@ const CCTVMonitoringPage: React.FC = () => {
           panel_row: 1,
           panel_column: 1,
           customer_location_index: 0,
+          meter_type: 'stan_awal',
         });
         
         // Refresh sessions list
@@ -513,6 +526,7 @@ const CCTVMonitoringPage: React.FC = () => {
           panel_row: 1,
           panel_column: 1,
           customer_location_index: 0,
+          meter_type: 'stan_awal',
         });
       }
     } catch (error: any) {
@@ -1052,6 +1066,7 @@ const CCTVMonitoringPage: React.FC = () => {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">DO Number</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Meter Type</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Started</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Capture</th>
@@ -1066,10 +1081,23 @@ const CCTVMonitoringPage: React.FC = () => {
                       <td className="px-4 py-3 text-sm text-gray-900 font-medium">#{session.id}</td>
                       <td className="px-4 py-3">
                         <div className="text-sm font-medium text-gray-900">{session.customer_name}</div>
-                        <div className="text-xs text-gray-500">Location Index: {session.customer_location_index}</div>
+                        {/* <div className="text-xs text-gray-500">Location Index: {session.customer_location_index}</div> */}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {session.delivery_order?.do_number || 'N/A'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {session.meter_type ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            {session.meter_type === 'stan_awal' ? 'Stan Awal' :
+                             session.meter_type === 'stan_akhir' ? 'Stan Akhir' :
+                             session.meter_type === 'pressure' ? 'Pressure' :
+                             session.meter_type === 'temperature' ? 'Temperature' :
+                             'Other'}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">N/A</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(session.status)}`}>
@@ -1325,6 +1353,20 @@ const CCTVMonitoringPage: React.FC = () => {
                   <p className="text-sm text-gray-500">Device ID</p>
                   <p className="font-medium text-gray-900">{selectedSession.device_id || 'N/A'}</p>
                 </div>
+                <div>
+                  <p className="text-sm text-gray-500">Meter Type</p>
+                  {selectedSession.meter_type ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium mt-1 bg-indigo-50 text-indigo-700 border border-indigo-200">
+                      {selectedSession.meter_type === 'stan_awal' ? 'Stan Awal' :
+                       selectedSession.meter_type === 'stan_akhir' ? 'Stan Akhir' :
+                       selectedSession.meter_type === 'pressure' ? 'Pressure' :
+                       selectedSession.meter_type === 'temperature' ? 'Temperature' :
+                       'Other'}
+                    </span>
+                  ) : (
+                    <p className="font-medium text-gray-400 mt-1">N/A</p>
+                  )}
+                </div>
               </div>
 
               {/* Screenshots Gallery */}
@@ -1396,13 +1438,35 @@ const CCTVMonitoringPage: React.FC = () => {
                                     onClick={() => {
                                       setScreenshotMenuOpenId(null);
                                       setManualOcrTarget(screenshot);
-                                      setManualForm({
-                                        meter_reading: (screenshot.ocr_result?.meter_reading ?? '') as any,
-                                        pressure: (screenshot.ocr_result?.pressure ?? '') as any,
-                                        temperature: (screenshot.ocr_result?.temperature ?? '') as any,
-                                        flow_rate: '' as any,
-                                        unit: 'm³',
-                                      });
+                                      
+                                      // Initialize form based on meter_type - only populate the relevant field
+                                      const meterType = selectedSession?.meter_type;
+                                      if (meterType === 'temperature') {
+                                        setManualForm({
+                                          meter_reading: '',
+                                          pressure: '',
+                                          temperature: (screenshot.ocr_result?.temperature ?? screenshot.ocr_result?.temperatur_operasi ?? '') as any,
+                                          flow_rate: '',
+                                          unit: 'm³',
+                                        });
+                                      } else if (meterType === 'pressure') {
+                                        setManualForm({
+                                          meter_reading: '',
+                                          pressure: (screenshot.ocr_result?.pressure ?? screenshot.ocr_result?.tekanan_operasi ?? '') as any,
+                                          temperature: '',
+                                          flow_rate: '',
+                                          unit: 'm³',
+                                        });
+                                      } else {
+                                        // For stan_awal, stan_akhir, other, or no meter_type - use meter_reading
+                                        setManualForm({
+                                          meter_reading: (screenshot.ocr_result?.meter_reading ?? '') as any,
+                                          pressure: '',
+                                          temperature: '',
+                                          flow_rate: '',
+                                          unit: 'm³',
+                                        });
+                                      }
                                     }}
                                     className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 border-t"
                                   >
@@ -1437,16 +1501,47 @@ const CCTVMonitoringPage: React.FC = () => {
                           </p>
                           {screenshot.ocr_result && (
                             <div className="mt-2 pt-2 border-t border-gray-100">
-                              {screenshot.ocr_result.meter_reading !== undefined && (
-                                <p className="text-sm font-medium text-gray-900">
-                                  Meter: {screenshot.ocr_result.meter_reading} m³
-                                </p>
-                              )}
+                              {(() => {
+                                const meterType = selectedSession?.meter_type;
+                                let displayValue: number | undefined;
+                                let displayLabel: string;
+                                let displayUnit: string;
+
+                                if (meterType === 'temperature') {
+                                  displayValue = screenshot.ocr_result.temperature ?? screenshot.ocr_result.temperatur_operasi;
+                                  displayLabel = 'Temperature';
+                                  displayUnit = '°C';
+                                } else if (meterType === 'pressure') {
+                                  displayValue = screenshot.ocr_result.pressure ?? screenshot.ocr_result.tekanan_operasi;
+                                  displayLabel = 'Pressure';
+                                  displayUnit = 'bar';
+                                } else {
+                                  // For stan_awal, stan_akhir, other, or no meter_type
+                                  displayValue = screenshot.ocr_result.meter_reading;
+                                  displayLabel = meterType === 'stan_awal' ? 'Stan Awal' : 
+                                               meterType === 'stan_akhir' ? 'Stan Akhir' : 
+                                               'Meter';
+                                  displayUnit = screenshot.ocr_result.unit || 'm³';
+                                }
+
+                                return displayValue !== undefined && displayValue !== null ? (
+                                  <p className="text-sm font-medium text-gray-900">
+                                    {displayLabel}: {displayValue} {displayUnit}
+                                  </p>
+                                ) : null;
+                              })()}
                               {screenshot.ocr_confidence_score !== null && (
                                 <p className="text-xs text-gray-500">
                                   Confidence: {(screenshot.ocr_confidence_score * 100).toFixed(0)}%
                                 </p>
                               )}
+                              <button
+                                onClick={() => setViewingOcrDetails(screenshot)}
+                                className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                              >
+                                <Eye className="w-3 h-3" />
+                                View Details
+                              </button>
                             </div>
                           )}
                         </div>
@@ -1577,7 +1672,7 @@ const CCTVMonitoringPage: React.FC = () => {
                 </div>
 
                 {/* Customer Location Index */}
-                <div>
+                {/* <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Customer Location Index
                   </label>
@@ -1590,7 +1685,7 @@ const CCTVMonitoringPage: React.FC = () => {
                     placeholder="0 for main location, 1+ for additional"
                   />
                   <p className="text-xs text-gray-500 mt-1">0 = Primary location, 1+ = Additional unload locations</p>
-                </div>
+                </div> */}
 
                 {/* Panel Location - Row & Column */}
                 <div className="grid grid-cols-2 gap-4">
@@ -1636,6 +1731,26 @@ const CCTVMonitoringPage: React.FC = () => {
                     <strong>Panel Location:</strong> Specify which panel on the BARDI camera grid contains the meter you want to monitor.
                     For example, Row 2, Column 3 means the meter is in the 2nd row, 3rd column of the camera view.
                   </p>
+                </div>
+
+                {/* Meter Type */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Meter Type <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={createForm.meter_type}
+                    onChange={(e) => setCreateForm({...createForm, meter_type: e.target.value as CreateSessionForm['meter_type']})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  >
+                    <option value="stan_awal">Stan Awal (Initial Reading)</option>
+                    <option value="stan_akhir">Stan Akhir (Final Reading)</option>
+                    <option value="pressure">Pressure (Tekanan)</option>
+                    <option value="temperature">Temperature (Temperatur)</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Specify which type of meter reading this session will capture</p>
                 </div>
 
                 {/* Device ID (Optional) */}
@@ -1697,43 +1812,79 @@ const CCTVMonitoringPage: React.FC = () => {
               </button>
             </div>
             <div className="p-4 space-y-3">
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Meter Reading (m³)</label>
-                <input value={manualForm.meter_reading} onChange={(e)=>setManualForm({...manualForm, meter_reading: e.target.value})} className="w-full border rounded px-3 py-2 text-sm" placeholder="e.g., 1234.56" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Pressure (bar)</label>
-                  <input value={manualForm.pressure} onChange={(e)=>setManualForm({...manualForm, pressure: e.target.value})} className="w-full border rounded px-3 py-2 text-sm" placeholder="e.g., 205.3" />
-                </div>
+              {selectedSession?.meter_type === 'temperature' && (
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Temperature (°C)</label>
-                  <input value={manualForm.temperature} onChange={(e)=>setManualForm({...manualForm, temperature: e.target.value})} className="w-full border rounded px-3 py-2 text-sm" placeholder="e.g., 28.5" />
+                  <input 
+                    value={manualForm.temperature} 
+                    onChange={(e)=>setManualForm({...manualForm, temperature: e.target.value})} 
+                    className="w-full border rounded px-3 py-2 text-sm" 
+                    placeholder="e.g., 28.5" 
+                  />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+              )}
+              
+              {selectedSession?.meter_type === 'pressure' && (
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Flow Rate (m³/h)</label>
-                  <input value={manualForm.flow_rate} onChange={(e)=>setManualForm({...manualForm, flow_rate: e.target.value})} className="w-full border rounded px-3 py-2 text-sm" placeholder="e.g., 15.2" />
+                  <label className="block text-sm text-gray-600 mb-1">Pressure (bar)</label>
+                  <input 
+                    value={manualForm.pressure} 
+                    onChange={(e)=>setManualForm({...manualForm, pressure: e.target.value})} 
+                    className="w-full border rounded px-3 py-2 text-sm" 
+                    placeholder="e.g., 205.3" 
+                  />
                 </div>
+              )}
+              
+              {(selectedSession?.meter_type === 'stan_awal' || selectedSession?.meter_type === 'stan_akhir' || !selectedSession?.meter_type) && (
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Unit</label>
-                  <input value={manualForm.unit} onChange={(e)=>setManualForm({...manualForm, unit: e.target.value})} className="w-full border rounded px-3 py-2 text-sm" />
+                  <label className="block text-sm text-gray-600 mb-1">
+                    {selectedSession?.meter_type === 'stan_awal' ? 'Stan Awal' : 
+                     selectedSession?.meter_type === 'stan_akhir' ? 'Stan Akhir' : 
+                     'Meter Reading'} (m³)
+                  </label>
+                  <input 
+                    value={manualForm.meter_reading} 
+                    onChange={(e)=>setManualForm({...manualForm, meter_reading: e.target.value})} 
+                    className="w-full border rounded px-3 py-2 text-sm" 
+                    placeholder="e.g., 1234.56" 
+                  />
                 </div>
-              </div>
+              )}
+              
+              {selectedSession?.meter_type === 'other' && (
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Meter Reading (m³)</label>
+                  <input 
+                    value={manualForm.meter_reading} 
+                    onChange={(e)=>setManualForm({...manualForm, meter_reading: e.target.value})} 
+                    className="w-full border rounded px-3 py-2 text-sm" 
+                    placeholder="e.g., 1234.56" 
+                  />
+                </div>
+              )}
             </div>
             <div className="p-4 border-t border-gray-200 flex items-center justify-end gap-2">
               <button onClick={()=>setManualOcrTarget(null)} className="px-4 py-2 rounded border text-gray-700">Cancel</button>
               <button
                 onClick={async ()=>{
                   try{
-                    await apiClient.put(`/cctv-monitoring/screenshots/${manualOcrTarget.id}/manual-ocr`, {
-                      meter_reading: manualForm.meter_reading ? parseFloat(manualForm.meter_reading) : null,
-                      pressure: manualForm.pressure ? parseFloat(manualForm.pressure) : null,
-                      temperature: manualForm.temperature ? parseFloat(manualForm.temperature) : null,
-                      flow_rate: manualForm.flow_rate ? parseFloat(manualForm.flow_rate) : null,
-                      unit: manualForm.unit || 'm³'
-                    });
+                    // Build payload based on meter_type - only send the relevant field
+                    const payload: any = {};
+
+                    if (selectedSession?.meter_type === 'temperature') {
+                      payload.temperature = manualForm.temperature ? parseFloat(manualForm.temperature) : null;
+                      payload.unit = '°C'; // Set unit to °C for temperature
+                    } else if (selectedSession?.meter_type === 'pressure') {
+                      payload.pressure = manualForm.pressure ? parseFloat(manualForm.pressure) : null;
+                      payload.unit = 'bar'; // Set unit to bar for pressure
+                    } else {
+                      // For stan_awal, stan_akhir, other, or no meter_type - use meter_reading
+                      payload.meter_reading = manualForm.meter_reading ? parseFloat(manualForm.meter_reading) : null;
+                      payload.unit = manualForm.unit || 'm³'; // Use form unit or default to m³
+                    }
+
+                    await apiClient.put(`/cctv-monitoring/screenshots/${manualOcrTarget.id}/manual-ocr`, payload);
                     toast.success('Manual OCR saved');
                     setManualOcrTarget(null);
                     fetchSessionScreenshots(selectedSession!.id);
@@ -1882,6 +2033,164 @@ const CCTVMonitoringPage: React.FC = () => {
                 </p>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* OCR Details View Modal */}
+      {viewingOcrDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">OCR Details</h2>
+                <button
+                  onClick={() => setViewingOcrDetails(null)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <XCircle className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              {/* Basic Info */}
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Basic Information</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs text-gray-500">Sequence Number</div>
+                    <div className="font-medium text-gray-900">#{viewingOcrDetails.sequence_number}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500">Captured At</div>
+                    <div className="font-medium text-gray-900">
+                      {new Date(viewingOcrDetails.captured_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500">OCR Status</div>
+                    <div className={`inline-block px-2 py-1 rounded text-xs font-medium ${
+                      viewingOcrDetails.ocr_status === 'success' ? 'bg-green-100 text-green-700' :
+                      viewingOcrDetails.ocr_status === 'failed' ? 'bg-red-100 text-red-700' :
+                      viewingOcrDetails.ocr_status === 'processing' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
+                      {viewingOcrDetails.ocr_status}
+                    </div>
+                  </div>
+                  {viewingOcrDetails.ocr_confidence_score !== null && (
+                    <div>
+                      <div className="text-xs text-gray-500">Confidence Score</div>
+                      <div className="font-medium text-gray-900">
+                        {(viewingOcrDetails.ocr_confidence_score * 100).toFixed(2)}%
+                      </div>
+                    </div>
+                  )}
+                  {viewingOcrDetails.ocr_processed_at && (
+                    <div>
+                      <div className="text-xs text-gray-500">Processed At</div>
+                      <div className="font-medium text-gray-900">
+                        {new Date(viewingOcrDetails.ocr_processed_at).toLocaleString()}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* OCR Result Fields */}
+              {viewingOcrDetails.ocr_result && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Extracted Data</h3>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      {Object.entries(viewingOcrDetails.ocr_result).map(([key, value]) => {
+                        if (value === null || value === undefined) return null;
+                        
+                        // Format the key name
+                        const formattedKey = key
+                          .replace(/_/g, ' ')
+                          .replace(/\b\w/g, l => l.toUpperCase());
+                        
+                        // Format the value
+                        let formattedValue: string;
+                        if (typeof value === 'number') {
+                          formattedValue = value.toFixed(2);
+                          // Add units for specific fields
+                          if (key.includes('meter') || key.includes('volume') || key === 'V' || key === 'Vt') {
+                            formattedValue += ' m³';
+                          } else if (key.includes('pressure') || key.includes('tekanan')) {
+                            formattedValue += ' bar';
+                          } else if (key.includes('temperature') || key.includes('temperatur')) {
+                            formattedValue += ' °C';
+                          }
+                        } else if (typeof value === 'object') {
+                          formattedValue = JSON.stringify(value, null, 2);
+                        } else {
+                          formattedValue = String(value);
+                        }
+                        
+                        return (
+                          <div key={key} className="border-b border-gray-200 pb-2">
+                            <div className="text-xs text-gray-500 mb-1">{formattedKey}</div>
+                            <div className="font-medium text-gray-900 text-sm break-words">
+                              {formattedValue}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Error Message */}
+              {viewingOcrDetails.ocr_error_message && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-semibold text-red-700 mb-2">Error Message</h3>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <p className="text-sm text-red-800">{viewingOcrDetails.ocr_error_message}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Raw OCR Response */}
+              {viewingOcrDetails.ocr_raw_response && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-2">Raw OCR Response</h3>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <pre className="text-xs text-gray-700 overflow-x-auto whitespace-pre-wrap">
+                      {typeof viewingOcrDetails.ocr_raw_response === 'string' 
+                        ? viewingOcrDetails.ocr_raw_response 
+                        : JSON.stringify(viewingOcrDetails.ocr_raw_response, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {/* Screenshot Image */}
+              {viewingOcrDetails.screenshot_url && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-2">Screenshot</h3>
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <img
+                      src={viewingOcrDetails.screenshot_url}
+                      alt={`Screenshot ${viewingOcrDetails.sequence_number}`}
+                      className="w-full h-auto"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => setViewingOcrDetails(null)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

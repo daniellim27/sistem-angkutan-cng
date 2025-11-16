@@ -89,6 +89,11 @@ module.exports = (sequelize) => {
       allowNull: true,
       comment: 'Panel column location in BARDI interface'
     },
+    meter_type: {
+      type: DataTypes.ENUM('temperature', 'pressure', 'stan_awal', 'stan_akhir', 'other'),
+      allowNull: true,
+      comment: 'Type of meter being captured in this session'
+    },
     screenshot_interval_minutes: {
       type: DataTypes.INTEGER,
       allowNull: false,

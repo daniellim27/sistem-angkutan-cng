@@ -4,6 +4,8 @@ const { CCTVSession, CCTVScreenshot, NotaKecil } = require('../models');
 const gasCalculationService = require('./gasCalculationService');
 const { Op } = require('sequelize');
 
+const CAPTURES_PER_BATCH = 24;
+
 class CCTVScheduler {
   constructor() {
     this.isRunning = false;
@@ -183,7 +185,7 @@ class CCTVScheduler {
         }
       });
 
-      const expectedNotas = Math.floor(totalCaptures / 24);
+      const expectedNotas = Math.floor(totalCaptures / CAPTURES_PER_BATCH);
       let processedNotas = existingNotas;
 
       if (processedNotas < expectedNotas) {
@@ -192,8 +194,8 @@ class CCTVScheduler {
 
       while (processedNotas < expectedNotas) {
         const batchNumber = processedNotas + 1;
-        const startSequence = (batchNumber - 1) * 24 + 1;
-        const endSequence = batchNumber * 24;
+        const startSequence = (batchNumber - 1) * CAPTURES_PER_BATCH + 1;
+        const endSequence = batchNumber * CAPTURES_PER_BATCH;
 
         const created = await this.createNotaKecilFromBatch(session, {
           startSequence,
@@ -210,7 +212,7 @@ class CCTVScheduler {
         processedNotas++;
       }
 
-      const remainder = totalCaptures % 24;
+      const remainder = totalCaptures % CAPTURES_PER_BATCH;
       if (remainder === 0) {
         await session.update({
           nota_batch_start_at: null,
@@ -238,7 +240,7 @@ class CCTVScheduler {
           nota_batch_end_sequence: null,
         });
 
-        console.log(`   📊 Batch progress for session ${session.id}: ${remainder}/24 captures (start sequence ${remainderStartSequence})`);
+        console.log(`   📊 Batch progress for session ${session.id}: ${remainder}/${CAPTURES_PER_BATCH} captures (start sequence ${remainderStartSequence})`);
       }
 
     } catch (error) {
@@ -247,7 +249,7 @@ class CCTVScheduler {
   }
 
   /**
-   * Create Nota Kecil from a completed batch (24 captures)
+   * Create Nota Kecil from a completed batch (CAPTURES_PER_BATCH captures)
    */
   async createNotaKecilFromBatch(session, options = {}) {
     try {
@@ -261,7 +263,7 @@ class CCTVScheduler {
         return false;
       }
 
-      const batchNumber = options.batchNumber ?? Math.floor((startSequence - 1) / 24) + 1;
+      const batchNumber = options.batchNumber ?? Math.floor((startSequence - 1) / CAPTURES_PER_BATCH) + 1;
 
       console.log(`\n📊 Creating Nota Kecil for session ${session.id}, batch ${batchNumber} (sequences ${startSequence}-${endSequence})...`);
 
@@ -324,11 +326,84 @@ class CCTVScheduler {
         }
       }
 
-      if (meterReadings.length < 2) {
-        console.log(`   ⚠️  Insufficient meter readings in batch (need at least 2, found ${meterReadings.length})`);
+      // Get session meter_type to determine which field to calculate
+      const meterType = session.meter_type;
+
+      // Validate minimum data based on meter_type
+      // For stan_awal/stan_akhir, we need at least 2 meter readings (first and last)
+      // For temperature/pressure, we need at least 1 valid value
+      let hasMinimumData = false;
+      
+      if (meterType === 'stan_awal' || meterType === 'stan_akhir') {
+        // Count non-zero meter readings
+        const validMeterReadings = meterReadings.filter(r => r > 0);
+        hasMinimumData = validMeterReadings.length >= 2;
+        if (!hasMinimumData) {
+          console.log(`   ⚠️  Insufficient meter readings in batch (need at least 2 for ${meterType}, found ${validMeterReadings.length})`);
+        }
+      } else if (meterType === 'temperature') {
+        // Check if we have at least 1 temperature value
+        let tempCount = 0;
+        for (const screenshot of batchScreenshots) {
+          try {
+            let ocrResult = screenshot.ocr_result;
+            if (typeof ocrResult === 'string') {
+              try {
+                ocrResult = JSON.parse(ocrResult);
+              } catch (e) {
+                continue;
+              }
+            }
+            const temperature = parseFloat(ocrResult?.temperature ?? ocrResult?.temperatur_operasi ?? 0);
+            if (!isNaN(temperature)) {
+              tempCount++;
+            }
+          } catch (error) {
+            // Skip
+          }
+        }
+        hasMinimumData = tempCount >= 1;
+        if (!hasMinimumData) {
+          console.log(`   ⚠️  Insufficient temperature readings in batch (need at least 1, found ${tempCount})`);
+        }
+      } else if (meterType === 'pressure') {
+        // Check if we have at least 1 pressure value
+        let pressureCount = 0;
+        for (const screenshot of batchScreenshots) {
+          try {
+            let ocrResult = screenshot.ocr_result;
+            if (typeof ocrResult === 'string') {
+              try {
+                ocrResult = JSON.parse(ocrResult);
+              } catch (e) {
+                continue;
+              }
+            }
+            const pressure = parseFloat(ocrResult?.pressure ?? ocrResult?.tekanan_operasi ?? 0);
+            if (!isNaN(pressure) && pressure > 0) {
+              pressureCount++;
+            }
+          } catch (error) {
+            // Skip
+          }
+        }
+        hasMinimumData = pressureCount >= 1;
+        if (!hasMinimumData) {
+          console.log(`   ⚠️  Insufficient pressure readings in batch (need at least 1, found ${pressureCount})`);
+        }
+      } else {
+        // For 'other' or no meter_type, default to stan_awal/stan_akhir requirement
+        const validMeterReadings = meterReadings.filter(r => r > 0);
+        hasMinimumData = validMeterReadings.length >= 2;
+        if (!hasMinimumData) {
+          console.log(`   ⚠️  Insufficient meter readings in batch (need at least 2, found ${validMeterReadings.length})`);
+        }
+      }
+      
+      if (!hasMinimumData) {
         console.log(`   ⚠️  Skipping nota kecil creation for this batch. Resetting batch for next cycle...`);
         await session.update({
-          session_notes: `${session.session_notes || ''}\nBatch ${startSequence}-${endSequence}: Insufficient OCR data (${meterReadings.length} readings). Skipped nota kecil creation.`.trim(),
+          session_notes: `${session.session_notes || ''}\nBatch ${startSequence}-${endSequence}: Insufficient OCR data for ${meterType || 'default'}. Skipped nota kecil creation.`.trim(),
           nota_batch_start_at: null,
           nota_batch_start_sequence: null,
           nota_batch_capture_count: 0,
@@ -338,81 +413,138 @@ class CCTVScheduler {
         return false;
       }
 
-      // Calculate averages (use first and last readings for stan_awal and stan_akhir)
-      const stan_awal = meterReadings[0];
-      const stan_akhir = meterReadings[meterReadings.length - 1];
+      // Initialize all values to 0 - we'll only calculate the one matching meter_type
+      let stan_awal = 0;
+      let stan_akhir = 0;
+      let avgPressure = 0;
+      let avgTemperature = 0;
+      let pressureCount = 0;
+      let temperatureCount = 0;
 
-      // Get average pressure and temperature from all 24 (failed => 0)
-      let totalPressure = 0;
-      let totalTemperature = 0;
-
-      for (const screenshot of batchScreenshots) {
-        try {
-          // Handle JSONB - might be a string that needs parsing
-          let ocrResult = screenshot.ocr_result;
-          if (typeof ocrResult === 'string') {
-            try {
-              ocrResult = JSON.parse(ocrResult);
-            } catch (e) {
-              // parsing fail => count as 0
-              continue;
+      // Only calculate the average for the meter_type that matches the session
+      if (meterType === 'stan_awal' || meterType === 'stan_akhir') {
+        // For stan_awal/stan_akhir, use first and last meter readings
+        stan_awal = meterReadings[0];
+        stan_akhir = meterReadings[meterReadings.length - 1];
+        console.log(`   📏 Meter readings (${meterType}): Stan Awal=${stan_awal}, Stan Akhir=${stan_akhir}`);
+      } else if (meterType === 'temperature') {
+        // Calculate average temperature only
+        let totalTemperature = 0;
+        for (const screenshot of batchScreenshots) {
+          try {
+            let ocrResult = screenshot.ocr_result;
+            if (typeof ocrResult === 'string') {
+              try {
+                ocrResult = JSON.parse(ocrResult);
+              } catch (e) {
+                continue;
+              }
             }
+            const temperature = parseFloat(ocrResult?.temperature ?? ocrResult?.temperatur_operasi ?? 0);
+            if (!isNaN(temperature)) {
+              totalTemperature += temperature;
+              temperatureCount++;
+            }
+          } catch (error) {
+            console.error(`   ❌ Error extracting temperature from screenshot ${screenshot.id}:`, error.message);
           }
-
-          const pressure = parseFloat(ocrResult?.pressure ?? ocrResult?.tekanan_operasi ?? 0);
-          const temperature = parseFloat(ocrResult?.temperature ?? ocrResult?.temperatur_operasi ?? 0);
-          totalPressure += (!isNaN(pressure) && pressure > 0) ? pressure : 0;
-          // Allow negative temperatures; treat missing as 0
-          totalTemperature += (!isNaN(temperature)) ? temperature : 0;
-        } catch (error) {
-          console.error(`   ❌ Error extracting pressure/temp from screenshot ${screenshot.id}:`, error.message);
         }
+        const denom = Math.max(totalInBatch, 1);
+        avgTemperature = totalTemperature / denom;
+        console.log(`   📏 Average Temperature: ${avgTemperature.toFixed(2)}°C (from ${temperatureCount} readings)`);
+      } else if (meterType === 'pressure') {
+        // Calculate average pressure only
+        let totalPressure = 0;
+        for (const screenshot of batchScreenshots) {
+          try {
+            let ocrResult = screenshot.ocr_result;
+            if (typeof ocrResult === 'string') {
+              try {
+                ocrResult = JSON.parse(ocrResult);
+              } catch (e) {
+                continue;
+              }
+            }
+            const pressure = parseFloat(ocrResult?.pressure ?? ocrResult?.tekanan_operasi ?? 0);
+            if (!isNaN(pressure) && pressure > 0) {
+              totalPressure += pressure;
+              pressureCount++;
+            }
+          } catch (error) {
+            console.error(`   ❌ Error extracting pressure from screenshot ${screenshot.id}:`, error.message);
+          }
+        }
+        const denom = Math.max(totalInBatch, 1);
+        avgPressure = totalPressure / denom;
+        console.log(`   📏 Average Pressure: ${avgPressure.toFixed(2)} bar (from ${pressureCount} readings)`);
+      } else {
+        // For 'other' or no meter_type, default to stan_awal/stan_akhir calculation
+        stan_awal = meterReadings[0];
+        stan_akhir = meterReadings[meterReadings.length - 1];
+        console.log(`   📏 Meter readings (default): Stan Awal=${stan_awal}, Stan Akhir=${stan_akhir}`);
       }
 
-      const denom = Math.max(totalInBatch, 1);
-      const avgPressure = totalPressure / denom;
-      const avgTemperature = totalTemperature / denom;
-
-      console.log(`   📏 Meter readings: Stan Awal=${stan_awal}, Stan Akhir=${stan_akhir}`);
-      console.log(`   📏 Averages: Pressure=${avgPressure.toFixed(2)} bar, Temp=${avgTemperature.toFixed(2)}°C`);
-      console.log(`   📊 Data quality: ${meterReadings.length} meter readings, ${pressureCount} pressure readings, ${temperatureCount} temperature readings`);
+      // Log summary based on meter_type
+      if (meterType === 'temperature') {
+        console.log(`   📊 Data quality: ${temperatureCount} temperature readings out of ${totalInBatch} screenshots`);
+      } else if (meterType === 'pressure') {
+        console.log(`   📊 Data quality: ${pressureCount} pressure readings out of ${totalInBatch} screenshots`);
+      } else {
+        console.log(`   📊 Data quality: ${meterReadings.length} meter readings, ${pressureCount} pressure readings, ${temperatureCount} temperature readings`);
+      }
 
       // Validate required values before creating nota kecil
       // NOTE: Do NOT skip creation; instead, label the nota as invalid_data
+      // Only validate the field that matches the meter_type
       let hasInvalidAggregate = false;
       let invalidReasons = [];
-      if (avgPressure <= 0) {
-        hasInvalidAggregate = true;
-        invalidReasons.push(`pressure=${avgPressure}`);
-        console.log(`   ⚠️  Invalid average pressure (${avgPressure}). Will still create nota kecil with 'invalid_data' label.`);
+      
+      if (meterType === 'pressure') {
+        if (avgPressure <= 0) {
+          hasInvalidAggregate = true;
+          invalidReasons.push(`pressure=${avgPressure}`);
+          console.log(`   ⚠️  Invalid average pressure (${avgPressure}). Will still create nota kecil with 'invalid_data' label.`);
+        }
+      } else if (meterType === 'temperature') {
+        if (avgTemperature < -50 || avgTemperature > 100) {
+          hasInvalidAggregate = true;
+          invalidReasons.push(`temperature=${avgTemperature}`);
+          console.log(`   ⚠️  Invalid average temperature (${avgTemperature}°C). Will still create nota kecil with 'invalid_data' label.`);
+        }
+      } else if (meterType === 'stan_awal' || meterType === 'stan_akhir') {
+        // For stan_awal/stan_akhir, validate that we have valid readings
+        if (stan_awal <= 0 || stan_akhir <= 0) {
+          hasInvalidAggregate = true;
+          invalidReasons.push(`stan_awal=${stan_awal}, stan_akhir=${stan_akhir}`);
+          console.log(`   ⚠️  Invalid meter readings. Will still create nota kecil with 'invalid_data' label.`);
+        }
       }
 
-      if (avgTemperature < -50 || avgTemperature > 100) {
-        hasInvalidAggregate = true;
-        invalidReasons.push(`temperature=${avgTemperature}`);
-        console.log(`   ⚠️  Invalid average temperature (${avgTemperature}°C). Will still create nota kecil with 'invalid_data' label.`);
-      }
-
-      // Calculate gas volume
+      // Calculate gas volume - only if we have stan_awal and stan_akhir (not 0)
       let gasCalculation = null;
       let calcFailed = false;
-      try {
-        gasCalculation = gasCalculationService.calculateVolumeGas(
-          stan_awal,
-          stan_akhir,
-          avgPressure,
-          avgTemperature
-        );
-        
-        if (!gasCalculation || !gasCalculation.Vt || !gasCalculation.V) {
-          throw new Error('Gas calculation returned invalid results');
+      if (stan_awal > 0 && stan_akhir > 0) {
+        try {
+          gasCalculation = gasCalculationService.calculateVolumeGas(
+            stan_awal,
+            stan_akhir,
+            avgPressure,
+            avgTemperature
+          );
+          
+          if (!gasCalculation || !gasCalculation.Vt || !gasCalculation.V) {
+            throw new Error('Gas calculation returned invalid results');
+          }
+        } catch (calcError) {
+          calcFailed = true;
+          hasInvalidAggregate = true;
+          invalidReasons.push(`calc_error=${calcError.message}`);
+          console.error(`   ❌ Gas calculation failed:`, calcError.message);
+          // Continue and create nota kecil with invalid_data label; Vt/k/V may be null
         }
-      } catch (calcError) {
-        calcFailed = true;
-        hasInvalidAggregate = true;
-        invalidReasons.push(`calc_error=${calcError.message}`);
-        console.error(`   ❌ Gas calculation failed:`, calcError.message);
-        // Continue and create nota kecil with invalid_data label; Vt/k/V may be null
+      } else {
+        // Skip gas calculation if stan_awal/stan_akhir are 0 (not applicable for this meter_type)
+        console.log(`   ℹ️  Skipping gas calculation (stan_awal=${stan_awal}, stan_akhir=${stan_akhir} - not applicable for meter_type=${meterType})`);
       }
 
       const batchStartAt = batchScreenshots[0]?.captured_at || session.nota_batch_start_at;
@@ -448,7 +580,11 @@ class CCTVScheduler {
       });
 
       console.log(`   ✅ Nota Kecil #${notaKecil.id} created successfully`);
-      console.log(`   📊 Volume: Vt=${gasCalculation.Vt.toFixed(3)}m³, k=${gasCalculation.k.toFixed(6)}, V=${gasCalculation.V.toFixed(3)}m³`);
+      if (gasCalculation && gasCalculation.Vt && gasCalculation.V) {
+        console.log(`   📊 Volume: Vt=${gasCalculation.Vt.toFixed(3)}m³, k=${gasCalculation.k.toFixed(6)}, V=${gasCalculation.V.toFixed(3)}m³`);
+      } else {
+        console.log(`   ⚠️  Volume calculation failed - Vt/k/V are null`);
+      }
 
       // Update session notes to track nota kecil creation (but keep session active!)
       const updatedNotes = `${session.session_notes || ''}\nNota Kecil #${notaKecil.id} created from batch ${batchNumber} (sequences ${startSequence}-${endSequence}).`.trim();

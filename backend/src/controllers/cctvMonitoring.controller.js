@@ -158,6 +158,7 @@ exports.createSession = async (req, res) => {
       device_id = null,
       panel_row = null,
       panel_column = null,
+      meter_type = null,
       screenshot_interval_minutes = 10,
       health_check_interval_minutes = 15,
       session_notes = null,
@@ -168,7 +169,9 @@ exports.createSession = async (req, res) => {
       panel_row: req.body.panel_row,
       panel_column: req.body.panel_column,
       panel_row_type: typeof req.body.panel_row,
-      panel_column_type: typeof req.body.panel_column
+      panel_column_type: typeof req.body.panel_column,
+      meter_type: req.body.meter_type,
+      meter_type_type: typeof req.body.meter_type
     });
 
     // Validation
@@ -211,6 +214,7 @@ exports.createSession = async (req, res) => {
       device_id,
       panel_row: parsedPanelRow,
       panel_column: parsedPanelColumn,
+      meter_type: meter_type || null,
       screenshot_interval_minutes: parseInt(screenshot_interval_minutes),
       health_check_interval_minutes: parseInt(health_check_interval_minutes),
       session_notes,
@@ -219,7 +223,9 @@ exports.createSession = async (req, res) => {
 
     console.log('🔍 DEBUG - Session Data to Service:', {
       panel_row: sessionData.panel_row,
-      panel_column: sessionData.panel_column
+      panel_column: sessionData.panel_column,
+      meter_type: sessionData.meter_type,
+      meter_type_type: typeof sessionData.meter_type
     });
 
     const result = await cctvMonitoringService.createSession(sessionData);

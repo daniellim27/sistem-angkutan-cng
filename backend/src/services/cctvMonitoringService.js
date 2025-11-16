@@ -32,6 +32,7 @@ class CCTVMonitoringService {
         device_id = null,
         panel_row = null,
         panel_column = null,
+        meter_type = null,
         screenshot_interval_minutes = 10,
         health_check_interval_minutes = 15,
         session_notes = null,
@@ -63,21 +64,25 @@ class CCTVMonitoringService {
       const finalDeviceId = device_id || `BARDI-AUTO-${Date.now()}`;
 
       // Debug logging
-      console.log('🔍 DEBUG - Creating Session with Panel Values:', {
+      console.log('🔍 DEBUG - Creating Session with Values:', {
         panel_row,
         panel_column,
         panel_row_type: typeof panel_row,
-        panel_column_type: typeof panel_column
+        panel_column_type: typeof panel_column,
+        meter_type,
+        meter_type_type: typeof meter_type,
+        sessionData_meter_type: sessionData.meter_type
       });
 
-      // Create the session
-      const session = await CCTVSession.create({
+      // Create the session - always include meter_type explicitly
+      const sessionDataToCreate = {
         delivery_order_id,
         customer_name,
         customer_location_index,
         device_id: finalDeviceId,
         panel_row,
         panel_column,
+        meter_type: meter_type || null, // Explicitly set, even if null
         screenshot_interval_minutes,
         health_check_interval_minutes,
         session_notes,
@@ -85,28 +90,40 @@ class CCTVMonitoringService {
         start_time: new Date(),
         status: 'active',
         total_screenshots_captured: 0,
-      });
+      };
+
+      console.log('🔍 DEBUG - Session data to create:', JSON.stringify(sessionDataToCreate, null, 2));
+
+      const session = await CCTVSession.create(sessionDataToCreate);
 
       // Verify what was actually saved
       console.log('✅ DEBUG - Session Created with Values:', {
         id: session.id,
         panel_row: session.panel_row,
-        panel_column: session.panel_column
+        panel_column: session.panel_column,
+        meter_type: session.meter_type
       });
 
       console.log(`✓ CCTV session created: ${session.id} for DO ${delivery_order_id}`);
 
-      // Load relationships for response
-      await session.reload({
+      // Query session fresh from database to ensure all fields including meter_type are included
+      const freshSession = await CCTVSession.findByPk(session.id, {
         include: [
           { model: DeliveryOrder, as: 'delivery_order' },
           { model: User, as: 'creator' },
         ],
       });
 
+      // Verify meter_type is loaded
+      console.log('✅ DEBUG - Fresh session query:', {
+        id: freshSession.id,
+        meter_type: freshSession.meter_type,
+        meter_type_in_dataValues: freshSession.dataValues?.meter_type
+      });
+
       return {
         success: true,
-        session,
+        session: freshSession,
         message: 'Monitoring session created successfully',
       };
     } catch (error) {
