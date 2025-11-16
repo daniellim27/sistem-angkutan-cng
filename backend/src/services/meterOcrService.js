@@ -16,10 +16,29 @@ const { OpenAI } = require('openai');
 class MeterOcrService {
   constructor() {
     // Use OpenAI Vision API for OCR
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-    this.isConfigured = !!process.env.OPENAI_API_KEY;
+    const rawKey = process.env.OPENAI_API_KEY || '';
+    const apiKey = rawKey.trim();
+
+    this.currentApiKey = apiKey;
+    this.openai = new OpenAI({ apiKey: this.currentApiKey });
+    this.isConfigured = !!this.currentApiKey;
+
+    if (!this.currentApiKey) {
+      console.warn('⚠️ OPENAI_API_KEY is empty or not set');
+    } else if (/\s/.test(rawKey)) {
+      console.warn('⚠️ OPENAI_API_KEY contained leading/trailing whitespace; it has been trimmed');
+    }
+  }
+
+  refreshFromEnvIfChanged() {
+    const rawKey = process.env.OPENAI_API_KEY || '';
+    const newKey = rawKey.trim();
+    if (newKey !== this.currentApiKey) {
+      this.currentApiKey = newKey;
+      this.openai = new OpenAI({ apiKey: this.currentApiKey });
+      this.isConfigured = !!this.currentApiKey;
+      console.log('🔄 OpenAI API key updated in runtime:', this.isConfigured ? 'configured' : 'not configured');
+    }
   }
 
   /**
@@ -29,6 +48,9 @@ class MeterOcrService {
    */
   async processMeterReading(imageUrl) {
     try {
+      // Ensure latest key is used if env changed (no restart needed)
+      this.refreshFromEnvIfChanged();
+
       console.log(`🔍 Processing meter OCR for image: ${imageUrl}`);
 
       // Check if configured
@@ -88,6 +110,9 @@ class MeterOcrService {
    */
   async callOcrApi(imageUrl) {
     try {
+      // Ensure client uses the latest key
+      this.refreshFromEnvIfChanged();
+
       // Check if OpenAI API is configured
       if (!this.isConfigured) {
         throw new Error('OpenAI API key not configured. Set OPENAI_API_KEY in environment variables.');

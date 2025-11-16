@@ -10,6 +10,7 @@ const cctvMonitoringService = require('../services/cctvMonitoringService');
 const cctvScheduler = require('../services/cctvScheduler');
 const db = require('../models');
 const { CCTVSession, CCTVScreenshot, SystemSettings } = db;
+const { cleanupCloudinaryScreenshotsOnce, initCloudinaryFromEnv } = require('../services/cctvScreenshotRetention');
 
 const BARDI_TOKEN_SETTING_KEY = 'cctv.bardi_session_token';
 
@@ -76,6 +77,29 @@ exports.getSessions = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch monitoring sessions',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Trigger on-demand cleanup of old Cloudinary screenshots (admin only)
+ * POST /api/cctv-monitoring/cleanup-screenshots
+ */
+exports.cleanupScreenshots = async (req, res) => {
+  try {
+    initCloudinaryFromEnv();
+    const summary = await cleanupCloudinaryScreenshotsOnce();
+    res.json({
+      success: true,
+      message: 'Cleanup executed',
+      data: summary,
+    });
+  } catch (error) {
+    console.error('Error in cleanupScreenshots:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to cleanup screenshots',
       error: error.message,
     });
   }
@@ -743,6 +767,79 @@ exports.getOcrResult = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch OCR result',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Manually set OCR values for a screenshot
+ * PUT /api/cctv-monitoring/screenshots/:id/manual-ocr
+ */
+exports.setManualOcr = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const screenshotId = parseInt(id);
+
+    if (isNaN(screenshotId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid screenshot ID',
+      });
+    }
+
+    const screenshot = await CCTVScreenshot.findByPk(screenshotId);
+    if (!screenshot) {
+      return res.status(404).json({
+        success: false,
+        message: `Screenshot ${screenshotId} not found`,
+      });
+    }
+
+    const {
+      meter_reading = null,
+      pressure = null,
+      temperature = null,
+      flow_rate = null,
+      unit = 'm³',
+      notes = 'Manual OCR override',
+    } = req.body || {};
+
+    const manualResult = {
+      meter_reading: meter_reading !== null ? Number(meter_reading) : null,
+      pressure: pressure !== null ? Number(pressure) : null,
+      temperature: temperature !== null ? Number(temperature) : null,
+      flow_rate: flow_rate !== null ? Number(flow_rate) : null,
+      unit,
+      timestamp_on_meter: null,
+      raw_text: 'MANUAL_ENTRY',
+      notes,
+    };
+
+    await screenshot.update({
+      ocr_status: 'success',
+      ocr_result: manualResult,
+      ocr_raw_response: { manual: true, by: req.user?.id || null, at: new Date().toISOString() },
+      ocr_confidence_score: 1.0,
+      ocr_processed_at: new Date(),
+      ocr_error_message: null,
+      notes: `${screenshot.notes || ''}\nManual OCR set at ${new Date().toISOString()}`.trim(),
+    });
+
+    res.json({
+      success: true,
+      message: 'Manual OCR values saved',
+      data: {
+        id: screenshot.id,
+        ocr_status: screenshot.ocr_status,
+        ocr_result: screenshot.ocr_result,
+      },
+    });
+  } catch (error) {
+    console.error('Error in setManualOcr:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to set manual OCR',
       error: error.message,
     });
   }

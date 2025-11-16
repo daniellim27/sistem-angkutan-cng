@@ -158,6 +158,17 @@ const CCTVMonitoringPage: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [loadingScreenshots, setLoadingScreenshots] = useState(false);
   const [creatingSession, setCreatingSession] = useState(false);
+  // Manual OCR modal state
+  const [manualOcrTarget, setManualOcrTarget] = useState<CCTVScreenshot | null>(null);
+  const [manualForm, setManualForm] = useState<{meter_reading: string; pressure: string; temperature: string; flow_rate: string; unit: string}>({
+    meter_reading: '',
+    pressure: '',
+    temperature: '',
+    flow_rate: '',
+    unit: 'm³',
+  });
+  // Screenshot actions menu state
+  const [screenshotMenuOpenId, setScreenshotMenuOpenId] = useState<number | null>(null);
 
   // Session token form - default values, will be replaced by persisted token if available
   const [sessionToken, setSessionToken] = useState(DEFAULT_SESSION_TOKEN);
@@ -703,6 +714,9 @@ const CCTVMonitoringPage: React.FC = () => {
       if (!target.closest('.session-actions-trigger') && !target.closest('.session-actions-dropdown')) {
         setActionMenuOpenId(null);
         setActionMenuPosition(null);
+      }
+      if (!target.closest('.screenshot-actions-trigger') && !target.closest('.screenshot-actions-dropdown')) {
+        setScreenshotMenuOpenId(null);
       }
     };
 
@@ -1330,20 +1344,85 @@ const CCTVMonitoringPage: React.FC = () => {
                 ) : (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {screenshots.map((screenshot) => (
-                      <div key={screenshot.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                        <div className="aspect-video bg-gray-100 flex items-center justify-center">
-                          <img
-                            src={screenshot.screenshot_url}
-                            alt={`Screenshot ${screenshot.sequence_number}`}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext fill="%23999" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/svg%3E';
-                            }}
-                          />
+                      <div key={screenshot.id} className="border border-gray-200 rounded-lg overflow-hidden relative">
+                        <div className="aspect-video bg-gray-100 flex items-center justify-center relative">
+                          {screenshot.screenshot_url ? (
+                            <img
+                              src={screenshot.screenshot_url}
+                              alt={`Screenshot ${screenshot.sequence_number}`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext fill="%23999" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/svg%3E';
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                              <span className="px-2 py-1 rounded bg-gray-200 text-gray-600">Image expired</span>
+                            </div>
+                          )}
                         </div>
+                        {/* Per-screenshot actions */}
+                        {screenshot.ocr_status !== 'success' && (
+                          <div className="absolute top-2 right-2">
+                            <div className="relative inline-block text-left">
+                              <button
+                                className="screenshot-actions-trigger p-1.5 rounded-full bg-white/90 hover:bg-white shadow border border-gray-200"
+                                onClick={(e)=>{
+                                  e.stopPropagation();
+                                  setScreenshotMenuOpenId(screenshotMenuOpenId === screenshot.id ? null : screenshot.id);
+                                }}
+                                title="Screenshot actions"
+                              >
+                                <MoreHorizontal className="w-4 h-4 text-gray-700" />
+                              </button>
+                              {screenshotMenuOpenId === screenshot.id && (
+                                <div className="screenshot-actions-dropdown absolute right-0 mt-2 w-44 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-40">
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        await apiClient.post(`/cctv-monitoring/screenshots/${screenshot.id}/retry-ocr`);
+                                        toast.success('OCR retry queued');
+                                        setScreenshotMenuOpenId(null);
+                                        fetchSessionScreenshots(selectedSession!.id);
+                                      } catch (e:any) {
+                                        toast.error(e.response?.data?.message || 'Failed to queue OCR retry');
+                                      }
+                                    }}
+                                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                  >
+                                    Retry OCR
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setScreenshotMenuOpenId(null);
+                                      setManualOcrTarget(screenshot);
+                                      setManualForm({
+                                        meter_reading: '',
+                                        pressure: '',
+                                        temperature: '',
+                                        flow_rate: '',
+                                        unit: 'm³',
+                                      });
+                                    }}
+                                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 border-t"
+                                  >
+                                    Set Manual
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
                         <div className="p-3 bg-white">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-medium text-gray-500">#{screenshot.sequence_number}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-gray-500">#{screenshot.sequence_number}</span>
+                              {/* Label: Batch title NK-S<sessionId>-Batch<batchNo> */}
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                {`NK-S${selectedSession?.id}-Batch${Math.floor((screenshot.sequence_number - 1) / 24) + 1}`}
+                              </span>
+                            </div>
                             <span className={`text-xs px-2 py-0.5 rounded ${
                               screenshot.ocr_status === 'success' ? 'bg-green-100 text-green-700' :
                               screenshot.ocr_status === 'failed' ? 'bg-red-100 text-red-700' :
@@ -1603,6 +1682,70 @@ const CCTVMonitoringPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Manual OCR Modal */}
+      {manualOcrTarget && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Set Manual OCR - #{manualOcrTarget.sequence_number}</h3>
+              <button onClick={() => setManualOcrTarget(null)} className="text-gray-400 hover:text-gray-600">
+                <XCircle className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Meter Reading (m³)</label>
+                <input value={manualForm.meter_reading} onChange={(e)=>setManualForm({...manualForm, meter_reading: e.target.value})} className="w-full border rounded px-3 py-2 text-sm" placeholder="e.g., 1234.56" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Pressure (bar)</label>
+                  <input value={manualForm.pressure} onChange={(e)=>setManualForm({...manualForm, pressure: e.target.value})} className="w-full border rounded px-3 py-2 text-sm" placeholder="e.g., 205.3" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Temperature (°C)</label>
+                  <input value={manualForm.temperature} onChange={(e)=>setManualForm({...manualForm, temperature: e.target.value})} className="w-full border rounded px-3 py-2 text-sm" placeholder="e.g., 28.5" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Flow Rate (m³/h)</label>
+                  <input value={manualForm.flow_rate} onChange={(e)=>setManualForm({...manualForm, flow_rate: e.target.value})} className="w-full border rounded px-3 py-2 text-sm" placeholder="e.g., 15.2" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Unit</label>
+                  <input value={manualForm.unit} onChange={(e)=>setManualForm({...manualForm, unit: e.target.value})} className="w-full border rounded px-3 py-2 text-sm" />
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex items-center justify-end gap-2">
+              <button onClick={()=>setManualOcrTarget(null)} className="px-4 py-2 rounded border text-gray-700">Cancel</button>
+              <button
+                onClick={async ()=>{
+                  try{
+                    await apiClient.put(`/cctv-monitoring/screenshots/${manualOcrTarget.id}/manual-ocr`, {
+                      meter_reading: manualForm.meter_reading ? parseFloat(manualForm.meter_reading) : null,
+                      pressure: manualForm.pressure ? parseFloat(manualForm.pressure) : null,
+                      temperature: manualForm.temperature ? parseFloat(manualForm.temperature) : null,
+                      flow_rate: manualForm.flow_rate ? parseFloat(manualForm.flow_rate) : null,
+                      unit: manualForm.unit || 'm³'
+                    });
+                    toast.success('Manual OCR saved');
+                    setManualOcrTarget(null);
+                    fetchSessionScreenshots(selectedSession!.id);
+                  }catch(e:any){
+                    toast.error(e.response?.data?.message || 'Failed to save manual OCR');
+                  }
+                }}
+                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+              >
+                Save
+              </button>
+            </div>
           </div>
         </div>
       )}

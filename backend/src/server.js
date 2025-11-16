@@ -99,6 +99,7 @@ const cctvMonitoringRoutes = require("./routes/cctvMonitoring.routes");
 console.log('✓ CCTV monitoring routes module loaded:', typeof cctvMonitoringRoutes);
 const scheduledScrapingService = require("./services/scheduledScraper");
 const cctvScheduler = require("./services/cctvScheduler");
+const { scheduleDailyCleanup, initCloudinaryFromEnv, cleanupCloudinaryScreenshotsOnce } = require("./services/cctvScreenshotRetention");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -415,6 +416,21 @@ function startServer() {
       cctvScheduler.start();
     } else {
       console.log("ℹ️ CCTV Scheduler disabled (ENABLE_CCTV_SCHEDULER set to 'false')");
+    }
+
+    // Start daily Cloudinary cleanup schedule and one immediate run on startup
+    try {
+      initCloudinaryFromEnv();
+      scheduleDailyCleanup();
+      // Do an initial cleanup asynchronously (non-blocking)
+      setTimeout(() => {
+        cleanupCloudinaryScreenshotsOnce().catch(e => {
+          console.error('Initial Cloudinary cleanup failed:', e?.message || e);
+        });
+      }, 5000);
+      console.log("🧹 CCTV Cloudinary cleanup scheduling initialized");
+    } catch (e) {
+      console.error("⚠️ Failed to initialize Cloudinary cleanup:", e?.message || e);
     }
   });
 }

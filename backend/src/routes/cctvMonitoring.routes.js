@@ -76,6 +76,10 @@ router.delete('/screenshots/:id', isAdmin, cctvController.deleteScreenshot);
 // Retry OCR processing for a failed screenshot
 router.post('/screenshots/:id/retry-ocr', cctvController.retryOcr);
 
+// PUT /api/cctv-monitoring/screenshots/:id/manual-ocr
+// Manually set OCR values for a screenshot
+router.put('/screenshots/:id/manual-ocr', cctvController.setManualOcr);
+
 // GET /api/cctv-monitoring/screenshots/:id/ocr-result
 // Get detailed OCR result for a screenshot
 router.get('/screenshots/:id/ocr-result', cctvController.getOcrResult);
@@ -123,6 +127,13 @@ router.post('/scheduler/stop', cctvController.stopScheduler);
 // POST /api/cctv-monitoring/scheduler/capture-all
 // Immediately capture screenshots for all active sessions
 router.post('/scheduler/capture-all', cctvController.captureAllSessions);
+
+/**
+ * Admin Utilities
+ */
+// POST /api/cctv-monitoring/cleanup-screenshots
+// Cleanup old Cloudinary screenshots (admin only)
+router.post('/cleanup-screenshots', isAdmin, cctvController.cleanupScreenshots);
 
 module.exports = router;
 

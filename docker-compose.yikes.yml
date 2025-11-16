@@ -1,0 +1,19 @@
+# Override for development environment
+version: '3.8'
+
+services:
+  backend:
+    environment:
+      NODE_ENV: development
+      AUTO_MIGRATE: "true"
+      HOST: "0.0.0.0"
+      OPENAI_API_KEY: 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
+      CLOUDINARY_CLOUD_NAME: dvfxozwnt
+      CLOUDINARY_API_KEY: 587735263442828
+      CLOUDINARY_API_SECRET: mL-6CD2443SJgsDrIdTGBtNePgk
+    volumes:
+      # Mount source code for hot reloading in development
+      - ./backend/src:/app/src
+      - ./backend/uploads:/app/uploads
+      - ./backend/src/config:/app/src/config:ro
+    command: npm run dev

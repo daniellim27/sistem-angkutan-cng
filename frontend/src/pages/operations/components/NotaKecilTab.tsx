@@ -23,6 +23,7 @@ interface NotaKecil {
   customer_name: string;
   customer_address?: string;
   customer_location_index: number;
+  ocr_processing_status?: string;
   stan_awal: string;
   stan_akhir: string;
   tekanan_operasi: string;
@@ -618,7 +619,28 @@ const NotaKecilTab: React.FC = () => {
                                   <div className="flex-1 space-y-2">
                                     {/* Time & Date */}
                                     <div className="text-xs text-gray-500">
-                                      {formatDate(notaKecil.created_at)}
+                              {formatDate(notaKecil.created_at)}
+                              {/* Label for imperfect nota kecil (>=10 failed OCRs) */}
+                              {(() => {
+                                const status = notaKecil.ocr_processing_status || '';
+                                const match = status.match(/^(\d+)_failed$/);
+                                if (match) {
+                                  const failedNum = match[1];
+                                  return (
+                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200">
+                                      {failedNum} failed
+                                    </span>
+                                  );
+                                }
+                                if (status === 'invalid_data') {
+                                  return (
+                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700 border border-orange-200">
+                                      invalid data
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
                                     </div>
 
                                     {/* Stand Meter - Compact */}
