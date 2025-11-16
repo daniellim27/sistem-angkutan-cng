@@ -74,6 +74,8 @@ class MigrationRunner {
       '20250123_add_gdrive_image_urls_to_nota_kecils.js',
       '20250124_add_cctv_sessions_nota_kecil_fk.js',
       '20250125_add_nota_batch_tracking.js',
+      '20241223_create_receipt_ocr.js',
+      '20241224_add_receipt_admin_confirmation.js',
       '20251105_set_null_on_delete_driver_id_in_delivery_orders.sql',
     ];
   }
