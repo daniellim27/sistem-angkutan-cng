@@ -432,6 +432,46 @@ exports.completeSession = async (req, res) => {
 };
 
 /**
+ * Recalibrate nota kecil creation for all full batches
+ */
+exports.recalibrateNotaKecil = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const sessionId = parseInt(id);
+
+    if (isNaN(sessionId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid session ID',
+      });
+    }
+
+    const result = await cctvMonitoringService.recalibrateNotaKecil(sessionId);
+
+    res.json({
+      success: true,
+      message: 'Nota kecil recalibration completed',
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error in recalibrateNotaKecil:', error);
+    
+    if (error.message.includes('not found')) {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to recalibrate nota kecil',
+      error: error.message,
+    });
+  }
+};
+
+/**
  * Restart a session
  * POST /api/cctv-monitoring/sessions/:id/restart
  */

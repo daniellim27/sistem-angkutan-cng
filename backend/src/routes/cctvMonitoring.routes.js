@@ -44,6 +44,10 @@ router.post('/sessions/:id/stop', cctvController.stopSession);
 // Mark a session as completed
 router.post('/sessions/:id/complete', cctvController.completeSession);
 
+// POST /api/cctv-monitoring/sessions/:id/recalibrate-nota-kecil
+// Recalibrate nota kecil creation for all batches (including partial batches)
+router.post('/sessions/:id/recalibrate-nota-kecil', isAdmin, cctvController.recalibrateNotaKecil);
+
 // POST /api/cctv-monitoring/sessions/:id/restart
 // Restart a stopped or dead session
 router.post('/sessions/:id/restart', cctvController.restartSession);

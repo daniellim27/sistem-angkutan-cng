@@ -329,17 +329,19 @@ class CCTVScheduler {
       // Get session meter_type to determine which field to calculate
       const meterType = session.meter_type;
 
-      // Validate minimum data based on meter_type
+      // Check minimum data based on meter_type (but don't block creation - we'll create with invalid_data status)
       // For stan_awal/stan_akhir, we need at least 2 meter readings (first and last)
       // For temperature/pressure, we need at least 1 valid value
       let hasMinimumData = false;
+      let insufficientDataReason = null;
       
       if (meterType === 'stan_awal' || meterType === 'stan_akhir') {
         // Count non-zero meter readings
         const validMeterReadings = meterReadings.filter(r => r > 0);
         hasMinimumData = validMeterReadings.length >= 2;
         if (!hasMinimumData) {
-          console.log(`   ⚠️  Insufficient meter readings in batch (need at least 2 for ${meterType}, found ${validMeterReadings.length})`);
+          insufficientDataReason = `insufficient meter readings (need at least 2 for ${meterType}, found ${validMeterReadings.length})`;
+          console.log(`   ⚠️  ${insufficientDataReason}`);
         }
       } else if (meterType === 'temperature') {
         // Check if we have at least 1 temperature value
@@ -364,7 +366,8 @@ class CCTVScheduler {
         }
         hasMinimumData = tempCount >= 1;
         if (!hasMinimumData) {
-          console.log(`   ⚠️  Insufficient temperature readings in batch (need at least 1, found ${tempCount})`);
+          insufficientDataReason = `insufficient temperature readings (need at least 1, found ${tempCount})`;
+          console.log(`   ⚠️  ${insufficientDataReason}`);
         }
       } else if (meterType === 'pressure') {
         // Check if we have at least 1 pressure value
@@ -389,28 +392,22 @@ class CCTVScheduler {
         }
         hasMinimumData = pressureCount >= 1;
         if (!hasMinimumData) {
-          console.log(`   ⚠️  Insufficient pressure readings in batch (need at least 1, found ${pressureCount})`);
+          insufficientDataReason = `insufficient pressure readings (need at least 1, found ${pressureCount})`;
+          console.log(`   ⚠️  ${insufficientDataReason}`);
         }
       } else {
         // For 'other' or no meter_type, default to stan_awal/stan_akhir requirement
         const validMeterReadings = meterReadings.filter(r => r > 0);
         hasMinimumData = validMeterReadings.length >= 2;
         if (!hasMinimumData) {
-          console.log(`   ⚠️  Insufficient meter readings in batch (need at least 2, found ${validMeterReadings.length})`);
+          insufficientDataReason = `insufficient meter readings (need at least 2, found ${validMeterReadings.length})`;
+          console.log(`   ⚠️  ${insufficientDataReason}`);
         }
       }
       
+      // Note: We continue even if hasMinimumData is false - we'll create the nota kecil with invalid_data status
       if (!hasMinimumData) {
-        console.log(`   ⚠️  Skipping nota kecil creation for this batch. Resetting batch for next cycle...`);
-        await session.update({
-          session_notes: `${session.session_notes || ''}\nBatch ${startSequence}-${endSequence}: Insufficient OCR data for ${meterType || 'default'}. Skipped nota kecil creation.`.trim(),
-          nota_batch_start_at: null,
-          nota_batch_start_sequence: null,
-          nota_batch_capture_count: 0,
-          nota_batch_end_at: null,
-          nota_batch_end_sequence: null
-        });
-        return false;
+        console.log(`   ⚠️  Insufficient data detected, but will still create nota kecil with 'insufficient_data' status`);
       }
 
       // Initialize all values to 0 - we'll only calculate the one matching meter_type
@@ -551,12 +548,15 @@ class CCTVScheduler {
       const batchEndAt = batchScreenshots[batchScreenshots.length - 1]?.captured_at || session.nota_batch_end_at;
 
       // Create Nota Kecil for this batch
-      // Tagging rules:
+      // Tagging rules (priority order):
+      // - insufficient data -> 'insufficient_data' (highest priority)
       // - invalid aggregates -> 'invalid_data'
       // - else if >=10 failures -> '<failedCount>_failed'
       // - else -> 'completed'
       let notaStatus = 'completed';
-      if (hasInvalidAggregate) {
+      if (!hasMinimumData) {
+        notaStatus = 'insufficient_data';
+      } else if (hasInvalidAggregate) {
         notaStatus = 'invalid_data';
       } else if (failedCount >= 10) {
         notaStatus = `${failedCount}_failed`;
@@ -576,7 +576,7 @@ class CCTVScheduler {
         ocr_processing_status: notaStatus,
         ocr_processed_at: new Date(),
         driver_confirmed: false, // Auto-created, needs driver confirmation
-        driver_notes: `${failedCount >= 10 ? `[${failedCount} FAILED] ` : ''}${hasInvalidAggregate ? `[INVALID DATA: ${invalidReasons.join(', ')}] ` : ''}Auto-created from CCTV session ${session.id}, batch ${batchNumber} (sequences ${startSequence}-${endSequence}), ${successfulScreenshots.length} successful OCR screenshots, ${failedCount} failed. Time range: ${batchStartAt?.toLocaleString()} to ${batchEndAt?.toLocaleString()}`
+        driver_notes: `${!hasMinimumData ? `[INSUFFICIENT DATA: ${insufficientDataReason}] ` : ''}${failedCount >= 10 ? `[${failedCount} FAILED] ` : ''}${hasInvalidAggregate ? `[INVALID DATA: ${invalidReasons.join(', ')}] ` : ''}Auto-created from CCTV session ${session.id}, batch ${batchNumber} (sequences ${startSequence}-${endSequence}), ${successfulScreenshots.length} successful OCR screenshots, ${failedCount} failed. Time range: ${batchStartAt?.toLocaleString()} to ${batchEndAt?.toLocaleString()}`
       });
 
       console.log(`   ✅ Nota Kecil #${notaKecil.id} created successfully`);

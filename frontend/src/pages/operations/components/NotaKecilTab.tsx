@@ -623,6 +623,15 @@ const NotaKecilTab: React.FC = () => {
                               {/* Label for imperfect nota kecil (>=10 failed OCRs) */}
                               {(() => {
                                 const status = notaKecil.ocr_processing_status || '';
+                                // Check for insufficient_data first (highest priority)
+                                if (status === 'insufficient_data') {
+                                  return (
+                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-yellow-100 text-yellow-700 border border-yellow-200">
+                                      insufficient data
+                                    </span>
+                                  );
+                                }
+                                // Check for failed count pattern
                                 const match = status.match(/^(\d+)_failed$/);
                                 if (match) {
                                   const failedNum = match[1];
@@ -632,6 +641,7 @@ const NotaKecilTab: React.FC = () => {
                                     </span>
                                   );
                                 }
+                                // Check for invalid_data
                                 if (status === 'invalid_data') {
                                   return (
                                     <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700 border border-orange-200">

@@ -12,6 +12,7 @@ const { Op } = require('sequelize');
 const db = require('../models');
 const bardiScrapingService = require('./bardiScrapingService');
 const meterOcrService = require('./meterOcrService');
+const cctvScheduler = require('./cctvScheduler');
 const cloudinary = require('cloudinary').v2;
 const axios = require('axios');
 
@@ -646,6 +647,138 @@ class CCTVMonitoringService {
       };
     } catch (error) {
       console.error('Error completing session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Recalibrate nota kecil creation for all batches (including partial batches)
+   * @param {number} sessionId - Session ID
+   * @returns {Promise<Object>} Recalibration results
+   */
+  async recalibrateNotaKecil(sessionId) {
+    try {
+      const session = await CCTVSession.findByPk(sessionId, {
+        include: [{ model: DeliveryOrder, as: 'delivery_order' }]
+      });
+
+      if (!session) {
+        throw new Error(`Session ${sessionId} not found`);
+      }
+
+      console.log(`🔄 Recalibrating nota kecil for session ${sessionId}...`);
+
+      // Get all screenshots for this session
+      const allScreenshots = await CCTVScreenshot.findAll({
+        where: {
+          session_id: sessionId,
+          is_deleted: false
+        },
+        order: [['sequence_number', 'ASC']]
+      });
+
+      if (allScreenshots.length === 0) {
+        throw new Error(`No screenshots found for session ${sessionId}`);
+      }
+
+      const CAPTURES_PER_BATCH = 24;
+      // Calculate total batches including the last partial batch
+      const totalBatches = Math.ceil(allScreenshots.length / CAPTURES_PER_BATCH);
+
+      if (totalBatches === 0) {
+        return {
+          success: true,
+          message: 'No screenshots found to process',
+          batchesProcessed: 0,
+          notasCreated: 0,
+          notasDeleted: 0
+        };
+      }
+
+      console.log(`📊 Found ${allScreenshots.length} screenshots, processing ${totalBatches} batch(es) (including partial batches)`);
+
+      let notasCreated = 0;
+      let notasDeleted = 0;
+      const processedBatches = [];
+      const skippedBatches = [];
+
+      // Process each batch (including partial ones)
+      for (let batchNumber = 1; batchNumber <= totalBatches; batchNumber++) {
+        const startSequence = (batchNumber - 1) * CAPTURES_PER_BATCH + 1;
+        const endSequence = batchNumber * CAPTURES_PER_BATCH;
+
+        console.log(`\n📦 Processing batch ${batchNumber} (sequences ${startSequence}-${endSequence})...`);
+
+        // Get batch screenshots
+        const batchScreenshots = allScreenshots.filter(
+          s => s.sequence_number >= startSequence && s.sequence_number <= endSequence
+        );
+
+        if (batchScreenshots.length === 0) {
+          console.log(`   ⚠️  Batch ${batchNumber} has no screenshots, skipping`);
+          skippedBatches.push(batchNumber);
+          continue;
+        }
+
+        console.log(`   📸 Batch ${batchNumber} has ${batchScreenshots.length} screenshot(s) (${batchScreenshots.length}/${CAPTURES_PER_BATCH})`);
+
+        // Find and delete existing nota kecils for this batch
+        // We identify them by checking if they were created during the batch time range
+        const batchStartAt = batchScreenshots[0]?.captured_at;
+        const batchEndAt = batchScreenshots[batchScreenshots.length - 1]?.captured_at;
+
+        if (batchStartAt && batchEndAt) {
+          const existingNotas = await NotaKecil.findAll({
+            where: {
+              delivery_order_id: session.delivery_order_id,
+              customer_location_index: session.customer_location_index,
+              created_at: {
+                [Op.between]: [batchStartAt, new Date(batchEndAt.getTime() + 60000)] // Add 1 minute buffer
+              }
+            }
+          });
+
+          if (existingNotas.length > 0) {
+            console.log(`   🗑️  Deleting ${existingNotas.length} existing nota kecil(s) for batch ${batchNumber}...`);
+            for (const nota of existingNotas) {
+              await nota.destroy();
+              notasDeleted++;
+            }
+          }
+        }
+
+        // Create new nota kecil for this batch (even if partial)
+        // The createNotaKecilFromBatch function will handle validation based on meter_type
+        const created = await cctvScheduler.createNotaKecilFromBatch(session, {
+          startSequence,
+          endSequence,
+          batchNumber
+        });
+
+        if (created) {
+          notasCreated++;
+          processedBatches.push({ batchNumber, screenshotCount: batchScreenshots.length });
+          console.log(`   ✅ Batch ${batchNumber} processed successfully (${batchScreenshots.length}/${CAPTURES_PER_BATCH} captures)`);
+        } else {
+          console.log(`   ⚠️  Failed to create nota kecil for batch ${batchNumber} (insufficient data or validation failed)`);
+          skippedBatches.push(batchNumber);
+        }
+      }
+
+      console.log(`\n✅ Recalibration complete: ${notasCreated} nota kecil(s) created, ${notasDeleted} deleted`);
+
+      return {
+        success: true,
+        message: `Recalibrated ${notasCreated} nota kecil(s) from ${totalBatches} batch(es)`,
+        batchesProcessed: processedBatches.length,
+        totalBatches,
+        notasCreated,
+        notasDeleted,
+        processedBatches,
+        skippedBatches: skippedBatches.length > 0 ? skippedBatches : undefined
+      };
+    } catch (error) {
+      console.error('Error recalibrating nota kecil:', error);
       throw error;
     }
   }

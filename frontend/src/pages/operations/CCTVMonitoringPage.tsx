@@ -559,6 +559,26 @@ const CCTVMonitoringPage: React.FC = () => {
     }
   };
 
+  // Recalibrate nota kecil creation
+  const handleRecalibrateNotaKecil = async (sessionId: number) => {
+    if (!window.confirm('This will recalculate nota kecil creation for all batches (including partial batches) in this session. Existing nota kecils for these batches will be deleted and recreated. Continue?')) {
+      return;
+    }
+
+    try {
+      toast.loading('Recalibrating nota kecil creation...', { id: `recalibrate-${sessionId}` });
+      await apiClient.post(`/cctv-monitoring/sessions/${sessionId}/recalibrate-nota-kecil`);
+      toast.success('Nota kecil recalibration completed', { id: `recalibrate-${sessionId}` });
+      fetchSessions(); // Refresh list
+      if (selectedSession?.id === sessionId) {
+        fetchSessionScreenshots(sessionId); // Refresh screenshots if viewing this session
+      }
+    } catch (error: any) {
+      console.error('Error recalibrating nota kecil:', error);
+      toast.error(error.response?.data?.message || 'Failed to recalibrate nota kecil', { id: `recalibrate-${sessionId}` });
+    }
+  };
+
   // Update BARDI session token
   const handleUpdateToken = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1290,6 +1310,17 @@ const CCTVMonitoringPage: React.FC = () => {
               Mark Completed
             </button>
           )}
+
+          <button
+            onClick={() => {
+              closeActionMenu();
+              handleRecalibrateNotaKecil(activeActionMenuSession.id);
+            }}
+            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-t border-gray-200"
+          >
+            <RefreshCw className="w-4 h-4 text-orange-500" />
+            Recalibrate Nota Kecil
+          </button>
 
           <button
             onClick={() => {
