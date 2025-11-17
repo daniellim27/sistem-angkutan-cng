@@ -404,10 +404,12 @@ const CCTVMonitoringPage: React.FC = () => {
   // Manual snapshot capture
   const handleManualSnapshot = async (sessionId: number) => {
     try {
-      toast.loading('Capturing screenshot...', { id: 'manual-snapshot' });
+      toast.loading('Capturing screenshot... This may take up to 2 minutes.', { id: 'manual-snapshot' });
       await apiClient.post(`/cctv-monitoring/sessions/${sessionId}/capture`, {
         process_ocr: true,
         notes: 'Manual snapshot'
+      }, {
+        timeout: 120000 // 2 minutes timeout for screenshot capture (browser automation can take time)
       });
       toast.success('Screenshot captured successfully', { id: 'manual-snapshot' });
       if (selectedSession && selectedSession.id === sessionId) {
@@ -416,7 +418,12 @@ const CCTVMonitoringPage: React.FC = () => {
       fetchSessions(); // Refresh to update screenshot count
     } catch (error: any) {
       console.error('Error capturing snapshot:', error);
-      toast.error(error.response?.data?.message || 'Failed to capture screenshot', { id: 'manual-snapshot' });
+      // Check if it's a timeout error
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        toast.error('Screenshot capture is taking longer than expected. Please check the backend logs or try again.', { id: 'manual-snapshot', duration: 5000 });
+      } else {
+        toast.error(error.response?.data?.message || 'Failed to capture screenshot', { id: 'manual-snapshot' });
+      }
     }
   };
 

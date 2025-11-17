@@ -12,7 +12,7 @@ const { Op } = require('sequelize');
 const db = require('../models');
 const bardiScrapingService = require('./bardiScrapingService');
 const meterOcrService = require('./meterOcrService');
-const cctvScheduler = require('./cctvScheduler');
+// Note: cctvScheduler is lazy-loaded to avoid circular dependency
 const cloudinary = require('cloudinary').v2;
 const axios = require('axios');
 
@@ -749,6 +749,8 @@ class CCTVMonitoringService {
 
         // Create new nota kecil for this batch (even if partial)
         // The createNotaKecilFromBatch function will handle validation based on meter_type
+        // Lazy load cctvScheduler to avoid circular dependency
+        const cctvScheduler = require('./cctvScheduler');
         const created = await cctvScheduler.createNotaKecilFromBatch(session, {
           startSequence,
           endSequence,

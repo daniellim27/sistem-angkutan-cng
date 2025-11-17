@@ -1,10 +1,48 @@
 const cron = require('node-cron');
-const cctvMonitoringService = require('./cctvMonitoringService');
+// Note: cctvMonitoringService is lazy-loaded to avoid circular dependency
 const { CCTVSession, CCTVScreenshot, NotaKecil } = require('../models');
 const gasCalculationService = require('./gasCalculationService');
 const { Op } = require('sequelize');
 
 const CAPTURES_PER_BATCH = 24;
+
+// Helper function to safely get cctvMonitoringService (avoids circular dependency)
+async function getCctvMonitoringService(maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      // Clear cache to force fresh load
+      const modulePath = require.resolve('./cctvMonitoringService');
+      if (require.cache[modulePath]) {
+        delete require.cache[modulePath];
+      }
+      
+      const service = require('./cctvMonitoringService');
+      
+      // Debug logging
+      console.log(`[getCctvMonitoringService] Attempt ${i + 1}: service=${!!service}, type=${typeof service}, hasCaptureScreenshot=${typeof service?.captureScreenshot}`);
+      
+      // Check if service and method exist
+      if (service && typeof service.captureScreenshot === 'function') {
+        console.log(`[getCctvMonitoringService] ✅ Service loaded successfully on attempt ${i + 1}`);
+        return service;
+      }
+      
+      // If not ready, wait a bit and retry
+      if (i < maxRetries - 1) {
+        console.log(`[getCctvMonitoringService] ⏳ Service not ready, waiting before retry ${i + 2}...`);
+        // Small delay to allow module to fully initialize
+        await new Promise(resolve => setTimeout(resolve, 100 * (i + 1))); // Increasing delay: 100ms, 200ms, 300ms
+      }
+    } catch (error) {
+      console.error(`[getCctvMonitoringService] ❌ Error loading cctvMonitoringService (attempt ${i + 1}/${maxRetries}):`, error.message);
+      if (i === maxRetries - 1) {
+        throw new Error(`Failed to load cctvMonitoringService after ${maxRetries} attempts: ${error.message}`);
+      }
+    }
+  }
+  
+  throw new Error('cctvMonitoringService.captureScreenshot is not available');
+}
 
 class CCTVScheduler {
   constructor() {
@@ -30,8 +68,8 @@ class CCTVScheduler {
 
     console.log('🎬 Starting CCTV Auto-Capture Scheduler...');
 
-    // Run every 1 minute to check sessions
-    this.cronJob = cron.schedule('* * * * *', async () => {
+    // Run every 10 minutes to check sessions
+    this.cronJob = cron.schedule('*/10 * * * *', async () => {
       await this.runScheduledTasks();
     }, {
       scheduled: false
@@ -41,7 +79,7 @@ class CCTVScheduler {
     this.isRunning = true;
 
     console.log('✅ CCTV Scheduler started successfully');
-    console.log('📅 Checking for screenshot captures every minute');
+    console.log('📅 Checking for screenshot captures every 10 minutes');
     
     // Run immediate capture for all active sessions when starting
     console.log('📸 Running immediate capture for all active sessions...');
@@ -115,6 +153,8 @@ class CCTVScheduler {
         console.log(`   📸 Capturing screenshot for session ${session.id} (${session.customer_name})`);
         
         try {
+          // Lazy load cctvMonitoringService to avoid circular dependency
+          const cctvMonitoringService = await getCctvMonitoringService();
           await cctvMonitoringService.captureScreenshot(session.id);
           this.stats.successfulCaptures++;
           console.log(`   ✅ Screenshot captured successfully`);
@@ -705,6 +745,8 @@ class CCTVScheduler {
       try {
         console.log(`   📸 Capturing session ${session.id} (${session.customer_name})`);
         
+        // Lazy load cctvMonitoringService to avoid circular dependency
+        const cctvMonitoringService = await getCctvMonitoringService();
         await cctvMonitoringService.captureScreenshot(session.id);
         
         // Process pending nota batches after manual capture run
