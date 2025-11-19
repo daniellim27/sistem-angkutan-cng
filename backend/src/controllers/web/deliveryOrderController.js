@@ -13,6 +13,7 @@ const {
 } = require("../../models");
 const { Op } = require("sequelize");
 const { Expo } = require("expo-server-sdk");
+const logger = require("../../utils/logger");
 
 // Enhanced calculation helpers with unit awareness
 const calculateTotalAmount = (quantity, unitPrice, unit) => {
@@ -84,7 +85,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
       const depositGroup = await DepositGroup.findByPk(deposit_group_id, { transaction });
       if (depositGroup && depositGroup.spbg_location) {
         finalLoadLocation = depositGroup.spbg_location;
-        console.log(`✅ Auto-populated SPBG location from deposit group: ${finalLoadLocation}`);
+        logger.debug(`Auto-populated SPBG location from deposit group: ${finalLoadLocation}`);
       }
     }
 
@@ -209,8 +210,8 @@ exports.createDeliveryOrder = async (req, res, next) => {
     let finalUnloadLongitude = unload_longitude;
     let processedAdditionalUnloadLocations = additional_unload_locations || [];
 
-    console.log('🔍 Starting location scraping process...');
-    console.log('📍 Input locations:', {
+    logger.info('Starting location scraping process...');
+    logger.debug('Input locations:', {
       load_location,
       unload_location,
       additional_unload_locations,
@@ -231,13 +232,13 @@ exports.createDeliveryOrder = async (req, res, next) => {
       // Add load location (SPBU) for scraping if coordinates not provided
       if (finalLoadLocation && !load_latitude && !load_longitude) {
         locationsToScrape.push({ type: 'load', location: finalLoadLocation });
-        console.log(`➕ Added load location for scraping: ${finalLoadLocation}`);
+        logger.debug(`Added load location for scraping: ${finalLoadLocation}`);
       }
       
       // Add unload location for scraping if coordinates not provided
       if (unload_location && !unload_latitude && !unload_longitude) {
         locationsToScrape.push({ type: 'unload', location: unload_location });
-        console.log(`➕ Added unload location for scraping: ${unload_location}`);
+        logger.debug(`Added unload location for scraping: ${unload_location}`);
       }
       
       // Add additional unload locations for scraping
@@ -245,16 +246,16 @@ exports.createDeliveryOrder = async (req, res, next) => {
         additional_unload_locations.forEach((loc, index) => {
           if (typeof loc === 'string' && loc.trim()) {
             locationsToScrape.push({ type: 'additional_unload', location: loc.trim(), index });
-            console.log(`➕ Added additional unload location for scraping: ${loc.trim()}`);
+            logger.debug(`Added additional unload location for scraping: ${loc.trim()}`);
           }
         });
       }
 
-      console.log(`📊 Total locations to scrape: ${locationsToScrape.length}`);
+      logger.info(`Total locations queued for scraping: ${locationsToScrape.length}`);
 
       // Store locations for background scraping (don't wait for scraping to complete)
       if (locationsToScrape.length > 0) {
-        console.log('🗺️ Will scrape coordinates in background for locations:', locationsToScrape.map(l => l.location));
+        logger.info('Scraping coordinates in background for locations:', locationsToScrape.map(l => l.location));
         backgroundScrapingData = {
           locationsToScrape,
           deliveryOrderData: {
@@ -322,7 +323,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
         quantity: quantity
       }, { transaction });
 
-      console.log(`✅ Added DO ${deliveryOrder.do_number} to deposit group ${depositGroup.group_name}`);
+      logger.debug(`Added DO ${deliveryOrder.do_number} to deposit group ${depositGroup.group_name}`);
     }
 
     // Update vehicle status
@@ -383,7 +384,7 @@ exports.createDeliveryOrder = async (req, res, next) => {
 
     // Start background location scraping after successful DO creation
     if (backgroundScrapingData) {
-      console.log(`🚀 Starting background location scraping for DO ${deliveryOrder.do_number}`);
+      logger.info(`Starting background location scraping for DO ${deliveryOrder.do_number}`);
       
       // Run scraping in background (don't await)
       scrapeLocationsInBackground(deliveryOrder.id, backgroundScrapingData)
@@ -824,11 +825,12 @@ exports.updateDeliveryOrder = async (req, res, next) => {
     const oldStatus = deliveryOrder.status;
     const newStatus = status;
     
-    console.log(`🔄 Admin Update - DO ${id}:`);
-    console.log(`  - Status changing: ${isStatusChanging}`);
-    console.log(`  - Old status: ${oldStatus}`);
-    console.log(`  - New status: ${newStatus}`);
-    console.log(`  - Driver ID: ${deliveryOrder.driver_id}`);
+    logger.debug(`Admin Update - DO ${id}`, {
+      statusChanging: isStatusChanging,
+      oldStatus,
+      newStatus,
+      driverId: deliveryOrder.driver_id
+    });
 
     // Update delivery order
     const updatedDO = await deliveryOrder.update(proposedData, { transaction });
@@ -969,7 +971,7 @@ exports.completeDeliveryOrder = async (req, res, next) => {
       paymentConfirmationStatus = "confirmed";
       paymentConfirmedAt = new Date();
       
-      console.log(`✅ DO ${id} auto-paid via deposit group - Deposit linked: ${isDepositLinked}, In group: ${isInDepositGroup}`);
+      logger.debug(`DO ${id} auto-paid via deposit group`, { isDepositLinked, isInDepositGroup });
     } else {
       // Regular DOs follow the normal payment process
       paymentStatus = "awaiting_confirmation";
@@ -1000,8 +1002,8 @@ exports.completeDeliveryOrder = async (req, res, next) => {
       }
       const priceUsed = qtyUsed * unitPrice;
 
-      console.log(`🔄 Processing deposit group ${grp.id} for DO ${id}`);
-      console.log(`📊 Reducing: ${qtyUsed} qty, Rp ${priceUsed.toLocaleString('id-ID')} amount`);
+      logger.debug(`Processing deposit group ${grp.id} for DO ${id}`);
+      logger.debug(`Reducing quantity ${qtyUsed} and amount Rp ${priceUsed.toLocaleString('id-ID')}`);
 
       // Properly reduce both quantity and balance, and update completed quantity
       const currentRemaining = parseFloat(grp.remaining_quantity) || 0;
@@ -1026,7 +1028,10 @@ exports.completeDeliveryOrder = async (req, res, next) => {
       // Also update the quantity in the DepositGroupMember table itself
       await dgMember.update({ quantity: qtyUsed }, { transaction });
 
-      console.log(`✅ Updated deposit group: remaining ${grp.remaining_quantity}, balance Rp ${grp.balance.toLocaleString('id-ID')}`);
+      logger.debug(`Updated deposit group ${grp.id}`, {
+        remaining_quantity: grp.remaining_quantity,
+        balance: grp.balance
+      });
 
       // Handle excess quantities (selisih)
       // Since minimal_load_quantity is no longer used, use actual_load_quantity as baseline
@@ -1047,7 +1052,7 @@ exports.completeDeliveryOrder = async (req, res, next) => {
           created_by: req.user?.id,
         }, { transaction });
 
-        console.log(`📊 Recorded excess: ${excess} ${deliveryOrder.unit} = Rp ${excessAmount.toLocaleString('id-ID')}`);
+        logger.debug(`Recorded excess ${excess} ${deliveryOrder.unit} = Rp ${excessAmount.toLocaleString('id-ID')}`);
       }
     }
 
@@ -1214,7 +1219,7 @@ exports.getDeliveryStatistics = async (req, res, next) => {
  */
 const updateDriverAndVehicleStatus = async (deliveryOrder, oldStatus, newStatus, transaction) => {
   try {
-    console.log(`Updating driver/vehicle status: DO ${deliveryOrder.id} changed from ${oldStatus} to ${newStatus}`);
+    logger.debug(`Updating driver/vehicle status for DO ${deliveryOrder.id}`, { oldStatus, newStatus });
 
     // Define status mappings for driver and vehicle
     const getDriverStatus = (doStatus) => {
@@ -1257,7 +1262,7 @@ const updateDriverAndVehicleStatus = async (deliveryOrder, oldStatus, newStatus,
           transaction 
         }
       );
-      console.log(`Updated driver ${deliveryOrder.driver_id} status to: ${newDriverStatus}`);
+      logger.debug(`Updated driver ${deliveryOrder.driver_id} status to: ${newDriverStatus}`);
     }
 
     // Update vehicle status
@@ -1269,7 +1274,7 @@ const updateDriverAndVehicleStatus = async (deliveryOrder, oldStatus, newStatus,
           transaction 
         }
       );
-      console.log(`Updated vehicle ${deliveryOrder.vehicle_id} status to: ${newVehicleStatus}`);
+      logger.debug(`Updated vehicle ${deliveryOrder.vehicle_id} status to: ${newVehicleStatus}`);
     }
 
   } catch (error) {
@@ -1284,7 +1289,7 @@ const updateDriverAndVehicleStatus = async (deliveryOrder, oldStatus, newStatus,
  */
 async function scrapeLocationsInBackground(deliveryOrderId, scrapingData) {
   try {
-    console.log(`🔍 Background scraping started for DO ID ${deliveryOrderId}`);
+    logger.info(`Background scraping started for DO ID ${deliveryOrderId}`);
     
     const { scrapeMultipleLocations } = require("../../utils/locationScraper");
     const { locationsToScrape } = scrapingData;
@@ -1301,20 +1306,31 @@ async function scrapeLocationsInBackground(deliveryOrderId, scrapingData) {
       updateData.load_latitude = scrapingResults.load.lat;
       updateData.load_longitude = scrapingResults.load.lng;
       hasUpdates = true;
-      console.log(`✅ Background: Found load coordinates: ${scrapingResults.load.lat}, ${scrapingResults.load.lng}`);
+      logger.debug(`Background scraping load coords`, {
+        deliveryOrderId,
+        lat: scrapingResults.load.lat,
+        lng: scrapingResults.load.lng
+      });
     }
     
     if (scrapingResults.unload.lat && scrapingResults.unload.lng) {
       updateData.unload_latitude = scrapingResults.unload.lat;
       updateData.unload_longitude = scrapingResults.unload.lng;
       hasUpdates = true;
-      console.log(`✅ Background: Found unload coordinates: ${scrapingResults.unload.lat}, ${scrapingResults.unload.lng}`);
+      logger.debug(`Background scraping unload coords`, {
+        deliveryOrderId,
+        lat: scrapingResults.unload.lat,
+        lng: scrapingResults.unload.lng
+      });
     }
     
     if (scrapingResults.additional.length > 0) {
       updateData.additional_unload_locations = scrapingResults.additional;
       hasUpdates = true;
-      console.log(`✅ Background: Found ${scrapingResults.additional.length} additional location coordinates`);
+      logger.debug(`Background scraping additional coords`, {
+        deliveryOrderId,
+        count: scrapingResults.additional.length
+      });
     }
     
     // Update the delivery order if we have new coordinates
@@ -1323,9 +1339,9 @@ async function scrapeLocationsInBackground(deliveryOrderId, scrapingData) {
         where: { id: deliveryOrderId }
       });
       
-      console.log(`🎯 Background scraping completed for DO ID ${deliveryOrderId} - coordinates updated`);
+      logger.info(`Background scraping completed for DO ID ${deliveryOrderId} - coordinates updated`);
     } else {
-      console.log(`⚠️ Background scraping completed for DO ID ${deliveryOrderId} - no coordinates found`);
+      logger.warn(`Background scraping completed for DO ID ${deliveryOrderId} - no coordinates found`);
     }
     
   } catch (error) {

@@ -1,5 +1,6 @@
 // Simple location geocoder using OpenStreetMap Nominatim (free, no API key needed)
 const axios = require('axios');
+const logger = require('./logger');
 
 /**
  * Get coordinates using OpenStreetMap Nominatim geocoding service
@@ -8,7 +9,7 @@ const axios = require('axios');
  */
 async function scrapeLocationCoordinates(locationName) {
   try {
-    console.log(`🔍 Geocoding location: ${locationName}`);
+    logger.info(`Geocoding location: ${locationName}`);
     
     // Use OpenStreetMap Nominatim geocoding service (free, no API key needed)
     const nominatimUrl = `https://nominatim.openstreetmap.org/search`;
@@ -21,7 +22,7 @@ async function scrapeLocationCoordinates(locationName) {
       namedetails: 1
     };
     
-    console.log(`📍 Requesting geocoding for: ${locationName}`);
+    logger.debug(`Requesting geocoding for: ${locationName}`);
     
     const response = await axios.get(nominatimUrl, {
       params,
@@ -40,14 +41,17 @@ async function scrapeLocationCoordinates(locationName) {
         lng: parseFloat(result.lon)
       };
       
-      console.log(`✅ Found coordinates via Nominatim: ${coords.lat}, ${coords.lng}`);
-      console.log(`📍 Display name: ${result.display_name}`);
-      console.log(`🏷️  Place type: ${result.type || 'unknown'} (${result.class || 'N/A'})`);
+      logger.info(`Found coordinates via Nominatim for ${locationName}: ${coords.lat}, ${coords.lng}`);
+      logger.debug(`Geocode details`, {
+        displayName: result.display_name,
+        placeType: result.type || 'unknown',
+        placeClass: result.class || 'N/A'
+      });
       
       return coords;
     }
     
-    console.log(`❌ No results found for: ${locationName}`);
+    logger.warn(`No geocoding results for: ${locationName}`);
     return null;
     
   } catch (error) {
@@ -62,7 +66,7 @@ async function scrapeLocationCoordinates(locationName) {
  * @returns {Promise<Object>} - Object with scraped coordinates
  */
 async function scrapeMultipleLocations(locations) {
-  console.log(`🗺️ Starting batch scraping for ${locations.length} locations`);
+  logger.info(`Starting batch scraping for ${locations.length} locations`);
   
   const results = {
     load: { lat: null, lng: null },
@@ -97,7 +101,8 @@ async function scrapeMultipleLocations(locations) {
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
   
-  console.log('🎯 Batch scraping completed:', results);
+  logger.info(`Batch scraping completed for ${locations.length} locations`);
+  logger.debug('Batch scraping results:', results);
   return results;
 }
 

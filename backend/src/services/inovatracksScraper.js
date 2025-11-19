@@ -1,6 +1,7 @@
 const { chromium } = require('playwright');
 const { DriverLocation } = require('../models');
 const { Op } = require('sequelize');
+const logger = require('../utils/logger');
 
 class InovatracksScraper {
   constructor() {
@@ -23,8 +24,8 @@ class InovatracksScraper {
    */
   async initialize() {
     try {
-      console.log('🚀 Initializing Inovatracks scraper...');
-      console.log('📊 Environment check:', {
+      logger.info('🚀 Initializing Inovatracks scraper...');
+      logger.debug('📊 Environment check:', {
         NODE_ENV: process.env.NODE_ENV,
         username: this.username ? 'SET' : 'MISSING',
         password: this.password ? 'SET' : 'MISSING',
@@ -64,24 +65,24 @@ class InovatracksScraper {
       
       // Set up page error handlers
       this.page.on('error', (error) => {
-        console.error('❌ Page error:', error.message);
+        logger.error('❌ Page error:', error.message);
       });
       
       this.page.on('close', () => {
-        console.log('⚠️ Page was closed unexpectedly');
+        logger.warn('⚠️ Page was closed unexpectedly');
         this.page = null;
       });
       
-      console.log('✅ Browser initialized successfully');
+      logger.info('✅ Browser initialized successfully');
       return true;
     } catch (error) {
-      console.error('❌ Failed to initialize browser:', error);
-      console.error('💡 Common issues:');
-      console.error('   - Missing Playwright browsers (run: npx playwright install chromium)');
-      console.error('   - Missing system dependencies in Docker');
-      console.error('   - Insufficient memory or resources');
-      console.error('   - Network connectivity issues');
-      console.error('🔧 Error details:', {
+      logger.error('❌ Failed to initialize browser:', error);
+      logger.error('💡 Common issues:');
+      logger.error('   - Missing Playwright browsers (run: npx playwright install chromium)');
+      logger.error('   - Missing system dependencies in Docker');
+      logger.error('   - Insufficient memory or resources');
+      logger.error('   - Network connectivity issues');
+      logger.error('🔧 Error details:', {
         message: error.message,
         stack: error.stack?.substring(0, 500)
       });
@@ -96,13 +97,13 @@ class InovatracksScraper {
   async ensureBrowserActive() {
     try {
       if (!this.browser || !this.browser.isConnected()) {
-        console.log('🔄 Browser disconnected, reinitializing...');
+        logger.debug('🔄 Browser disconnected, reinitializing...');
         await this.initialize();
         return;
       }
       
       if (!this.page || this.page.isClosed()) {
-        console.log('🔄 Page closed, creating new page...');
+        logger.debug('🔄 Page closed, creating new page...');
         this.page = await this.context.newPage();
         this.isLoggedIn = false; // Need to login again
       }
@@ -111,7 +112,7 @@ class InovatracksScraper {
       try {
         await this.page.evaluate(() => document.title);
       } catch (error) {
-        console.log('🔄 Page unresponsive, creating new page...');
+        logger.debug('🔄 Page unresponsive, creating new page...');
         if (this.page && !this.page.isClosed()) {
           await this.page.close();
         }
@@ -119,7 +120,7 @@ class InovatracksScraper {
         this.isLoggedIn = false;
       }
     } catch (error) {
-      console.error('❌ Error ensuring browser active:', error);
+      logger.error('❌ Error ensuring browser active:', error);
       await this.initialize(); // Full reinitialize as fallback
     }
   }
@@ -187,20 +188,20 @@ class InovatracksScraper {
         throw new Error('Inovatracks credentials (username, password, member code) not provided in environment variables');
       }
 
-      console.log('🔑 Attempting to login to Inovatracks...');
+      logger.info('🔑 Attempting to login to Inovatracks...');
       
       await this.page.goto(this.loginUrl, { waitUntil: 'domcontentloaded' });
       
       // Wait for login form to load - using exact field names from the website
       await this.page.waitForSelector('input[name="MemberCode"]', { timeout: 10000 });
       
-      console.log('📝 Filling login form...');
+      logger.debug('📝 Filling login form...');
       // Fill form fields with exact names
       await this.page.fill('input[name="MemberCode"]', this.memberCode);
       await this.page.fill('input[name="UserName"]', this.username);
       await this.page.fill('input[name="Password"]', this.password);
       
-      console.log('🔐 Submitting login form...');
+      logger.debug('🔐 Submitting login form...');
       // Click login button and wait for any response
       await Promise.all([
         this.page.click('input[type="submit"]'),
@@ -209,10 +210,10 @@ class InovatracksScraper {
       
       // Check immediate response after form submission
       const currentUrl = this.page.url();
-      console.log(`📍 Current URL after login attempt: ${currentUrl}`);
+      logger.debug(`📍 Current URL after login attempt: ${currentUrl}`);
       
       // Directly navigate to Map page without waiting for automatic redirect
-      console.log('🗺️ Navigating directly to Map page...');
+      logger.debug('🗺️ Navigating directly to Map page...');
       await this.page.goto(this.dashboardUrl, { 
         waitUntil: 'domcontentloaded',
         timeout: 15000 
@@ -222,7 +223,7 @@ class InovatracksScraper {
       await this.page.waitForTimeout(3000);
       
       const finalUrl = this.page.url();
-      console.log(`📍 Final URL: ${finalUrl}`);
+      logger.debug(`📍 Final URL: ${finalUrl}`);
       
       // Check if we're on the Map page and not redirected back to login
       const isOnMapPage = finalUrl.includes('/Map') || finalUrl.includes('vts.inovatrack.com') && !finalUrl.includes('Login');
@@ -232,16 +233,16 @@ class InovatracksScraper {
       try {
         // Check for common map page elements
         hasMapElements = await this.page.locator('table.k-selectable, #map, .map-container, .leaflet-container, .vehicle-list').count() > 0;
-        console.log(`🔍 Map elements found: ${hasMapElements}`);
+        logger.debug(`🔍 Map elements found: ${hasMapElements}`);
       } catch (e) {
-        console.log('⚠️ Could not check for map elements, but proceeding...');
+        logger.debug('⚠️ Could not check for map elements, but proceeding...');
       }
       
       // Verify login success
       if (isOnMapPage || hasMapElements) {
         this.isLoggedIn = true;
-        console.log('✅ Successfully logged in to Inovatracks and reached Map page');
-        console.log(`⏱️ Login process completed in ~5 seconds`);
+        logger.info('✅ Successfully logged in to Inovatracks and reached Map page');
+        logger.info(`⏱️ Login process completed in ~5 seconds`);
         return true;
       } else {
         // Check if we got redirected back to login page
@@ -254,7 +255,7 @@ class InovatracksScraper {
       }
       
     } catch (error) {
-      console.error('❌ Login failed:', error);
+      logger.error('❌ Login failed:', error);
       this.isLoggedIn = false;
       throw error;
     }
@@ -265,7 +266,7 @@ class InovatracksScraper {
    */
   async createAuthenticatedPage() {
     try {
-      console.log('🔄 Creating new authenticated page...');
+      logger.debug('🔄 Creating new authenticated page...');
       
       if (!this.browser) {
         await this.initialize();
@@ -282,11 +283,11 @@ class InovatracksScraper {
       // Login to this page
       await this.loginToPage(page);
       
-      console.log('✅ New authenticated page created successfully');
+      logger.debug('✅ New authenticated page created successfully');
       return { context, page };
       
     } catch (error) {
-      console.error('❌ Failed to create authenticated page:', error);
+      logger.error('❌ Failed to create authenticated page:', error);
       throw error;
     }
   }
@@ -300,7 +301,7 @@ class InovatracksScraper {
         throw new Error('Inovatracks credentials not provided');
       }
 
-      console.log('🔑 Logging in to new page...');
+      logger.debug('🔑 Logging in to new page...');
       
       await page.goto(this.loginUrl, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('input[name="MemberCode"]', { timeout: 10000 });
@@ -323,10 +324,10 @@ class InovatracksScraper {
       });
       
       await page.waitForTimeout(3000); // Let map initialize
-      console.log('✅ Page login successful');
+      logger.debug('✅ Page login successful');
       
     } catch (error) {
-      console.error('❌ Page login failed:', error);
+      logger.error('❌ Page login failed:', error);
       throw error;
     }
   }
@@ -339,19 +340,19 @@ class InovatracksScraper {
     
     try {
       const logPrefix = tabId ? `Tab ${tabId}` : 'Batch';
-      console.log(`🔄 ${logPrefix}: Processing ${vehicleIndices.length} vehicles`);
+      logger.debug(`🔄 ${logPrefix}: Processing ${vehicleIndices.length} vehicles`);
       
       for (let i = 0; i < vehicleIndices.length; i++) {
         const vehicleIndex = vehicleIndices[i];
         const progress = `${i + 1}/${vehicleIndices.length}`;
         
         try {
-          console.log(`🔄 ${logPrefix}: Processing vehicle ${vehicleIndex + 1} (${progress})`);
+          logger.debug(`🔄 ${logPrefix}: Processing vehicle ${vehicleIndex + 1} (${progress})`);
           
           // Get current vehicle list to avoid stale elements
           const currentVehicleRows = await page.$$('table.k-selectable tbody tr');
           if (vehicleIndex >= currentVehicleRows.length) {
-            console.log(`⚠️ ${logPrefix}: Vehicle ${vehicleIndex + 1} no longer available, skipping...`);
+            logger.debug(`⚠️ ${logPrefix}: Vehicle ${vehicleIndex + 1} no longer available, skipping...`);
             continue;
           }
           
@@ -365,7 +366,7 @@ class InovatracksScraper {
             vehiclePlate = `Vehicle_${vehicleIndex + 1}`;
           }
           
-          console.log(`📋 ${logPrefix}: Processing ${vehiclePlate}`);
+          logger.debug(`📋 ${logPrefix}: Processing ${vehiclePlate}`);
           
           // Click on vehicle and wait for details with optimized timing
           await vehicleElement.click();
@@ -420,21 +421,21 @@ class InovatracksScraper {
                   location: ''
                 });
                 
-                console.log(`✅ ${logPrefix}: Successfully processed ${vehiclePlate}: ${coordinates}`);
+                logger.debug(`✅ ${logPrefix}: Successfully processed ${vehiclePlate}: ${coordinates}`);
               }
             }
           } else {
-            console.log(`⚠️ ${logPrefix}: No coordinates found for ${vehiclePlate}`);
+            logger.debug(`⚠️ ${logPrefix}: No coordinates found for ${vehiclePlate}`);
           }
           
         } catch (error) {
-          console.error(`❌ ${logPrefix}: Error processing vehicle ${vehicleIndex + 1}:`, error.message);
+          logger.error(`❌ ${logPrefix}: Error processing vehicle ${vehicleIndex + 1}:`, error.message);
           continue;
         }
       }
       
     } catch (error) {
-      console.error('❌ Error in vehicle batch processing:', error);
+      logger.error('❌ Error in vehicle batch processing:', error);
     }
     
     return batchResults;
@@ -464,10 +465,10 @@ class InovatracksScraper {
     
     while (attempt <= maxRetries) {
       try {
-        console.log(`🔄 Tab ${tabId} attempt ${attempt}/${maxRetries}`);
+        logger.debug(`🔄 Tab ${tabId} attempt ${attempt}/${maxRetries}`);
         return await this.processVehicleBatch(page, vehicleIndices, totalVehicles, tabId);
       } catch (error) {
-        console.error(`❌ Tab ${tabId} attempt ${attempt} failed:`, error.message);
+        logger.error(`❌ Tab ${tabId} attempt ${attempt} failed:`, error.message);
         
         if (attempt === maxRetries) {
           throw error;
@@ -528,7 +529,7 @@ class InovatracksScraper {
    */
   async scrapeGPSDataConcurrent() {
     try {
-      console.log('📍 Starting optimized 3-tab concurrent GPS data scraping...');
+      logger.info('📍 Starting optimized 3-tab concurrent GPS data scraping...');
       
       // Ensure we have a main page for vehicle discovery
       if (!this.page || !this.isLoggedIn) {
@@ -539,20 +540,20 @@ class InovatracksScraper {
       // Get vehicle list from main page
       const vehicleRows = await this.page.$$('table.k-selectable tbody tr');
       if (vehicleRows.length === 0) {
-        console.log('⚠️ No vehicles found on main page');
+        logger.warn('⚠️ No vehicles found on main page');
         return [];
       }
       
       // Remove testing limit - process all vehicles for maximum efficiency
       const totalVehicles = vehicleRows.length;
-      console.log(`🚗 Found ${totalVehicles} vehicles to process with 3 concurrent tabs`);
+      logger.info(`🚗 Found ${totalVehicles} vehicles to process with 3 concurrent tabs`);
       
       // Optimize vehicle distribution across exactly 3 tabs
       const vehicleBatches = this.distributeVehiclesAcrossTabs(totalVehicles, 3);
       
-      console.log(`📊 Optimally distributed ${totalVehicles} vehicles across 3 tabs:`);
+      logger.debug(`📊 Optimally distributed ${totalVehicles} vehicles across 3 tabs:`);
       vehicleBatches.forEach((batch, index) => {
-        console.log(`   Tab ${index + 1}: ${batch.length} vehicles [${batch.slice(0, 3).join(',')}${batch.length > 3 ? '...' : ''}]`);
+        logger.debug(`   Tab ${index + 1}: ${batch.length} vehicles [${batch.slice(0, 3).join(',')}${batch.length > 3 ? '...' : ''}]`);
       });
       
       const startTime = Date.now();
@@ -563,7 +564,7 @@ class InovatracksScraper {
         const tabId = batchIndex + 1;
         
         try {
-          console.log(`🚀 Tab ${tabId} starting: processing ${batchIndices.length} vehicles`);
+          logger.debug(`🚀 Tab ${tabId} starting: processing ${batchIndices.length} vehicles`);
           
           // Use main page for first tab, create new authenticated pages for others
           if (batchIndex === 0) {
@@ -574,13 +575,13 @@ class InovatracksScraper {
           }
           
         } catch (error) {
-          console.error(`❌ Tab ${tabId} failed:`, error.message);
+          logger.error(`❌ Tab ${tabId} failed:`, error.message);
           // Try to salvage what we can with a simpler approach
           try {
-            console.log(`🔄 Tab ${tabId} attempting recovery with fallback method...`);
+            logger.debug(`🔄 Tab ${tabId} attempting recovery with fallback method...`);
             return await this.processVehicleBatchSimple(pageContext?.page || this.page, batchIndices.slice(0, 5)); // Limit to 5 for recovery
           } catch (recoveryError) {
-            console.error(`❌ Tab ${tabId} recovery also failed:`, recoveryError.message);
+            logger.error(`❌ Tab ${tabId} recovery also failed:`, recoveryError.message);
             return [];
           }
         } finally {
@@ -588,16 +589,16 @@ class InovatracksScraper {
           if (pageContext && batchIndex > 0) {
             try {
               await pageContext.context.close();
-              console.log(`🧹 Tab ${tabId} context cleaned up`);
+              logger.debug(`🧹 Tab ${tabId} context cleaned up`);
             } catch (cleanupError) {
-              console.error(`⚠️ Tab ${tabId} cleanup error:`, cleanupError.message);
+              logger.error(`⚠️ Tab ${tabId} cleanup error:`, cleanupError.message);
             }
           }
         }
       });
       
       // Wait for all 3 tabs to complete with progress tracking
-      console.log('⏳ Processing vehicles across 3 tabs simultaneously...');
+      logger.info('⏳ Processing vehicles across 3 tabs simultaneously...');
       
       const batchResults = await Promise.allSettled(processingPromises);
       const successfulResults = batchResults
@@ -612,17 +613,17 @@ class InovatracksScraper {
       const endTime = Date.now();
       const processingTime = ((endTime - startTime) / 1000).toFixed(2);
       
-      console.log(`✅ 3-tab concurrent scraping completed in ${processingTime}s`);
-      console.log(`📊 Results: ${successfulResults.length} GPS records from ${totalVehicles} vehicles`);
-      console.log(`🚀 Performance: ${3 - failedTabs}/3 tabs successful`);
+      logger.info(`✅ 3-tab concurrent scraping completed in ${processingTime}s`);
+      logger.info(`📊 Results: ${successfulResults.length} GPS records from ${totalVehicles} vehicles`);
+      logger.info(`🚀 Performance: ${3 - failedTabs}/3 tabs successful`);
       if (failedTabs > 0) {
-        console.log(`⚠️ ${failedTabs} tabs encountered errors but scraping continued`);
+        logger.warn(`⚠️ ${failedTabs} tabs encountered errors but scraping continued`);
       }
       
       return successfulResults;
       
     } catch (error) {
-      console.error('❌ Failed to scrape GPS data concurrently:', error);
+      logger.error('❌ Failed to scrape GPS data concurrently:', error);
       throw error;
     }
   }
@@ -639,23 +640,23 @@ class InovatracksScraper {
                             currentUrl === 'https://vts.inovatrack.com/');
       
       if (!this.isLoggedIn && !isOnValidPage) {
-        console.log('🔑 Not logged in, attempting login...');
+        logger.debug('🔑 Not logged in, attempting login...');
         await this.login();
       } else if (isOnValidPage && !this.isLoggedIn) {
-        console.log('✅ Already on valid page, updating login status...');
+        logger.debug('✅ Already on valid page, updating login status...');
         this.isLoggedIn = true;
       }
 
-      console.log('📍 Scraping GPS data from Inovatracks Map (sequential mode)...');
+      logger.info('📍 Scraping GPS data from Inovatracks Map (sequential mode)...');
       
       // Navigate to Map page if not already there
       const pageUrl = this.page.url();
       if (!pageUrl.includes('/Map')) {
-        console.log('🗺️ Navigating to Map page...');
+        logger.debug('🗺️ Navigating to Map page...');
         await this.page.goto(this.dashboardUrl, { waitUntil: 'networkidle' });
-        console.log(`✅ Navigated to: ${this.page.url()}`);
+        logger.debug(`✅ Navigated to: ${this.page.url()}`);
       } else {
-        console.log('✅ Already on Map page');
+        logger.debug('✅ Already on Map page');
       }
       
       // Wait for map and vehicle list to load with browser validation
@@ -678,19 +679,19 @@ class InovatracksScraper {
         for (const selector of vehicleListSelectors) {
           vehicleRows = await this.page.$$(selector);
           if (vehicleRows.length > 0) {
-            console.log(`✅ Found ${vehicleRows.length} vehicles using selector: ${selector}`);
+            logger.debug(`✅ Found ${vehicleRows.length} vehicles using selector: ${selector}`);
             break;
           }
         }
         
         if (vehicleRows.length === 0) {
-          console.log('⚠️ No vehicles found, trying alternative approach...');
+          logger.debug('⚠️ No vehicles found, trying alternative approach...');
           
           // Try to find any clickable vehicle elements
           const clickableElements = await this.page.$$('[onclick*="vehicle"], [data-id], .clickable-vehicle');
           if (clickableElements.length > 0) {
             vehicleRows = clickableElements;
-            console.log(`✅ Found ${vehicleRows.length} clickable vehicle elements`);
+            logger.debug(`✅ Found ${vehicleRows.length} clickable vehicle elements`);
           }
         }
         
@@ -699,34 +700,34 @@ class InovatracksScraper {
         }
         
       } catch (error) {
-        console.log('⚠️ Could not find vehicle list, continuing with map exploration...');
+        logger.debug('⚠️ Could not find vehicle list, continuing with map exploration...');
         
         // If we can't find the vehicle list, try to inspect the page structure
         const pageContent = await this.page.content();
-        console.log('📄 Page title:', await this.page.title());
+        logger.debug('📄 Page title:', await this.page.title());
         
         // Look for any GPS coordinates directly in the page
         const coordMatches = pageContent.match(/-?\d+\.\d+,\s*-?\d+\.\d+/g);
         if (coordMatches && coordMatches.length > 0) {
-          console.log(`🎯 Found potential coordinates in page: ${coordMatches.slice(0, 3).join(', ')}...`);
+          logger.debug(`🎯 Found potential coordinates in page: ${coordMatches.slice(0, 3).join(', ')}...`);
         }
         
         return []; // Return empty array if no vehicles found
       }
       
-      console.log(`🚗 Found ${vehicleRows.length} vehicles to process`);
+      logger.info(`🚗 Found ${vehicleRows.length} vehicles to process`);
       
       const gpsData = [];
       
       // Process each vehicle row - refresh vehicle list each iteration to avoid DOM detachment
       for (let i = 0; i < Math.min(vehicleRows.length, 10); i++) { // Limit to 10 for testing
         try {
-          console.log(`🔄 Processing vehicle ${i + 1}/${vehicleRows.length}`);
+          logger.debug(`🔄 Processing vehicle ${i + 1}/${vehicleRows.length}`);
           
           // Refresh vehicle list to get current DOM elements
           const currentVehicleRows = await this.page.$$('table.k-selectable tbody tr');
           if (i >= currentVehicleRows.length) {
-            console.log(`⚠️ Vehicle ${i + 1} no longer available, skipping...`);
+            logger.debug(`⚠️ Vehicle ${i + 1} no longer available, skipping...`);
             continue;
           }
           
@@ -741,7 +742,7 @@ class InovatracksScraper {
             vehiclePlate = `Vehicle_${i + 1}`;
           }
           
-          console.log(`📋 Processing vehicle: ${vehiclePlate}`);
+          logger.debug(`📋 Processing vehicle: ${vehiclePlate}`);
           
           // Click on the vehicle
           await vehicleElement.click();
@@ -761,7 +762,7 @@ class InovatracksScraper {
               const coordElement = await this.page.waitForSelector(selector, { timeout: 3000 });
               coordinates = await coordElement.textContent();
               if (coordinates && coordinates.includes(',')) {
-                console.log(`📍 Found coordinates for ${vehiclePlate}: ${coordinates}`);
+                logger.debug(`📍 Found coordinates for ${vehiclePlate}: ${coordinates}`);
                 break;
               }
             } catch (e) {
@@ -775,7 +776,7 @@ class InovatracksScraper {
             const coordMatch = pageText.match(/-?\d+\.\d+,\s*-?\d+\.\d+/g);
             if (coordMatch) {
               coordinates = coordMatch[0];
-              console.log(`📍 Found coordinates in page text for ${vehiclePlate}: ${coordinates}`);
+              logger.debug(`📍 Found coordinates in page text for ${vehiclePlate}: ${coordinates}`);
             }
           }
           
@@ -798,26 +799,26 @@ class InovatracksScraper {
                   location: ''
                 });
                 
-                console.log(`✅ Successfully processed ${vehiclePlate}`);
+                logger.debug(`✅ Successfully processed ${vehiclePlate}`);
               } else {
-                console.log(`⚠️ Invalid coordinates for ${vehiclePlate}: ${coordinates}`);
+                logger.debug(`⚠️ Invalid coordinates for ${vehiclePlate}: ${coordinates}`);
               }
             }
           } else {
-            console.log(`⚠️ No coordinates found for ${vehiclePlate}`);
+            logger.debug(`⚠️ No coordinates found for ${vehiclePlate}`);
           }
           
         } catch (error) {
-          console.error(`❌ Error processing vehicle ${i + 1}:`, error.message);
+          logger.error(`❌ Error processing vehicle ${i + 1}:`, error.message);
           continue;
         }
       }
       
-      console.log(`📊 Successfully scraped ${gpsData.length} GPS records from ${vehicleRows.length} vehicles`);
+      logger.info(`📊 Successfully scraped ${gpsData.length} GPS records from ${vehicleRows.length} vehicles`);
       return gpsData;
       
     } catch (error) {
-      console.error('❌ Failed to scrape GPS data:', error);
+      logger.error('❌ Failed to scrape GPS data:', error);
       throw error;
     }
   }
@@ -827,7 +828,7 @@ class InovatracksScraper {
    */
   async saveGPSData(gpsData) {
     try {
-      console.log('💾 Saving GPS data to database...');
+      logger.info('💾 Saving GPS data to database...');
       
       for (const data of gpsData) {
         // Find the driver/vehicle based on device ID
@@ -859,10 +860,10 @@ class InovatracksScraper {
             status: data.status
           });
           
-          console.log(`✅ Saved location for vehicle ${data.deviceName || data.deviceId} (ID: ${vehicle.id})`);
+          logger.debug(`✅ Saved location for vehicle ${data.deviceName || data.deviceId} (ID: ${vehicle.id})`);
         } else {
           // Save GPS data even without vehicle match for tracking purposes
-          console.log(`⚠️ Vehicle not found for device ID: ${data.deviceId}, saving GPS data anyway...`);
+          logger.debug(`⚠️ Vehicle not found for device ID: ${data.deviceId}, saving GPS data anyway...`);
           
           await DriverLocation.create({
             driver_id: null, // No driver match
@@ -875,14 +876,14 @@ class InovatracksScraper {
             status: data.status
           });
           
-          console.log(`✅ Saved GPS location for unmatched device: ${data.deviceName || data.deviceId}`);
+          logger.debug(`✅ Saved GPS location for unmatched device: ${data.deviceName || data.deviceId}`);
         }
       }
       
-      console.log(`💾 Successfully saved ${gpsData.length} GPS records to database`);
+      logger.info(`💾 Successfully saved ${gpsData.length} GPS records to database`);
       
     } catch (error) {
-      console.error('❌ Failed to save GPS data:', error);
+      logger.error('❌ Failed to save GPS data:', error);
       throw error;
     }
   }
@@ -905,7 +906,7 @@ class InovatracksScraper {
       const alphaNumMatch = deviceId.match(/^([A-Z0-9]+)/);
       return alphaNumMatch ? alphaNumMatch[1] : null;
     } catch (error) {
-      console.error('Error extracting plate number:', error);
+      logger.error('Error extracting plate number:', error);
       return null;
     }
   }
@@ -917,7 +918,7 @@ class InovatracksScraper {
     try {
       const { Vehicle } = require('../models');
       
-      console.log(`🚗 Attempting to create/update vehicle with plate: ${plateNumber} (device: ${deviceId})`);
+      logger.debug(`🚗 Attempting to create/update vehicle with plate: ${plateNumber} (device: ${deviceId})`);
       
       // Check if vehicle already exists with this plate number
       let vehicle = await Vehicle.findOne({
@@ -933,7 +934,7 @@ class InovatracksScraper {
         // Update existing vehicle with device_id if not set
         if (!vehicle.device_id) {
           await vehicle.update({ device_id: deviceId });
-          console.log(`✅ Updated existing vehicle ${vehicle.license_plate} with device ID: ${deviceId}`);
+          logger.debug(`✅ Updated existing vehicle ${vehicle.license_plate} with device ID: ${deviceId}`);
         }
         return vehicle;
       } else {
@@ -949,11 +950,11 @@ class InovatracksScraper {
           last_gps_update: new Date()
         });
         
-        console.log(`✅ Created new vehicle from GPS data: ${plateNumber} (ID: ${vehicle.id})`);
+        logger.debug(`✅ Created new vehicle from GPS data: ${plateNumber} (ID: ${vehicle.id})`);
         return vehicle;
       }
     } catch (error) {
-      console.error(`❌ Error creating/updating vehicle for plate ${plateNumber}:`, error);
+      logger.error(`❌ Error creating/updating vehicle for plate ${plateNumber}:`, error);
       return null;
     }
   }
@@ -991,7 +992,7 @@ class InovatracksScraper {
       
       return vehicle;
     } catch (error) {
-      console.error('Error finding vehicle:', error);
+      logger.error('Error finding vehicle:', error);
       return null;
     }
   }
@@ -1001,7 +1002,7 @@ class InovatracksScraper {
    */
   async runScrapingCycle(useConcurrent = true) {
     try {
-      console.log(`🔄 Starting scraping cycle... (${useConcurrent ? 'concurrent' : 'sequential'} mode)`);
+      logger.info(`🔄 Starting scraping cycle... (${useConcurrent ? 'concurrent' : 'sequential'} mode)`);
       
       // Ensure browser is initialized and active
       if (!this.browser) {
@@ -1017,28 +1018,28 @@ class InovatracksScraper {
         
       await this.saveGPSData(gpsData);
       
-      console.log('✅ Scraping cycle completed successfully');
+      logger.info('✅ Scraping cycle completed successfully');
       return gpsData;
       
     } catch (error) {
-      console.error('❌ Scraping cycle failed:', error.message);
+      logger.error('❌ Scraping cycle failed:', error.message);
       
       // If browser-related error, cleanup and retry once
       if (error.message.includes('browser') || error.message.includes('page') || error.message.includes('closed')) {
-        console.log('🔄 Browser-related error detected, attempting recovery and retry...');
+        logger.warn('🔄 Browser-related error detected, attempting recovery and retry...');
         try {
           await this.cleanup();
           await this.initialize();
           
           // Retry with sequential mode for stability
-          console.log('🔄 Retrying scraping in sequential mode...');
+          logger.warn('🔄 Retrying scraping in sequential mode...');
           const gpsData = await this.scrapeGPSData();
           await this.saveGPSData(gpsData);
-          console.log(`✅ Recovery successful with ${gpsData.length} records`);
+          logger.info(`✅ Recovery successful with ${gpsData.length} records`);
           return gpsData;
           
         } catch (retryError) {
-          console.error('❌ Recovery attempt failed:', retryError.message);
+          logger.error('❌ Recovery attempt failed:', retryError.message);
           throw retryError;
         }
       }
@@ -1052,13 +1053,13 @@ class InovatracksScraper {
    */
   async cleanup() {
     try {
-      console.log('🧹 Starting browser cleanup...');
+      logger.info('🧹 Starting browser cleanup...');
       
       if (this.page && !this.page.isClosed()) {
         try {
           await this.page.close();
         } catch (error) {
-          console.log('⚠️ Error closing page:', error.message);
+          logger.debug('⚠️ Error closing page:', error.message);
         }
       }
       
@@ -1066,7 +1067,7 @@ class InovatracksScraper {
         try {
           await this.context.close();
         } catch (error) {
-          console.log('⚠️ Error closing context:', error.message);
+          logger.debug('⚠️ Error closing context:', error.message);
         }
       }
       
@@ -1074,7 +1075,7 @@ class InovatracksScraper {
         try {
           await this.browser.close();
         } catch (error) {
-          console.log('⚠️ Error closing browser:', error.message);
+          logger.debug('⚠️ Error closing browser:', error.message);
         }
       }
       
@@ -1084,9 +1085,9 @@ class InovatracksScraper {
       this.browser = null;
       this.isLoggedIn = false;
       
-      console.log('🧹 Browser cleanup completed');
+      logger.info('🧹 Browser cleanup completed');
     } catch (error) {
-      console.error('❌ Error during cleanup:', error.message);
+      logger.error('❌ Error during cleanup:', error.message);
       // Force reset even if cleanup fails
       this.page = null;
       this.context = null;
@@ -1107,7 +1108,7 @@ class InovatracksScraper {
       
       return location;
     } catch (error) {
-      console.error('Error getting latest location:', error);
+      logger.error('Error getting latest location:', error);
       return null;
     }
   }

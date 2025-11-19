@@ -585,6 +585,12 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     await fetchCustomerLocations();
   }, [handleUpdateCustomerCoordinates, fetchCustomerLocations]);
 
+  const handleToggleSPBGLocations = useCallback(async (checked: boolean) => {
+    setShowSPBGLocations(checked);
+    if (!checked) return;
+    await fetchGasStations();
+  }, [fetchGasStations]);
+
   // Fetch delivery order data and create location markers
   const fetchDeliveryOrderLocations = useCallback(async () => {
     if (!deliveryOrderId) return;
@@ -861,11 +867,6 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showTrails, deliveryOrderId, vehicleId]); // Removed trailHours since it's now constant
 
-  // Effect for gas stations
-  useEffect(() => {
-    fetchGasStations();
-  }, [fetchGasStations]);
-
   // Effect for gas stations when SPBG toggle is enabled
   useEffect(() => {
     if (showSPBGLocations) {
@@ -998,7 +999,7 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
             <input
               type="checkbox"
               checked={showSPBGLocations}
-              onChange={(e) => setShowSPBGLocations(e.target.checked)}
+              onChange={(e) => handleToggleSPBGLocations(e.target.checked)}
               className="rounded"
             />
             <span>Show SPBG Locations</span>

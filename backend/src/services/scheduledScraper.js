@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const InovatracksScraper = require('./inovatracksScraper');
 const { DriverLocation } = require('../models');
+const logger = require('../utils/logger');
 
 class ScheduledScrapingService {
   constructor() {
@@ -24,7 +25,7 @@ class ScheduledScrapingService {
     const intervalMinutes = Math.max(1, parseInt(process.env.INOVATRACKS_SCRAPE_INTERVAL) / 60000 || 1);
     const cronExpression = `*/${intervalMinutes} * * * *`; // Every N minutes
 
-    console.log(`🚀 Starting GPS tracking service - scraping every ${intervalMinutes} minute(s)`);
+    logger.info(`Starting GPS tracking service - scraping every ${intervalMinutes} minute(s)`);
 
     // Schedule the scraping task
     this.cronJob = cron.schedule(cronExpression, async () => {
@@ -40,8 +41,8 @@ class ScheduledScrapingService {
     // Calculate next run time
     this.updateNextRunTime(intervalMinutes);
 
-    console.log('✅ GPS tracking service started successfully');
-    console.log(`📅 Next scraping scheduled for: ${this.nextRunTime}`);
+    logger.info('GPS tracking service started successfully');
+    logger.info(`Next scraping scheduled for: ${this.nextRunTime}`);
 
     // Run initial scraping after a short delay
     setTimeout(() => {
@@ -61,7 +62,7 @@ class ScheduledScrapingService {
     }
 
     this.isRunning = false;
-    console.log('🛑 GPS tracking service stopped');
+    logger.warn('GPS tracking service stopped');
 
     return true;
   }
@@ -71,7 +72,7 @@ class ScheduledScrapingService {
    */
   async runScrapingTask() {
     if (this.isScrapingInProgress) {
-      console.log('⏳ Previous scraping still in progress, skipping...');
+      logger.warn('Previous scraping still in progress, skipping this run');
       return;
     }
 
@@ -84,19 +85,18 @@ class ScheduledScrapingService {
       const enableConcurrent = process.env.ENABLE_CONCURRENT_SCRAPING === 'true';
       const maxTabs = parseInt(process.env.MAX_CONCURRENT_TABS) || 3;
       
-      console.log(`🔄 Starting scheduled GPS scraping cycle #${this.stats.totalRuns}`);
-      console.log(`🚀 Using ${enableConcurrent ? `concurrent mode (${maxTabs} tabs)` : 'sequential mode'}`);
+      logger.info(`Starting scheduled GPS scraping cycle #${this.stats.totalRuns}`);
+      logger.info(`Mode: ${enableConcurrent ? `concurrent (${maxTabs} tabs)` : 'sequential'}`);
       
       const gpsData = await this.scraper.runScrapingCycle(enableConcurrent);
       
       this.stats.successfulRuns++;
       this.stats.lastError = null;
 
-      console.log(`✅ Scraping cycle #${this.stats.totalRuns} completed successfully`);
-      console.log(`📊 Scraped ${gpsData.length} GPS records`);
+      logger.info(`Scraping cycle #${this.stats.totalRuns} completed successfully with ${gpsData.length} GPS records`);
       
       if (enableConcurrent) {
-        console.log(`🚀 Performance: Concurrent processing with ${maxTabs} tabs completed`);
+        logger.debug(`Concurrent processing with ${maxTabs} tabs completed`);
       }
 
       // Update next run time
@@ -111,19 +111,19 @@ class ScheduledScrapingService {
         stack: error.stack
       };
 
-      console.error(`❌ Scraping cycle #${this.stats.totalRuns} failed:`, error.message);
+      logger.error(`Scraping cycle #${this.stats.totalRuns} failed: ${error.message}`);
       
       // Clean up browser resources if error occurred
       try {
-        console.log('🧹 Performing cleanup after scraping failure...');
+        logger.warn('Performing cleanup after scraping failure...');
         await this.scraper.cleanup();
       } catch (cleanupError) {
-        console.error('❌ Error during cleanup:', cleanupError.message);
+        logger.error(`Error during cleanup: ${cleanupError.message}`);
       }
 
       // If we've had multiple consecutive failures, increase delay before next attempt
       if (this.stats.failedRuns >= 3 && this.stats.successfulRuns === 0) {
-        console.log('⚠️ Multiple consecutive failures detected, extending next run delay...');
+        logger.warn('Multiple consecutive failures detected, extending next run delay...');
         const intervalMinutes = Math.max(5, parseInt(process.env.INOVATRACKS_SCRAPE_INTERVAL) / 60000 || 1);
         this.updateNextRunTime(intervalMinutes * 2); // Double the delay
       }
@@ -163,7 +163,7 @@ class ScheduledScrapingService {
    * Manual trigger (for testing or immediate scraping)
    */
   async triggerManual() {
-    console.log('🔧 Manual GPS scraping triggered');
+    logger.info('Manual GPS scraping triggered');
     return await this.runScrapingTask();
   }
 
@@ -174,15 +174,15 @@ class ScheduledScrapingService {
     // Run cleanup every Sunday at 2 AM
     this.cleanupJob = cron.schedule('0 2 * * 0', async () => {
       try {
-        console.log('🧹 Starting weekly cleanup of old GPS data...');
+        logger.info('Starting weekly cleanup of old GPS data...');
         const deletedCount = await DriverLocation.cleanup();
-        console.log(`✅ Cleanup completed - removed ${deletedCount} old records`);
+        logger.info(`Cleanup completed - removed ${deletedCount} old records`);
       } catch (error) {
-        console.error('❌ Cleanup failed:', error);
+        logger.error('Cleanup failed:', error);
       }
     });
 
-    console.log('📅 Weekly cleanup scheduled for Sundays at 2:00 AM');
+    logger.info('Weekly cleanup scheduled for Sundays at 2:00 AM');
   }
 
   /**
@@ -217,7 +217,7 @@ class ScheduledScrapingService {
       };
 
     } catch (error) {
-      console.error('Error getting location stats:', error);
+      logger.error('Error getting location stats:', error);
       return null;
     }
   }
