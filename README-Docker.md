@@ -22,7 +22,7 @@ This project now includes Docker Compose configuration for easy development and 
 
 2. **Access the services:**
    - Backend API: http://localhost:3000
-   - PostgreSQL: localhost:5435
+   - PostgreSQL: localhost:5432
 
 3. **Login credentials (automatically created):**
    - Username: `admin`
@@ -70,7 +70,7 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 ### PostgreSQL Database
 - **Image:** postgres:17.5
-- **Port:** 5435 (mapped from container port 5432)
+- **Port:** 5432 (mapped from container port 5432)
 - **Database:** angkutan_db
 - **User:** postgres
 - **Password:** getsuga39
@@ -146,7 +146,7 @@ docker-compose exec backend npm run migrate:status
 ### Common Issues
 
 1. **Port conflicts:**
-   - If port 3000 or 5435 is already in use, modify the ports in `docker-compose.yml`
+   - If port 3000 or 5432 is already in use, modify the ports in `docker-compose.yml`
 
 2. **Database connection issues:**
    - Wait for PostgreSQL to fully start (check health status)

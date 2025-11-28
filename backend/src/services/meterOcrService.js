@@ -41,49 +41,64 @@ class MeterOcrService {
     }
   }
 
+
   /**
-   * Process meter reading from screenshot
-   * @param {string} imageUrl - URL of the screenshot
+   * Process meter reading from screenshot WITH meter_type
+   * @param {string} imageUrl - URL of the screenshot  
+   * @param {string} meterType - REQUIRED meter type
    * @returns {Promise<Object>} Extracted meter data
    */
-  async processMeterReading(imageUrl) {
+  async processMeterReading(imageUrl, meterType) {
     try {
-      // Ensure latest key is used if env changed (no restart needed)
       this.refreshFromEnvIfChanged();
+      
+      // ✅ Use meterType (camelCase) consistently
+      if (!meterType) {
+        throw new Error('meter_type is REQUIRED (temperature, pressure, stan_awal, stan_akhir, other)');
+      }
 
-      console.log(`🔍 Processing meter OCR for image: ${imageUrl}`);
+      console.log(`🔍 Processing ${meterType} meter OCR: ${imageUrl}`);
 
-      // Check if configured
       if (!this.isConfigured) {
-        throw new Error('OpenAI API key not configured. Skipping OCR processing.');
+        throw new Error('OpenAI API key not configured');
       }
 
-      // Call OpenAI Vision API
-      const ocrResponse = await this.callOcrApi(imageUrl);
+      // ✅ CALL WITH meterType (camelCase)
+      const ocrResponse = await this.callOcrApi(imageUrl, meterType);
 
-      // OpenAI already returns parsed data, but we still validate it
-      let parsedData;
-      if (ocrResponse.raw && typeof ocrResponse.raw === 'object') {
-        // OpenAI returned pre-parsed data
-        parsedData = {
-          meter_reading: ocrResponse.raw.meter_reading,
-          pressure: ocrResponse.raw.pressure,
-          temperature: ocrResponse.raw.temperature,
-          flow_rate: ocrResponse.raw.flow_rate,
-          unit: ocrResponse.raw.unit || 'm³',
-          timestamp_on_meter: ocrResponse.raw.timestamp_on_meter,
-          raw_text: ocrResponse.raw.raw_text || ocrResponse.text,
-        };
-      } else {
-        // Fallback: parse from text
-        parsedData = this.parseMeterData(ocrResponse.text);
+      // ✅ meterType SPECIFIC parsing - use camelCase consistently
+      let parsedData = {
+        meter_reading: null,
+        pressure: null,
+        temperature: null,
+        flow_rate: null,
+        unit: 'm³',
+        timestamp_on_meter: null,
+        raw_text: ocrResponse.text,
+        meter_type: meterType  // ✅ Save for reference - use camelCase parameter
+      };
+
+      // Extract based on meterType
+      switch (meterType) {
+        case 'temperature':
+          parsedData.temperature = ocrResponse.number;
+          break;
+        case 'pressure_inlet':
+        case 'pressure_outlet':
+          parsedData.pressure = ocrResponse.number;  // Both pressure types → same field
+          parsedData[meterType] = ocrResponse.number;  // Store separately too
+          break;
+        case 'stan':
+          parsedData.meter_reading = ocrResponse.number;
+          parsedData.stan = ocrResponse.number;  // ✅ Continuous STAN
+          break;
       }
 
-      // Validate extracted data
-      parsedData = this.validateMeterData(parsedData);
+      // Validate - make sure validateMeterData uses meterType parameter
+      parsedData = this.validateMeterData(parsedData, meterType);
 
-      // Calculate confidence score
-      const confidenceScore = this.calculateConfidence(parsedData, ocrResponse);
+      // Confidence (higher for specialized prompts)
+      const confidenceScore = ocrResponse.number ? 0.95 : 0.65;
 
       return {
         success: true,
@@ -92,7 +107,7 @@ class MeterOcrService {
         confidence_score: confidenceScore,
       };
     } catch (error) {
-      console.error('Meter OCR processing error:', error);
+      console.error(`Meter OCR ${meterType} error:`, error);
       return {
         success: false,
         error: error.message,
@@ -104,23 +119,80 @@ class MeterOcrService {
   }
 
   /**
-   * Call OCR API to extract text from image
+   * Call OCR API with meter_type-specific prompts
    * @param {string} imageUrl - URL of the image
+   * @param {string} meterType - Type of meter ('temperature', 'pressure', 'stan_awal', 'stan_akhir', 'other')
    * @returns {Promise<Object>} OCR response
    */
-  async callOcrApi(imageUrl) {
+  async callOcrApi(imageUrl, meterType = 'other') {
     try {
-      // Ensure client uses the latest key
       this.refreshFromEnvIfChanged();
+      if (!this.isConfigured) throw new Error('OpenAI API key missing');
 
-      // Check if OpenAI API is configured
-      if (!this.isConfigured) {
-        throw new Error('OpenAI API key not configured. Set OPENAI_API_KEY in environment variables.');
-      }
+      console.log(`🤖 OCR for ${meterType.toUpperCase()} meter: ${imageUrl}`);
 
-      console.log('🤖 Using OpenAI Vision API for meter OCR...');
+      // ✅ METER-TYPE SPECIFIC PROMPTS
+      const prompts = {
+        temperature: `You are reading a THERMOMETER (CELSIUS).
 
-      // Use OpenAI Vision API to analyze the meter image
+      FOCUS ONLY on the BLACK CELSIUS SCALE (below the circle).
+
+      RULES:
+      1. Each SMALL TICK = 2°C
+      2. Find BIG NUMBER BELOW needle (10, 20, 30, etc.)
+      3. COUNT small ticks AFTER big number to needle
+      4. INCLUDE hidden tick behind needle
+      5. Formula: value = base + (ticks × 2)
+
+      EXAMPLE: Needle at 25.4°C → "25.4"
+
+      REPLY ONLY WITH NUMBER (e.g., "28.6")`,
+
+        pressure_inlet: `You are reading PRESSURE INLET GAUGE (BAR).
+
+      FOCUS ONLY on INLET PRESSURE gauge (usually LEFT or labeled "INLET").
+
+      RULES:
+      1. Each SMALL TICK = 0.1 bar
+      2. Find BIG NUMBER BELOW needle (200, 210, 220, etc.)
+      3. COUNT small ticks AFTER big number to needle
+      4. INCLUDE hidden tick behind needle
+      5. Formula: value = base + (ticks × 0.1)
+
+      EXAMPLE: Needle at 215.3 bar → "215.3"
+
+      REPLY ONLY WITH NUMBER (e.g., "215.3")`,
+
+        pressure_outlet: `You are reading PRESSURE OUTLET GAUGE (BAR).
+
+      FOCUS ONLY on OUTLET PRESSURE gauge (usually RIGHT or labeled "OUTLET").
+
+      RULES:
+      1. Each SMALL TICK = 0.1 bar
+      2. Find BIG NUMBER BELOW needle (200, 210, 220, etc.)
+      3. COUNT small ticks AFTER big number to needle
+      4. INCLUDE hidden tick behind needle
+      5. Formula: value = base + (ticks × 0.1)
+
+      EXAMPLE: Needle at 205.8 bar → "205.8"
+
+      REPLY ONLY WITH NUMBER (e.g., "205.8")`,
+
+        stan: `You are reading CONTINUOUS GAS METER (STAN).
+
+      FOCUS on DIGITAL DISPLAY showing TOTAL VOLUME in m³.
+
+      1. Look for largest number with m³ unit
+      2. Usually 4-6 digits with decimals (e.g., 12345.678)
+      3. This is CONTINUOUS reading (increases over time)
+
+      EXAMPLE: 12345.678 m³ → "12345.678"
+
+      REPLY ONLY WITH NUMBER (e.g., "12345.678")`
+      };
+
+      const prompt = prompts[meterType] || prompts.other;
+      
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o',
         messages: [
@@ -129,79 +201,48 @@ class MeterOcrService {
             content: [
               {
                 type: 'text',
-                text: `Analyze this CNG gas meter display image and extract the following information if visible:
-
-1. Meter Reading (volume in m³ or cubic meters)
-2. Pressure (in bar or psi)
-3. Temperature (in °C or °F)
-4. Flow Rate (in m³/h)
-5. Any timestamp visible on the meter display
-
-IMPORTANT: Only extract values that are CLEARLY VISIBLE in the image. If a value is not visible or unclear, return null for that field.
-
-Return the data in JSON format:
-{
-  "meter_reading": number or null,
-  "pressure": number or null,
-  "temperature": number or null,
-  "flow_rate": number or null,
-  "unit": "m³" or detected unit,
-  "timestamp_on_meter": "string or null",
-  "raw_text": "all text visible on the meter"
-}
-
-If this is NOT a gas meter display (e.g., it's a login page, error page, or unrelated image), return:
-{
-  "meter_reading": null,
-  "pressure": null,
-  "temperature": null,
-  "flow_rate": null,
-  "unit": null,
-  "timestamp_on_meter": null,
-  "raw_text": "NOT A METER - describe what you see"
-}`
+                text: prompt
               },
               {
                 type: 'image_url',
                 image_url: {
                   url: imageUrl,
-                  detail: 'high' // High detail for better OCR
+                  detail: 'high'
                 }
               }
             ]
           }
         ],
-        max_tokens: 500,
-        temperature: 0.1 // Low temperature for consistent extraction
+        max_tokens: 20,        // ✅ SHORT - just a number!
+        temperature: 0.1       // ✅ CONSISTENT
       });
 
-      // Parse the response
-      let responseContent = response.choices[0].message.content;
-      
-      // Remove markdown code blocks if present
-      if (responseContent.includes('```json')) {
-        responseContent = responseContent.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      } else if (responseContent.includes('```')) {
-        responseContent = responseContent.replace(/```\n?/g, '');
+      const content = response.choices[0].message.content.trim();
+      console.log(`✅ ${meterType} OCR → "${content}"`);
+
+      // ✅ PARSE AS NUMBER (since prompts return just numbers)
+      let extractedNumber = null;
+      try {
+        extractedNumber = parseFloat(content);
+        if (isNaN(extractedNumber)) extractedNumber = null;
+      } catch (e) {
+        extractedNumber = null;
       }
-      
-      // Clean up whitespace
-      responseContent = responseContent.trim();
-      
-      const extractedData = JSON.parse(responseContent);
-      
-      console.log('✅ OpenAI Vision API OCR completed');
-      console.log(`   Raw text: ${extractedData.raw_text?.substring(0, 100)}...`);
 
       return {
-        text: extractedData.raw_text || '',
-        confidence: 0.9, // OpenAI is generally high confidence
-        raw: extractedData,
+        text: content,
+        confidence: extractedNumber ? 0.95 : 0.6,
+        raw: {
+          meter_type: meterType,
+          extracted_number: extractedNumber,
+          raw_text: content
+        },
+        number: extractedNumber  // ✅ EASY ACCESS
       };
 
     } catch (error) {
-      console.error('OpenAI Vision OCR failed:', error.message);
-      throw new Error(`OpenAI Vision OCR error: ${error.message}`);
+      console.error(`OCR failed for ${meterType}:`, error.message);
+      throw new Error(`OCR ${meterType}: ${error.message}`);
     }
   }
 
@@ -493,4 +534,3 @@ If this is NOT a gas meter display (e.g., it's a login page, error page, or unre
 }
 
 module.exports = new MeterOcrService();
-

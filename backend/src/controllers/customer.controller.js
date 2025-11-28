@@ -590,6 +590,7 @@ const getCustomerSummary = async (req, res) => {
 };
 
 // GET /api/customers/:id/nota-besars - Get all nota besars for a customer
+// GET /api/customers/:id/nota-besars - UPDATED FOR NEW SCHEMA
 const getCustomerNotaBesars = async (req, res) => {
   try {
     const { id } = req.params;
@@ -624,7 +625,22 @@ const getCustomerNotaBesars = async (req, res) => {
             {
               model: NotaKecil,
               as: 'notaKecil',
-              attributes: ['id', 'customer_name', 'customer_location_index', 'stan_awal', 'stan_akhir', 'tekanan_operasi', 'temperatur_operasi', 'Vt', 'k', 'V']
+              attributes: [
+                'id', 
+                'customer_name', 
+                'customer_location_index', 
+                'stan_awal', 
+                'current_stan', 
+                'stan_akhir', 
+                'pressure_inlet', 
+                'pressure_outlet', 
+                'temperature',
+                'Vt', 
+                'k', 
+                'V',
+                'ocr_confidence_avg',
+                'created_at'
+              ]
             }
           ]
         }
@@ -703,9 +719,30 @@ const getCustomerNotaKecils = async (req, res) => {
           model: NotaKecil,
           as: 'notaKecil',
           attributes: [
-            'id', 'customer_name', 'customer_address', 'customer_location_index',
-            'stan_awal', 'stan_akhir', 'tekanan_operasi', 'temperatur_operasi',
-            'Vt', 'k', 'V', 'created_at'
+            'id', 
+            'customer_name', 
+            'customer_address', 
+            'customer_location_index',
+            // ✅ NEW SCHEMA FIELDS
+            'stan_awal', 
+            'current_stan', 
+            'stan_akhir', 
+            'pressure_inlet', 
+            'pressure_outlet', 
+            'temperature',
+            // Backward compatibility (still works)
+            'tekanan_operasi',
+            'temperatur_operasi',
+            'Vt', 
+            'k', 
+            'V', 
+            'volume_delta',
+            'ocr_confidence_avg',
+            'ocr_processing_status',
+            'cctv_session_id',
+            'screenshots_count',
+            'ocr_success_count',
+            'created_at'
           ]
         }
       ],
@@ -734,7 +771,13 @@ const getCustomerNotaKecils = async (req, res) => {
         id: item.id,
         volume_m3: item.volume_m3,
         price: item.price,
-        notaKecil: item.notaKecil
+        notaKecil: {
+          ...item.notaKecil.dataValues,
+          // ✅ PRIORITIZE NEW FIELDS, fallback to old ones
+          pressure: item.notaKecil.pressure_inlet || item.notaKecil.tekanan_operasi || null,
+          temperature: item.notaKecil.temperature || item.notaKecil.temperatur_operasi || null,
+          stan_final: item.notaKecil.current_stan || item.notaKecil.stan_akhir || null
+        }
       });
       return acc;
     }, {});

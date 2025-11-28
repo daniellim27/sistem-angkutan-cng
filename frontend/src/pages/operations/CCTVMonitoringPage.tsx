@@ -1,5 +1,6 @@
 // src/pages/operations/CCTVMonitoringPage.tsx
 import React, { useState, useEffect, useCallback } from 'react';
+import { X } from 'lucide-react';
 import apiClient from '../../api/axiosConfig';
 import toast from 'react-hot-toast';
 import { 
@@ -20,6 +21,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  AlertCircle,
+  Save,
   MoreHorizontal
 } from 'lucide-react';
 
@@ -98,7 +101,7 @@ interface CreateSessionForm {
   panel_row: number;
   panel_column: number;
   customer_location_index: number;
-  meter_type: 'temperature' | 'pressure' | 'stan_awal' | 'stan_akhir' | 'other';
+  meter_type: 'stan' | 'pressure_inlet' | 'pressure_outlet' | 'temperature';  // NEW: 4 specific types
 }
 
 // Session mockup data removed per requirement.
@@ -168,12 +171,16 @@ const CCTVMonitoringPage: React.FC = () => {
   const [creatingSession, setCreatingSession] = useState(false);
   // Manual OCR modal state
   const [manualOcrTarget, setManualOcrTarget] = useState<CCTVScreenshot | null>(null);
-  const [manualForm, setManualForm] = useState<{meter_reading: string; pressure: string; temperature: string; flow_rate: string; unit: string}>({
-    meter_reading: '',
-    pressure: '',
+  const [manualForm, setManualForm] = useState<{
+    pressure_inlet: string;
+    pressure_outlet: string;
+    stan: string;
+    temperature: string;
+  }>({
+    pressure_inlet: '',
+    pressure_outlet: '',
+    stan: '',
     temperature: '',
-    flow_rate: '',
-    unit: 'm³',
   });
   // Screenshot actions menu state
   const [screenshotMenuOpenId, setScreenshotMenuOpenId] = useState<number | null>(null);
@@ -192,7 +199,7 @@ const CCTVMonitoringPage: React.FC = () => {
     panel_row: 1,
     panel_column: 1,
     customer_location_index: 0,
-    meter_type: 'stan_awal',
+    meter_type: 'stan',  // Default to stan
   });
 
   // Dropdowns - fetch real data
@@ -207,6 +214,70 @@ const CCTVMonitoringPage: React.FC = () => {
   const [totalSessions, setTotalSessions] = useState(0);
   const [actionMenuOpenId, setActionMenuOpenId] = useState<number | null>(null);
   const [actionMenuPosition, setActionMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [updatingToken, setUpdatingToken] = useState(false);
+  const [capturingSessionId, setCapturingSessionId] = useState<number | null>(null);
+
+  const handleManualCapture = async (sessionId: number) => {
+    setCapturingSessionId(sessionId);
+
+    try {
+      const response = await apiClient.post(
+        `/cctv-monitoring/sessions/${sessionId}/capture`,
+        { process_ocr: true }   // this is exactly what your backend expects
+      );
+
+      toast.success('Test snapshot captured! Check gallery in 10 seconds');
+    } catch (err: any) {
+      const message = err.response?.data?.message || err.message || 'Capture failed';
+      toast.error(`Test failed: ${message}`);
+    } finally {
+      // Clear spinner after a few seconds
+      setTimeout(() => setCapturingSessionId(null), 3000);
+    }
+  };
+
+  const [simpleToken, setSimpleToken] = useState({
+    s_sid: '',
+    s_sid_sig: '',
+    error: '',
+  });
+
+  const handleSimpleTokenUpdate = async () => {
+    if (!simpleToken.s_sid.startsWith('s:')) {
+      setSimpleToken({ ...simpleToken, error: 's-sid must start with "s:"' });
+      return;
+    }
+
+    setUpdatingToken(true);
+    setSimpleToken({ ...simpleToken, error: '' });
+
+    try {
+      const response = await apiClient.put('/cctv-monitoring/bardi-token', {
+        session_token: {
+          's-sid': simpleToken.s_sid,
+          's-sid.sig': simpleToken.s_sid_sig,
+        },
+      });
+
+      toast.success('BARDI token updated! Sessions resuming...');
+      setShowTokenModal(false);
+      // Refresh sessions list
+      fetchSessions();
+    } catch (err: any) {
+      setSimpleToken({
+        ...simpleToken,
+        error: err.response?.data?.message || 'Failed to update token',
+      });
+    } finally {
+      setUpdatingToken(false);
+    }
+  };
+
+  const [tokenForm, setTokenForm] = useState({
+    sessionJson: '',
+    testConnection: true,
+    error: '',
+  });
 
   // Fetch all sessions
   const fetchSessions = useCallback(async () => {
@@ -232,25 +303,91 @@ const CCTVMonitoringPage: React.FC = () => {
         setMockDataNoticeShown(false);
       }
 
-      // Use real API with pagination
+      setLoading(true);
+      
       const response = await apiClient.get('/cctv-monitoring/sessions', {
         params: {
           limit: sessionsPerPage,
           offset: (currentPage - 1) * sessionsPerPage
         }
       });
-      setSessions(response.data.data || []);
-      setHealthStats(response.data.stats || {});
-      setTotalSessions(response.data.pagination?.total || response.data.data?.length || 0);
-    } catch (error: any) {
-      console.error('Error fetching sessions:', error);
-      if (!loading) { // Don't show toast on initial load
-        toast.error('Failed to fetch monitoring sessions');
+
+      console.log('🔍 RAW API RESPONSE:', JSON.stringify(response.data, null, 2));
+
+      let sessionsData: CCTVSession[] = [];
+      let statsData: HealthStats = {
+        total_sessions: 0,
+        active_sessions: 0,
+        healthy_sessions: 0,
+        dead_sessions: 0,
+        total_screenshots_today: 0,
+      };
+      let totalCount = 0;
+
+      // 🎯 YOUR EXACT FORMAT FIRST!
+      if (response.data?.rows && Array.isArray(response.data.rows)) {
+        console.log('✅ DETECTED YOUR FORMAT: { success, count, rows }');
+        sessionsData = response.data.rows;
+        statsData = calculateHealthStats(sessionsData);
+        totalCount = response.data.count || sessionsData.length;
+      } 
+      else if (response.data?.data && Array.isArray(response.data.data)) {
+        sessionsData = response.data.data;
+        statsData = response.data.stats || calculateHealthStats(sessionsData);
+        totalCount = response.data.pagination?.total || response.data.total || sessionsData.length;
+      } 
+      else if (Array.isArray(response.data)) {
+        sessionsData = response.data;
+        statsData = calculateHealthStats(sessionsData);
+        totalCount = response.data.length;
+      } 
+      else if (response.data?.sessions && Array.isArray(response.data.sessions)) {
+        sessionsData = response.data.sessions;
+        statsData = response.data.stats || calculateHealthStats(sessionsData);
+        totalCount = response.data.pagination?.total || response.data.total || sessionsData.length;
+      } 
+      else if (response.data && Array.isArray(response.data.results)) {
+        sessionsData = response.data.results;
+        statsData = calculateHealthStats(sessionsData);
+        totalCount = response.data.count || sessionsData.length;
       }
+      else {
+        console.warn('⚠️ Unexpected response format:', response.data);
+        sessionsData = [];
+        totalCount = 0;
+      }
+
+      console.log('✅ PARSED SESSIONS COUNT:', sessionsData.length);
+      console.log('✅ TOTAL COUNT:', totalCount);
+
+      // ✅ BATCH ALL SETSTATE CALLS TOGETHER
+      setSessions(sessionsData);
+      setHealthStats(statsData);
+      setTotalSessions(totalCount);
+
+      if (sessionsData.length > 0) {
+        toast.success(`✅ Loaded ${sessionsData.length} session${sessionsData.length > 1 ? 's' : ''}!`, {
+          duration: 2000
+        });
+      }
+
+    } catch (error: any) {
+      console.error('❌ Error fetching sessions:', error);
+      setSessions([]);
+      setHealthStats({
+        total_sessions: 0,
+        active_sessions: 0,
+        healthy_sessions: 0,
+        dead_sessions: 0,
+        total_screenshots_today: 0,
+      });
+      setTotalSessions(0);
+      
+      toast.error(`Failed to fetch sessions: ${error.response?.data?.message || error.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
-  }, [loading, useRealData, currentPage, sessionsPerPage]);
+  }, [useRealData, currentPage, sessionsPerPage, mockDataNoticeShown]); // ✅ NO LOADING HERE!
 
   // Calculate health statistics
   const calculateHealthStats = (sessionsList: CCTVSession[]): HealthStats => {
@@ -461,10 +598,11 @@ const CCTVMonitoringPage: React.FC = () => {
           delivery_order_id: createForm.delivery_order_id,
           customer_name: createForm.customer_name,
           customer_location_index: createForm.customer_location_index,
-          device_id: createForm.device_id,
+          device_id: createForm.device_id || null,
           panel_row: createForm.panel_row,
           panel_column: createForm.panel_column,
-          meter_type: createForm.meter_type,
+          meter_type: createForm.meter_type,  // KEEP THIS - tells OCR which field to extract
+          // Backend will now extract ONLY the selected field from the 4 available readings
         };
         
         console.log('🔍 DEBUG - Request body being sent:', requestBody);
@@ -482,7 +620,7 @@ const CCTVMonitoringPage: React.FC = () => {
           panel_row: 1,
           panel_column: 1,
           customer_location_index: 0,
-          meter_type: 'stan_awal',
+          meter_type: 'stan',
         });
         
         // Refresh sessions list
@@ -533,7 +671,7 @@ const CCTVMonitoringPage: React.FC = () => {
           panel_row: 1,
           panel_column: 1,
           customer_location_index: 0,
-          meter_type: 'stan_awal',
+          meter_type: 'stan',
         });
       }
     } catch (error: any) {
@@ -1114,17 +1252,17 @@ const CCTVMonitoringPage: React.FC = () => {
                         {session.delivery_order?.do_number || 'N/A'}
                       </td>
                       <td className="px-4 py-3">
-                        {session.meter_type ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            {session.meter_type === 'stan_awal' ? 'Stan Awal' :
-                             session.meter_type === 'stan_akhir' ? 'Stan Akhir' :
-                             session.meter_type === 'pressure' ? 'Pressure' :
-                             session.meter_type === 'temperature' ? 'Temperature' :
-                             'Other'}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-gray-400">N/A</span>
-                        )}
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium">
+                          {createForm.meter_type === 'stan' ? (
+                            <span className="bg-blue-100 text-blue-800">📏 Stan</span>
+                          ) : createForm.meter_type === 'pressure_inlet' ? (
+                            <span className="bg-red-100 text-red-800">🔧 P.Inlet</span>
+                          ) : createForm.meter_type === 'pressure_outlet' ? (
+                            <span className="bg-orange-100 text-orange-800">🔧 P.Outlet</span>
+                          ) : (
+                            <span className="bg-green-100 text-green-800">🌡️ Temp</span>
+                          )}
+                        </span>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(session.status)}`}>
@@ -1250,98 +1388,135 @@ const CCTVMonitoringPage: React.FC = () => {
     </div>
 
     {actionMenuOpenId && actionMenuPosition && activeActionMenuSession && (
-      <div
-        className="session-actions-dropdown fixed z-50 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5"
-        style={{ top: actionMenuPosition.top, left: actionMenuPosition.left }}
-      >
-        <div className="py-1">
+    <div
+      className="session-actions-dropdown fixed z-50 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5"
+      style={{ top: actionMenuPosition.top, left: actionMenuPosition.left }}
+    >
+      <div className="py-1">
+
+        {/* View Details */}
+        <button
+          onClick={() => {
+            closeActionMenu();
+            viewSessionDetails(activeActionMenuSession);
+          }}
+          className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+        >
+          <Eye className="w-4 h-4 text-blue-500" />
+          View Details
+        </button>
+
+        {/* Manual Snapshot (your existing one) */}
+        {activeActionMenuSession.status === 'active' && !autoSnapshot && useRealData && (
           <button
             onClick={() => {
               closeActionMenu();
-              viewSessionDetails(activeActionMenuSession);
+              handleManualSnapshot(activeActionMenuSession.id);
             }}
             className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
           >
-            <Eye className="w-4 h-4 text-blue-500" />
-            View Details
+            <Camera className="w-4 h-4 text-green-500" />
+            Manual Snapshot
           </button>
+        )}
 
-          {activeActionMenuSession.status === 'active' && !autoSnapshot && useRealData && (
-            <button
-              onClick={() => {
-                closeActionMenu();
-                handleManualSnapshot(activeActionMenuSession.id);
-              }}
-              className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-            >
-              <Camera className="w-4 h-4 text-green-500" />
-              Manual Snapshot
-            </button>
-          )}
-
-          {activeActionMenuSession.status === 'active' && (
-            <button
-              onClick={() => {
-                closeActionMenu();
-                handleStopSession(activeActionMenuSession.id);
-              }}
-              className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-            >
-              <StopCircle className="w-4 h-4 text-red-500" />
-              Stop Session
-            </button>
-          )}
-
-          {['stopped', 'dead'].includes(activeActionMenuSession.status) && (
-            <button
-              onClick={() => {
-                closeActionMenu();
-                handleResumeSession(activeActionMenuSession.id);
-              }}
-              className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-            >
-              <PlayCircle className="w-4 h-4 text-green-500" />
-              Resume Session
-            </button>
-          )}
-
-          {activeActionMenuSession.status !== 'completed' && (
-            <button
-              onClick={() => {
-                closeActionMenu();
-                handleCompleteSession(activeActionMenuSession.id);
-              }}
-              className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-            >
-              <CheckCircle className="w-4 h-4 text-blue-500" />
-              Mark Completed
-            </button>
-          )}
-
+        {/* TEST SNAPSHOT NOW — THIS ONE IS FOR TOKEN TESTING */}
+        {activeActionMenuSession.status === 'active' && (
           <button
             onClick={() => {
               closeActionMenu();
-              handleRecalibrateNotaKecil(activeActionMenuSession.id);
+              handleManualCapture(activeActionMenuSession.id);
             }}
-            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-t border-gray-200"
+            disabled={capturingSessionId === activeActionMenuSession.id}
+            className={`w-full px-4 py-2 text-sm font-medium flex items-center gap-2 transition-all
+              ${capturingSessionId === activeActionMenuSession.id
+                ? 'bg-gray-400 text-white cursor-not-allowed'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              }`}
           >
-            <RefreshCw className="w-4 h-4 text-orange-500" />
-            Recalibrate Nota Kecil
+            {capturingSessionId === activeActionMenuSession.id ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Testing Token...
+              </>
+            ) : (
+              <>
+                <Camera className="w-4 h-4" />
+                Test Snapshot Now
+              </>
+            )}
           </button>
+        )}
 
+        {/* Stop Session */}
+        {activeActionMenuSession.status === 'active' && (
           <button
             onClick={() => {
               closeActionMenu();
-              handleDeleteSession(activeActionMenuSession.id);
+              handleStopSession(activeActionMenuSession.id);
             }}
-            className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
           >
-            <Trash2 className="w-4 h-4" />
-            Delete Session
+            <StopCircle className="w-4 h-4 text-red-500" />
+            Stop Session
           </button>
-        </div>
+        )}
+
+        {/* Resume Session */}
+        {['stopped', 'dead'].includes(activeActionMenuSession.status) && (
+          <button
+            onClick={() => {
+              closeActionMenu();
+              handleResumeSession(activeActionMenuSession.id);
+            }}
+            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+          >
+            <PlayCircle className="w-4 h-4 text-green-500" />
+            Resume Session
+          </button>
+        )}
+
+        {/* Mark Completed */}
+        {activeActionMenuSession.status !== 'completed' && (
+          <button
+            onClick={() => {
+              closeActionMenu();
+              handleCompleteSession(activeActionMenuSession.id);
+            }}
+            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+          >
+            <CheckCircle className="w-4 h-4 text-blue-500" />
+            Mark Completed
+          </button>
+        )}
+
+        {/* Recalibrate Nota Kecil */}
+        <button
+          onClick={() => {
+            closeActionMenu();
+            handleRecalibrateNotaKecil(activeActionMenuSession.id);
+          }}
+          className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-t border-gray-200"
+        >
+          <RefreshCw className="w-4 h-4 text-orange-500" />
+          Recalibrate Nota Kecil
+        </button>
+
+        {/* Delete Session */}
+        <button
+          onClick={() => {
+            closeActionMenu();
+            handleDeleteSession(activeActionMenuSession.id);
+          }}
+          className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+        >
+          <Trash2 className="w-4 h-4" />
+          Delete Session
+        </button>
+
       </div>
-    )}
+    </div>
+  )}
 
     {/* Session Details Modal */}
       {showSessionModal && selectedSession && (
@@ -1477,34 +1652,13 @@ const CCTVMonitoringPage: React.FC = () => {
                                       setScreenshotMenuOpenId(null);
                                       setManualOcrTarget(screenshot);
                                       
-                                      // Initialize form based on meter_type - only populate the relevant field
-                                      const meterType = selectedSession?.meter_type;
-                                      if (meterType === 'temperature') {
-                                        setManualForm({
-                                          meter_reading: '',
-                                          pressure: '',
-                                          temperature: (screenshot.ocr_result?.temperature ?? screenshot.ocr_result?.temperatur_operasi ?? '') as any,
-                                          flow_rate: '',
-                                          unit: 'm³',
-                                        });
-                                      } else if (meterType === 'pressure') {
-                                        setManualForm({
-                                          meter_reading: '',
-                                          pressure: (screenshot.ocr_result?.pressure ?? screenshot.ocr_result?.tekanan_operasi ?? '') as any,
-                                          temperature: '',
-                                          flow_rate: '',
-                                          unit: 'm³',
-                                        });
-                                      } else {
-                                        // For stan_awal, stan_akhir, other, or no meter_type - use meter_reading
-                                        setManualForm({
-                                          meter_reading: (screenshot.ocr_result?.meter_reading ?? '') as any,
-                                          pressure: '',
-                                          temperature: '',
-                                          flow_rate: '',
-                                          unit: 'm³',
-                                        });
-                                      }
+                                      // Initialize ALL fields from OCR result
+                                      setManualForm({
+                                        stan: (screenshot.ocr_result?.stan ?? '') as string,
+                                        temperature: (screenshot.ocr_result?.temperature ?? '') as string,
+                                        pressure_inlet: (screenshot.ocr_result?.pressure_inlet ?? '') as string,
+                                        pressure_outlet: (screenshot.ocr_result?.pressure_outlet ?? '') as string,
+                                      });
                                     }}
                                     className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 border-t"
                                   >
@@ -1595,344 +1749,401 @@ const CCTVMonitoringPage: React.FC = () => {
 
       {/* Create Session Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Create Monitoring Session</h2>
-                  <p className="text-gray-600 mt-1">Start CCTV monitoring for a customer meter</p>
-                </div>
-                <button
-                  onClick={() => setShowCreateModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <XCircle className="w-6 h-6" />
-                </button>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full my-8 max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Create Monitoring Session</h2>
+                <p className="text-gray-600 mt-1">Start CCTV monitoring for a customer meter</p>
               </div>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XCircle className="w-6 h-6" />
+              </button>
             </div>
 
-            <form onSubmit={handleCreateSession} className="p-6">
-              {/* Real Data Mode Indicator */}
-              {useRealData && (
-                <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                  <p className="text-sm text-purple-800">
-                    <strong>Real Data Mode:</strong> Using actual delivery orders and customers from the database
-                  </p>
-                </div>
-              )}
-              
-              {/* Include Completed Orders Checkbox */}
-              {useRealData && (
-                <div className="mb-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={includeCompletedOrders}
-                      onChange={(e) => setIncludeCompletedOrders(e.target.checked)}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                    <span className="text-sm font-medium text-gray-700">
-                      Include completed/cancelled delivery orders
-                    </span>
-                    <span className="text-xs text-gray-500">(for testing purposes)</span>
-                  </label>
-                </div>
-              )}
-              
-              <div className="space-y-4">
-                {/* Delivery Order Dropdown */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Delivery Order <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={createForm.delivery_order_id}
-                    onChange={(e) => {
-                      const selectedDO = deliveryOrders.find(d => d.id === parseInt(e.target.value));
-                      setCreateForm({
-                        ...createForm,
-                        delivery_order_id: parseInt(e.target.value),
-                        customer_name: selectedDO?.customer_name || '',
-                      });
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    disabled={loadingDropdowns}
-                    required
-                  >
-                    <option value="">
-                      {loadingDropdowns ? 'Loading delivery orders...' : 'Select Delivery Order'}
-                    </option>
-                    {deliveryOrders.map(do_order => (
-                      <option key={do_order.id} value={do_order.id}>
-                        {do_order.do_number} - {do_order.do_name}
-                      </option>
-                    ))}
-                  </select>
-                  {useRealData && deliveryOrders.length === 0 && !loadingDropdowns && (
-                    <p className="text-xs text-yellow-600 mt-1">
-                      No active delivery orders found. Create one first.
+            {/* Scrollable Body */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <form onSubmit={handleCreateSession} className="space-y-6">
+                {/* Real Data Mode Indicator */}
+                {useRealData && (
+                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                    <p className="text-sm text-purple-800">
+                      <strong>Real Data Mode:</strong> Using actual delivery orders and customers from the database
                     </p>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                {/* Customer Dropdown */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Customer <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={createForm.customer_name}
-                    onChange={(e) => setCreateForm({...createForm, customer_name: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    disabled={loadingDropdowns}
-                    required
-                  >
-                    <option value="">
-                      {loadingDropdowns ? 'Loading customers...' : 'Select Customer'}
-                    </option>
-                    {customers.map(customer => (
-                      <option key={customer.id} value={customer.customer_name || customer.name || ''}>
-                        {customer.customer_name || customer.name || 'Unknown'} {customer.location && `- ${customer.location}`}
+                {/* Include Completed Orders Checkbox */}
+                {useRealData && (
+                  <div className="mb-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={includeCompletedOrders}
+                        onChange={(e) => setIncludeCompletedOrders(e.target.checked)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">
+                        Include completed/cancelled delivery orders
+                      </span>
+                      <span className="text-xs text-gray-500">(for testing purposes)</span>
+                    </label>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  {/* Delivery Order Dropdown */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Delivery Order <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={createForm.delivery_order_id}
+                      onChange={(e) => {
+                        const selectedDO = deliveryOrders.find(d => d.id === parseInt(e.target.value));
+                        setCreateForm({
+                          ...createForm,
+                          delivery_order_id: parseInt(e.target.value),
+                          customer_name: selectedDO?.customer_name || '',
+                        });
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      disabled={loadingDropdowns}
+                      required
+                    >
+                      <option value="">
+                        {loadingDropdowns ? 'Loading delivery orders...' : 'Select Delivery Order'}
                       </option>
-                    ))}
-                  </select>
-                  {useRealData && customers.length === 0 && !loadingDropdowns && (
-                    <p className="text-xs text-yellow-600 mt-1">
-                      No customers found. Create a customer first.
+                      {deliveryOrders.map(do_order => (
+                        <option key={do_order.id} value={do_order.id}>
+                          {do_order.do_number} - {do_order.do_name}
+                        </option>
+                      ))}
+                    </select>
+                    {useRealData && deliveryOrders.length === 0 && !loadingDropdowns && (
+                      <p className="text-xs text-yellow-600 mt-1">
+                        No active delivery orders found. Create one first.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Customer Dropdown */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Customer <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={createForm.customer_name}
+                      onChange={(e) => setCreateForm({...createForm, customer_name: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      disabled={loadingDropdowns}
+                      required
+                    >
+                      <option value="">
+                        {loadingDropdowns ? 'Loading customers...' : 'Select Customer'}
+                      </option>
+                      {customers.map(customer => (
+                        <option key={customer.id} value={customer.customer_name || customer.name || ''}>
+                          {customer.customer_name || customer.name || 'Unknown'} {customer.location && `- ${customer.location}`}
+                        </option>
+                      ))}
+                    </select>
+                    {useRealData && customers.length === 0 && !loadingDropdowns && (
+                      <p className="text-xs text-yellow-600 mt-1">
+                        No customers found. Create a customer first.
+                      </p>
+                    )}
+                    {useRealData && !loadingDropdowns && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {customers.length} customer(s) loaded
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Panel Row & Column */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Panel Row <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={createForm.panel_row}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          setCreateForm({...createForm, panel_row: isNaN(val) ? 1 : val});
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="1-10"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Panel Column <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={createForm.panel_column}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          setCreateForm({...createForm, panel_column: isNaN(val) ? 1 : val});
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="1-10"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-800">
+                      <strong>Panel Location:</strong> Specify which panel on the BARDI camera grid contains the meter you want to monitor.
+                      For example, Row 2, Column 3 means the meter is in the 2nd row, 3rd column of the camera view.
                     </p>
-                  )}
-                  {useRealData && !loadingDropdowns && (
+                  </div>
+
+                  {/* Meter Type */}
+                  {/* Meter Type - UPDATED FOR 4 READINGS */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Meter Type <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={createForm.meter_type}
+                      onChange={(e) => setCreateForm({...createForm, meter_type: e.target.value as CreateSessionForm['meter_type']})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    >
+                      <option value="stan">📏 Stan (m³)</option>
+                      <option value="pressure_inlet">🔧 Pressure Inlet (bar)</option>
+                      <option value="pressure_outlet">🔧 Pressure Outlet (bar)</option>
+                      <option value="temperature">🌡️ Temperature (°C)</option>
+                    </select>
                     <p className="text-xs text-gray-500 mt-1">
-                      {customers.length} customer(s) loaded
+                      Select which specific meter reading to capture from this panel position
                     </p>
-                  )}
-                </div>
+                  </div>
 
-                {/* Customer Location Index */}
-                {/* <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Customer Location Index
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={createForm.customer_location_index}
-                    onChange={(e) => setCreateForm({...createForm, customer_location_index: parseInt(e.target.value)})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="0 for main location, 1+ for additional"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">0 = Primary location, 1+ = Additional unload locations</p>
-                </div> */}
-
-                {/* Panel Location - Row & Column */}
-                <div className="grid grid-cols-2 gap-4">
+                  {/* Device ID */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Panel Row <span className="text-red-500">*</span>
+                      Device ID (Optional)
                     </label>
                     <input
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={createForm.panel_row}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value);
-                        setCreateForm({...createForm, panel_row: isNaN(val) ? 1 : val});
-                      }}
+                      type="text"
+                      value={createForm.device_id}
+                      onChange={(e) => setCreateForm({...createForm, device_id: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="1-10"
-                      required
+                      placeholder="Auto-generated if left empty"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Panel Column <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={createForm.panel_column}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value);
-                        setCreateForm({...createForm, panel_column: isNaN(val) ? 1 : val});
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="1-10"
-                      required
-                    />
+                    <p className="text-xs text-gray-500 mt-1">Leave empty to auto-generate BARDI camera ID</p>
                   </div>
                 </div>
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-sm text-blue-800">
-                    <strong>Panel Location:</strong> Specify which panel on the BARDI camera grid contains the meter you want to monitor.
-                    For example, Row 2, Column 3 means the meter is in the 2nd row, 3rd column of the camera view.
-                  </p>
-                </div>
+              </form>
+            </div>
 
-                {/* Meter Type */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Meter Type <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={createForm.meter_type}
-                    onChange={(e) => setCreateForm({...createForm, meter_type: e.target.value as CreateSessionForm['meter_type']})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    required
-                  >
-                    <option value="stan_awal">Stan Awal (Initial Reading)</option>
-                    <option value="stan_akhir">Stan Akhir (Final Reading)</option>
-                    <option value="pressure">Pressure (Tekanan)</option>
-                    <option value="temperature">Temperature (Temperatur)</option>
-                    <option value="other">Other</option>
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">Specify which type of meter reading this session will capture</p>
-                </div>
-
-                {/* Device ID (Optional) */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Device ID (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={createForm.device_id}
-                    onChange={(e) => setCreateForm({...createForm, device_id: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Auto-generated if left empty"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Leave empty to auto-generate BARDI camera ID</p>
-                </div>
-              </div>
-
-              <div className="mt-6 flex gap-3">
-                <button
-                  type="submit"
-                  disabled={creatingSession}
-                  className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {creatingSession ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <PlayCircle className="w-4 h-4" />
-                      Start Monitoring
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  disabled={creatingSession}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+            {/* Fixed Footer */}
+            <div className="p-6 border-t border-gray-200 flex gap-3 flex-shrink-0 bg-gray-50">
+              <button
+                type="submit"
+                onClick={handleCreateSession}
+                disabled={creatingSession}
+                className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {creatingSession ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <PlayCircle className="w-4 h-4" />
+                    Start Monitoring
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                disabled={creatingSession}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Manual OCR Modal */}
+      {/* Manual OCR Modal - UPDATED FOR NEW DATABASE SCHEMA */}
       {manualOcrTarget && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">Set Manual OCR - #{manualOcrTarget.sequence_number}</h3>
-              <button onClick={() => setManualOcrTarget(null)} className="text-gray-400 hover:text-gray-600">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Set Manual Readings - #{manualOcrTarget.sequence_number}
+              </h3>
+              <button 
+                onClick={() => setManualOcrTarget(null)} 
+                className="text-gray-400 hover:text-gray-600"
+              >
                 <XCircle className="w-6 h-6" />
               </button>
             </div>
-            <div className="p-4 space-y-3">
-              {selectedSession?.meter_type === 'temperature' && (
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Temperature (°C)</label>
-                  <input 
-                    value={manualForm.temperature} 
-                    onChange={(e)=>setManualForm({...manualForm, temperature: e.target.value})} 
-                    className="w-full border rounded px-3 py-2 text-sm" 
-                    placeholder="e.g., 28.5" 
-                  />
+            <div className="p-6 space-y-4">
+              {/* Current OCR Reference */}
+              {manualOcrTarget.ocr_result && (
+                <div className="bg-gray-50 rounded-lg p-4 border">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Current OCR Detection:</p>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-gray-500">Stan:</span>
+                      <span className="ml-1 font-mono">{manualOcrTarget.ocr_result?.stan ?? '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Temp:</span>
+                      <span className="ml-1 font-mono">{manualOcrTarget.ocr_result?.temperature ?? '—'}</span>°C
+                    </div>
+                    <div>
+                      <span className="text-gray-500">P.In:</span>
+                      <span className="ml-1 font-mono">{manualOcrTarget.ocr_result?.pressure_inlet ?? '—'}</span>bar
+                    </div>
+                    <div>
+                      <span className="text-gray-500">P.Out:</span>
+                      <span className="ml-1 font-mono">{manualOcrTarget.ocr_result?.pressure_outlet ?? '—'}</span>bar
+                    </div>
+                  </div>
                 </div>
               )}
-              
-              {selectedSession?.meter_type === 'pressure' && (
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Pressure (bar)</label>
-                  <input 
-                    value={manualForm.pressure} 
-                    onChange={(e)=>setManualForm({...manualForm, pressure: e.target.value})} 
-                    className="w-full border rounded px-3 py-2 text-sm" 
-                    placeholder="e.g., 205.3" 
-                  />
-                </div>
-              )}
-              
-              {(selectedSession?.meter_type === 'stan_awal' || selectedSession?.meter_type === 'stan_akhir' || !selectedSession?.meter_type) && (
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">
-                    {selectedSession?.meter_type === 'stan_awal' ? 'Stan Awal' : 
-                     selectedSession?.meter_type === 'stan_akhir' ? 'Stan Akhir' : 
-                     'Meter Reading'} (m³)
-                  </label>
-                  <input 
-                    value={manualForm.meter_reading} 
-                    onChange={(e)=>setManualForm({...manualForm, meter_reading: e.target.value})} 
-                    className="w-full border rounded px-3 py-2 text-sm" 
-                    placeholder="e.g., 1234.56" 
-                  />
-                </div>
-              )}
-              
-              {selectedSession?.meter_type === 'other' && (
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Meter Reading (m³)</label>
-                  <input 
-                    value={manualForm.meter_reading} 
-                    onChange={(e)=>setManualForm({...manualForm, meter_reading: e.target.value})} 
-                    className="w-full border rounded px-3 py-2 text-sm" 
-                    placeholder="e.g., 1234.56" 
-                  />
-                </div>
-              )}
-            </div>
-            <div className="p-4 border-t border-gray-200 flex items-center justify-end gap-2">
-              <button onClick={()=>setManualOcrTarget(null)} className="px-4 py-2 rounded border text-gray-700">Cancel</button>
-              <button
-                onClick={async ()=>{
-                  try{
-                    // Build payload based on meter_type - only send the relevant field
-                    const payload: any = {};
 
-                    if (selectedSession?.meter_type === 'temperature') {
-                      payload.temperature = manualForm.temperature ? parseFloat(manualForm.temperature) : null;
-                      payload.unit = '°C'; // Set unit to °C for temperature
-                    } else if (selectedSession?.meter_type === 'pressure') {
-                      payload.pressure = manualForm.pressure ? parseFloat(manualForm.pressure) : null;
-                      payload.unit = 'bar'; // Set unit to bar for pressure
-                    } else {
-                      // For stan_awal, stan_akhir, other, or no meter_type - use meter_reading
-                      payload.meter_reading = manualForm.meter_reading ? parseFloat(manualForm.meter_reading) : null;
-                      payload.unit = manualForm.unit || 'm³'; // Use form unit or default to m³
+              {/* STAN Reading */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Stan (m³) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={manualForm.stan}
+                  onChange={(e) => setManualForm({
+                    ...manualForm, 
+                    stan: e.target.value
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., 1234.56"
+                  required
+                />
+              </div>
+
+              {/* TEMPERATURE Reading */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Temperature (°C)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={manualForm.temperature}
+                  onChange={(e) => setManualForm({
+                    ...manualForm, 
+                    temperature: e.target.value
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., 28.5"
+                />
+              </div>
+
+              {/* PRESSURE INLET Reading */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Pressure Inlet (bar)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={manualForm.pressure_inlet}
+                  onChange={(e) => setManualForm({
+                    ...manualForm, 
+                    pressure_inlet: e.target.value
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., 205.3"
+                />
+              </div>
+
+              {/* PRESSURE OUTLET Reading */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Pressure Outlet (bar)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={manualForm.pressure_outlet}
+                  onChange={(e) => setManualForm({
+                    ...manualForm, 
+                    pressure_outlet: e.target.value
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., 198.7"
+                />
+              </div>
+            </div>
+            
+            <div className="p-6 border-t border-gray-200 flex items-center justify-end gap-3 bg-gray-50 rounded-b-lg">
+              <button 
+                onClick={() => setManualOcrTarget(null)} 
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    // Build payload matching new database schema
+                    const payload = {
+                      stan: manualForm.stan.trim() ? parseFloat(manualForm.stan) : null,
+                      temperature: manualForm.temperature.trim() ? parseFloat(manualForm.temperature) : null,
+                      pressure_inlet: manualForm.pressure_inlet.trim() ? parseFloat(manualForm.pressure_inlet) : null,
+                      pressure_outlet: manualForm.pressure_outlet.trim() ? parseFloat(manualForm.pressure_outlet) : null,
+                    };
+
+                    // Validate STAN is required
+                    if (!payload.stan && !manualOcrTarget.ocr_result?.stan) {
+                      toast.error('Stan reading is required');
+                      return;
                     }
 
-                    await apiClient.put(`/cctv-monitoring/screenshots/${manualOcrTarget.id}/manual-ocr`, payload);
-                    toast.success('Manual OCR saved');
+                    await apiClient.put(
+                      `/cctv-monitoring/screenshots/${manualOcrTarget.id}/manual-ocr`, 
+                      payload
+                    );
+                    
+                    toast.success('Manual readings saved successfully');
                     setManualOcrTarget(null);
-                    fetchSessionScreenshots(selectedSession!.id);
-                  }catch(e:any){
-                    toast.error(e.response?.data?.message || 'Failed to save manual OCR');
+                    
+                    if (selectedSession) {
+                      fetchSessionScreenshots(selectedSession.id);
+                    }
+                  } catch (e: any) {
+                    console.error('Manual OCR save error:', e);
+                    toast.error(e.response?.data?.message || 'Failed to save manual readings');
                   }
                 }}
-                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+                className="px-6 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 font-medium transition-colors flex items-center gap-2 shadow-sm hover:shadow-md"
               >
-                Save
+                <Save className="w-4 h-4" />
+                Save Readings
               </button>
             </div>
           </div>
@@ -1942,139 +2153,92 @@ const CCTVMonitoringPage: React.FC = () => {
       {/* Session Token Update Modal */}
       {showTokenModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Update BARDI Session Token</h2>
-                  <p className="text-gray-600 mt-1">Only update the <strong>s-sid</strong> field - other fields use default values</p>
-                </div>
-                <button
-                  onClick={() => setShowTokenModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <XCircle className="w-6 h-6" />
-                </button>
-              </div>
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+                <Key className="w-8 h-8 text-yellow-600" />
+                Update BARDI Session
+              </h2>
+              <button onClick={() => setShowTokenModal(false)}>
+                <X className="w-6 h-6 text-gray-500 hover:text-gray-700" />
+              </button>
             </div>
 
-            <form onSubmit={handleUpdateToken} className="p-6">
-              {/* Info Box */}
-              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm text-blue-800">
-                  <strong>Quick Update:</strong> Only the <strong>s-sid</strong> field needs to be updated regularly. 
-                  The other fields below already have default values pre-filled.
+            <div className="space-y-6">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm text-red-800 font-medium">Session Expired</p>
+                <p className="text-sm text-red-700 mt-1">
+                  Your BARDI session has expired. Please update with fresh values.
                 </p>
               </div>
 
-              <div className="space-y-4">
-                {/* s-sid - PRIMARY FIELD TO UPDATE */}
-                <div className="p-3 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
-                  <label className="block text-sm font-bold text-yellow-900 mb-1">
-                    s-sid <span className="text-red-500">*</span> <span className="text-xs font-normal">(Update this field)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={sessionToken['s-sid']}
-                    onChange={(e) => setSessionToken({...sessionToken, 's-sid': e.target.value})}
-                    className="w-full px-3 py-2 border-2 border-yellow-400 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 bg-white"
-                    placeholder="Paste new s-sid value here"
-                    required
-                  />
-                  <p className="text-xs text-yellow-700 mt-1">
-                    Copy this from BARDI cookies (DevTools → Application → Cookies → s-sid)
-                  </p>
-                </div>
-
-                {/* Separator */}
-                <div className="border-t border-gray-200 pt-3">
-                  <p className="text-xs text-gray-500 mb-2">Default Values (Usually don't need to change):</p>
-                </div>
-
-                {/* s-sid.sig - DEFAULT */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">
-                    s-sid.sig <span className="text-xs text-gray-500">(Default value pre-filled)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={sessionToken['s-sid.sig']}
-                    onChange={(e) => setSessionToken({...sessionToken, 's-sid.sig': e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
-                    placeholder="kP9rtKAn17znXSNWGWFHK2iuqOOusfuo"
-                  />
-                </div>
-
-                {/* uid - DEFAULT */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">
-                    uid <span className="text-xs text-gray-500">(Default value pre-filled)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={sessionToken['uid']}
-                    onChange={(e) => setSessionToken({...sessionToken, 'uid': e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
-                    placeholder="az1760007796938NmNAy"
-                  />
-                </div>
-
-                {/* clientId - DEFAULT */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">
-                    clientId <span className="text-xs text-gray-500">(Default value pre-filled)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={sessionToken['clientId']}
-                    onChange={(e) => setSessionToken({...sessionToken, 'clientId': e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
-                    placeholder="u8aphxps48jv38uraqtf"
-                  />
-                </div>
-
-                {/* deviceId - DEFAULT */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">
-                    deviceId <span className="text-xs text-gray-500">(Default value pre-filled)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={sessionToken['deviceId']}
-                    onChange={(e) => setSessionToken({...sessionToken, 'deviceId': e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
-                    placeholder="security-wisdom"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 flex gap-3">
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium transition-colors"
-                >
-                  Update Token
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowTokenModal(false)}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-
-              <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                <p className="text-sm text-gray-700">
-                  <strong>How to get s-sid:</strong> Log in to BARDI web interface → Open DevTools (F12) → 
-                  Application tab → Cookies → ipc.bardi.co.id → Copy the <strong>s-sid</strong> value
+              {/* s-sid Field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  s-sid <span className="text-red-500">(required)</span>
+                </label>
+                <input
+                  type="text"
+                  value={simpleToken.s_sid}
+                  onChange={(e) => setSimpleToken({ ...simpleToken, s_sid: e.target.value.trim() })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="s:c0012a26-575d-4ae5-ab61-172edb151817.ZOi/JX+..."
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Copy the full value from Chrome → Application → Cookies → s-sid
                 </p>
               </div>
-            </form>
+
+              {/* s-sid.sig Field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  s-sid.sig <span className="text-red-500">(required)</span>
+                </label>
+                <input
+                  type="text"
+                  value={simpleToken.s_sid_sig}
+                  onChange={(e) => setSimpleToken({ ...simpleToken, s_sid_sig: e.target.value.trim() })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="ZOi/JX+KDUfuvIBs4nzJPBEyxaIAAjXC0b3hu8RBQFM"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Copy from Chrome → Application → Cookies → s-sid.sig
+                </p>
+              </div>
+
+              {simpleToken.error && (
+                <p className="text-sm text-red-600 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5" />
+                  {simpleToken.error}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-8">
+              <button
+                onClick={handleSimpleTokenUpdate}
+                disabled={updatingToken || !simpleToken.s_sid || !simpleToken.s_sid_sig}
+                className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {updatingToken ? (
+                  <>Saving...</>
+                ) : (
+                  <>
+                    <Save className="w-5 h-5" />
+                    Save & Resume Monitoring
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => setShowTokenModal(false)}
+                className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
-
       {/* OCR Details View Modal */}
       {viewingOcrDetails && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

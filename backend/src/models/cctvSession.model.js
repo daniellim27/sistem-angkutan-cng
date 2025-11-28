@@ -90,9 +90,9 @@ module.exports = (sequelize) => {
       comment: 'Panel column location in BARDI interface'
     },
     meter_type: {
-      type: DataTypes.ENUM('temperature', 'pressure', 'stan_awal', 'stan_akhir', 'other'),
+      type: DataTypes.ENUM('pressure_inlet', 'temperature', 'stan_awal', 'current_stan', 'other'),
       allowNull: true,
-      comment: 'Type of meter being captured in this session'
+      comment: 'Type of meter being captured in this session (NEW SCHEMA)'
     },
     screenshot_interval_minutes: {
       type: DataTypes.INTEGER,
@@ -162,6 +162,10 @@ module.exports = (sequelize) => {
     ]
   });
 
+  // ✅ NEW SCHEMA - Updated meter_type enum
+  // OLD: 'temperature', 'pressure', 'stan_awal', 'stan_akhir'
+  // NEW: 'pressure_inlet', 'temperature', 'stan_awal', 'current_stan'
+
   // Virtual field for health status (calculated, not stored)
   CCTVSession.prototype.getHealthStatus = function() {
     if (this.status !== 'active') {
@@ -208,6 +212,39 @@ module.exports = (sequelize) => {
       const hoursSince = Math.floor(minutesSince / 60);
       return `${hoursSince} hour${hoursSince > 1 ? 's' : ''} ago`;
     }
+  };
+
+  // ✅ NEW: Virtual field for meter type display
+  CCTVSession.prototype.getMeterTypeDisplay = function() {
+    const typeMap = {
+      'pressure_inlet': '📊 Pressure Inlet',
+      'temperature': '🌡️ Temperature', 
+      'stan_awal': '⏮️ Stan Awal',
+      'current_stan': '⏭️ Current Stan',
+      'other': '⚙️ Other'
+    };
+    return typeMap[this.meter_type] || 'Unknown';
+  };
+
+  // ✅ NEW: Virtual field for progress percentage
+  CCTVSession.prototype.getBatchProgress = function() {
+    if (this.nota_batch_capture_count === 0) return 0;
+    return Math.min((this.nota_batch_capture_count / 24) * 100, 100);
+  };
+
+  // ✅ NEW: Virtual field for session summary
+  CCTVSession.prototype.getSummary = function() {
+    const screenshots = this.total_screenshots_captured;
+    const status = this.getHealthStatus();
+    const progress = this.getBatchProgress();
+    
+    return {
+      screenshots,
+      status,
+      progress,
+      meter_type: this.getMeterTypeDisplay(),
+      time_since_last: this.getTimeSinceLastCapture()
+    };
   };
 
   return CCTVSession;

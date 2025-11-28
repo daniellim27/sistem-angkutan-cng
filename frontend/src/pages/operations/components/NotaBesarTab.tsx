@@ -3,14 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authClient } from '../../../api/axiosConfig';
 import apiClient from '../../../api/axiosConfig';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { 
-  faChevronDown,
-  faChevronRight,
-  faTruck,
-  faFileInvoiceDollar,
-  faEye
-} from '@fortawesome/free-solid-svg-icons';
 
 interface Customer {
   id: number;
@@ -19,12 +11,32 @@ interface Customer {
   display_name: string;
 }
 
+interface NotaKecil {
+  id: number;
+  customer_name: string;
+  customer_address?: string;
+  customer_location_index: number;
+  
+  // ✅ NEW SCHEMA FIELDS
+  stan_awal: string;
+  current_stan: string;
+  pressure_inlet: string;
+  pressure_outlet?: string;
+  temperature: string;
+  
+  Vt: string;
+  k: string;
+  V: string;
+  created_at: string;
+}
+
 interface NotaBesar {
   id: number;
   total_volume: string;
   total_price: string;
   gas_price_per_m3: string;
   created_at: string;
+  status?: string;
   creator: {
     id: number;
     username: string;
@@ -36,20 +48,7 @@ interface NotaBesar {
   items?: Array<{
     id: number;
     price: string;
-    notaKecil: {
-      id: number;
-      customer_name: string;
-      customer_address?: string;
-      customer_location_index: number;
-      stan_awal: string;
-      stan_akhir: string;
-      tekanan_operasi: string;
-      temperatur_operasi: string;
-      Vt: string;
-      k: string;
-      V: string;
-      created_at: string;
-    };
+    notaKecil: NotaKecil;
   }>;
   notes?: string;
 }
@@ -91,7 +90,6 @@ const NotaBesarTab: React.FC = () => {
         return;
       }
       
-      // Fetch detailed data for each nota besar
       console.log(`Fetching details for ${basicNotaBesars.length} nota besars...`);
       const detailedNotaBesars = await Promise.all(
         basicNotaBesars.map(async (notaBesar: any) => {
@@ -200,6 +198,25 @@ const NotaBesarTab: React.FC = () => {
     });
   };
 
+  const getStatusBadge = (status?: string) => {
+    if (!status) return null;
+    
+    const statusConfig = {
+      'draft': { bg: 'from-yellow-400 to-amber-500', text: 'text-yellow-900' },
+      'confirmed': { bg: 'from-blue-500 to-cyan-600', text: 'text-white' },
+      'billed': { bg: 'from-green-500 to-emerald-600', text: 'text-white' },
+      'cancelled': { bg: 'from-red-500 to-rose-600', text: 'text-white' }
+    };
+
+    const config = statusConfig[status as keyof typeof statusConfig] || { bg: 'from-gray-400 to-gray-500', text: 'text-white' };
+
+    return (
+      <span className={`inline-flex px-3 py-1 text-xs font-bold rounded-full bg-gradient-to-r ${config.bg} ${config.text} shadow-sm`}>
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </span>
+    );
+  };
+
   const handleNotaBesarClick = (notaBesar: NotaBesar) => {
     navigate(`/operations/nota-besar/${notaBesar.id}`);
   };
@@ -220,35 +237,59 @@ const NotaBesarTab: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="text-center py-8">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <p className="mt-2 text-gray-600">Loading nota besars...</p>
+      <div className="flex items-center justify-center py-12 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-2xl">
+        <div className="flex flex-col items-center">
+          <div className="relative">
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-600 border-t-transparent"></div>
+            <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 blur opacity-30 animate-pulse"></div>
+          </div>
+          <p className="mt-6 text-lg font-semibold text-gray-700">Loading Nota Besars...</p>
+          <p className="mt-2 text-gray-500">Grouping by delivery orders</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="text-center py-8">
-        <div className="text-red-600 mb-4">{error}</div>
-        <button
-          onClick={fetchAllNotaBesars}
-          className="bg-blue-500 hover:bg-blue-700 text-white px-4 py-2 rounded"
-        >
-          Retry
-        </button>
+      <div className="p-8 bg-gradient-to-br from-red-50 to-rose-100 rounded-2xl">
+        <div className="max-w-md mx-auto bg-white rounded-2xl shadow-xl p-8 text-center">
+          <div className="mx-auto h-20 w-20 bg-red-100 rounded-full flex items-center justify-center mb-6">
+            <svg className="h-12 w-12 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Failed to Load</h2>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button
+            onClick={fetchAllNotaBesars}
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg font-semibold"
+          >
+            🔄 Retry
+          </button>
+        </div>
       </div>
     );
   }
 
   if (deliveryOrderGroups.length === 0) {
     return (
-      <div className="text-center py-12">
-        <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        <p className="text-gray-500 text-lg">No nota besars found</p>
-        <p className="text-gray-400 text-sm mt-2">Create nota besars by selecting nota kecils in the Nota Kecil tab</p>
+      <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl shadow-lg p-16 text-center border border-dashed border-gray-300">
+        <div className="mx-auto h-24 w-24 bg-gradient-to-br from-gray-300 to-gray-400 rounded-2xl flex items-center justify-center mb-6">
+          <svg className="h-12 w-12 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </div>
+        <h3 className="text-3xl font-bold text-gray-900 mb-3">No Nota Besars</h3>
+        <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+          Create nota besars by selecting nota kecils and grouping them by delivery order
+        </p>
+        <button
+          onClick={() => navigate('/operations/nota-kecil')}
+          className="px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl text-lg font-bold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-1"
+        >
+          🚀 Start with Nota Kecil
+        </button>
       </div>
     );
   }
@@ -259,133 +300,155 @@ const NotaBesarTab: React.FC = () => {
   const totalVolume = notaBesars.reduce((sum, nota) => sum + parseFloat(nota.total_volume), 0);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl shadow-lg p-6 border border-blue-200 group hover:shadow-xl transition-all">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-bold text-blue-700 uppercase tracking-wide">Total Nota Besars</p>
+              <p className="text-3xl font-extrabold text-blue-900 mt-2">{totalNotaBesars}</p>
             </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Nota Besars</p>
-              <p className="text-2xl font-bold text-gray-900">{totalNotaBesars}</p>
+            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center text-white text-2xl font-bold group-hover:scale-110 transition-transform">
+              📊
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-              </svg>
+        <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl shadow-lg p-6 border border-green-200 group hover:shadow-xl transition-all">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-bold text-green-700 uppercase tracking-wide">Total Value</p>
+              <p className="text-3xl font-extrabold text-green-900 mt-2">{formatCurrency(totalValue)}</p>
             </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Value</p>
-              <p className="text-2xl font-bold text-green-600">
-                {formatCurrency(totalValue)}
-              </p>
+            <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center text-white text-2xl font-bold group-hover:scale-110 transition-transform">
+              💰
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-              </svg>
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Volume</p>
-              <p className="text-2xl font-bold text-purple-600">
-                {totalVolume.toFixed(2)} m³
+        <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-2xl shadow-lg p-6 border border-purple-200 group hover:shadow-xl transition-all">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-bold text-purple-700 uppercase tracking-wide">Total Volume</p>
+              <p className="text-3xl font-extrabold text-purple-900 mt-2">
+                {totalVolume.toLocaleString('id-ID', { minimumFractionDigits: 3 })} m³
               </p>
+            </div>
+            <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-violet-600 rounded-xl flex items-center justify-center text-white text-2xl font-bold group-hover:scale-110 transition-transform">
+              📏
             </div>
           </div>
         </div>
       </div>
 
       {/* Delivery Order Groups */}
-      {deliveryOrderGroups.map((doGroup) => {
-        const isExpanded = expandedDOs.has(doGroup.id);
-        
-        return (
-          <div key={doGroup.id} className="bg-white rounded-lg shadow-md overflow-hidden">
-            {/* DO Header */}
-            <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 flex-1">
-                  <button
-                    onClick={() => toggleDO(doGroup.id)}
-                    className="hover:bg-green-400 p-2 rounded transition-colors"
-                  >
-                    <FontAwesomeIcon 
-                      icon={isExpanded ? faChevronDown : faChevronRight} 
-                      className="w-4 h-4"
-                    />
-                  </button>
-                  <FontAwesomeIcon icon={faTruck} className="w-5 h-5" />
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold">{doGroup.do_number}</h3>
-                    <p className="text-sm text-green-100">
-                      {doGroup.notaBesarCount} nota besar{doGroup.notaBesarCount > 1 ? 's' : ''} • 
-                      Volume: {doGroup.totalVolume.toFixed(2)} m³ • 
-                      Value: {formatCurrency(doGroup.totalValue)}
-                    </p>
+      <div className="space-y-6">
+        {deliveryOrderGroups.map((doGroup) => {
+          const isExpanded = expandedDOs.has(doGroup.id);
+          
+          return (
+            <div key={doGroup.id} className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden border border-white/50">
+              {/* DO Header */}
+              <div className="bg-gradient-to-r from-emerald-600 via-green-700 to-teal-800 text-white p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4 flex-1">
+                    <button
+                      onClick={() => toggleDO(doGroup.id)}
+                      className="group/chevron p-3 bg-white/20 backdrop-blur-sm rounded-xl hover:bg-white/30 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                    >
+                      <svg 
+                        className={`w-5 h-5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                      🚚
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-2xl font-bold tracking-tight">{doGroup.do_number}</h3>
+                      <div className="flex flex-wrap items-center gap-4 mt-2 text-sm opacity-90">
+                        <span className="inline-flex items-center gap-1">
+                          <span className="font-mono">{doGroup.notaBesarCount}</span>
+                          <span>Nota Besar{doGroup.notaBesarCount > 1 ? 's' : ''}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="font-mono">{doGroup.totalVolume.toLocaleString('id-ID', { minimumFractionDigits: 3 })}</span>
+                          <span>m³</span>
+                        </span>
+                        <span className="font-mono">{formatCurrency(doGroup.totalValue)}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Nota Besars (Collapsible) - 2 Column Grid */}
-            {isExpanded && (
-              <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                {doGroup.notaBesars.map((notaBesar) => {
-                  const customers = getCustomersForNotaBesar(notaBesar);
-                  
-                  return (
-                    <div 
-                      key={notaBesar.id}
-                      onClick={() => handleNotaBesarClick(notaBesar)}
-                      className="bg-white border-2 border-gray-200 rounded-lg p-3 hover:border-green-400 hover:shadow-md transition-all cursor-pointer"
-                    >
-                      <div className="space-y-2">
+              {/* Animated Collapse/Expand Transition */}
+              <div 
+                className={`
+                  overflow-hidden transition-all duration-500 ease-in-out
+                  ${isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}
+                `}
+              >
+                <div className="p-6 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {doGroup.notaBesars.map((notaBesar) => {
+                    const customers = getCustomersForNotaBesar(notaBesar);
+                    
+                    return (
+                      <div 
+                        key={notaBesar.id}
+                        onClick={() => handleNotaBesarClick(notaBesar)}
+                        className="group/card bg-gradient-to-br from-white to-gray-50 rounded-xl p-6 shadow-sm border border-gray-200 hover:shadow-xl hover:border-blue-300 hover:-translate-y-2 transition-all duration-300 cursor-pointer overflow-hidden"
+                      >
+                        {/* Card Gradient Border */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl opacity-0 group-hover/card:opacity-20 transition-opacity duration-300"></div>
+                        
                         {/* Header */}
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-2">
-                            <FontAwesomeIcon icon={faFileInvoiceDollar} className="w-4 h-4 text-green-600" />
-                            <span className="font-bold text-gray-900">Nota Besar #{notaBesar.id}</span>
+                        <div className="relative z-10 flex items-start justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg group-hover/card:scale-110 transition-transform">
+                              NB
+                            </div>
+                            <div>
+                              <span className="font-bold text-xl text-gray-900">#{notaBesar.id}</span>
+                              {getStatusBadge(notaBesar.status)}
+                            </div>
                           </div>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleNotaBesarClick(notaBesar);
                             }}
-                            className="text-blue-600 hover:text-blue-700 p-1"
+                            className="relative z-10 p-2 text-blue-600 hover:text-blue-700 bg-white/80 backdrop-blur-sm rounded-xl shadow-sm hover:shadow-md transition-all group-hover/card:scale-110"
                             title="View Details"
                           >
-                            <FontAwesomeIcon icon={faEye} className="w-4 h-4" />
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
                           </button>
                         </div>
 
                         {/* Created Date */}
-                        <div className="text-xs text-gray-500">
-                          {formatDate(notaBesar.created_at)}
+                        <div className="relative z-10 mb-4">
+                          <p className="text-xs text-gray-500 font-mono bg-gray-100 px-3 py-1 rounded-full inline-block">
+                            {formatDate(notaBesar.created_at)}
+                          </p>
                         </div>
 
                         {/* Customers */}
                         {customers.length > 0 && (
-                          <div>
-                            <p className="text-xs text-gray-500 mb-1">Customers:</p>
-                            <div className="flex flex-wrap gap-1">
+                          <div className="relative z-10 mb-6">
+                            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Customers</p>
+                            <div className="flex flex-wrap gap-2">
                               {customers.map((customer, idx) => (
                                 <span 
                                   key={idx}
-                                  className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full"
+                                  className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-700 border border-blue-200 shadow-sm"
                                 >
                                   {customer}
                                 </span>
@@ -394,45 +457,55 @@ const NotaBesarTab: React.FC = () => {
                           </div>
                         )}
 
-                        {/* Volume */}
-                        <div>
-                          <p className="text-xs text-gray-500">Total Volume</p>
-                          <p className="text-sm font-bold text-purple-600">
-                            {parseFloat(notaBesar.total_volume).toFixed(2)} m³
-                          </p>
-                        </div>
-
-                        {/* Price Info */}
-                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
-                          <div>
-                            <p className="text-xs text-gray-500">Price/m³</p>
-                            <p className="text-sm font-medium">
-                              {formatCurrency(parseFloat(notaBesar.gas_price_per_m3))}
+                        {/* Volume & Price Grid */}
+                        <div className="relative z-10 grid grid-cols-2 gap-4 mb-6">
+                          <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl">
+                            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Volume</p>
+                            <p className="text-2xl font-bold text-blue-800 mt-1 font-mono">
+                              {parseFloat(notaBesar.total_volume).toLocaleString('id-ID', { minimumFractionDigits: 3 })}
                             </p>
+                            <p className="text-xs text-blue-600 mt-1">m³</p>
                           </div>
-                          <div>
-                            <p className="text-xs text-gray-500">Total Price</p>
-                            <p className="text-sm font-bold text-green-600">
+                          <div className="text-center p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl">
+                            <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">Total Price</p>
+                            <p className="text-2xl font-bold text-green-800 mt-1">
                               {formatCurrency(parseFloat(notaBesar.total_price))}
                             </p>
                           </div>
                         </div>
 
-                        {/* Created By */}
-                        <div className="pt-2 border-t border-gray-100">
-                          <p className="text-xs text-gray-500">
-                            Created by: <span className="font-medium text-gray-700">{notaBesar.creator?.username || 'Unknown'}</span>
-                          </p>
+                        {/* Price per m³ & Creator */}
+                        <div className="relative z-10 grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase tracking-wide">Price/m³</p>
+                            <p className="text-sm font-mono text-gray-900">
+                              {formatCurrency(parseFloat(notaBesar.gas_price_per_m3))}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-gray-500 uppercase tracking-wide">Created By</p>
+                            <div className="flex items-center justify-end gap-2 mt-1">
+                              <div className="w-6 h-6 bg-gradient-to-br from-gray-500 to-gray-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                {notaBesar.creator?.username?.charAt(0).toUpperCase() || '?'}
+                              </div>
+                              <span className="font-medium text-gray-900 text-sm">{notaBesar.creator?.username || 'Unknown'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Hover Effect Sparkle */}
+                        <div className="absolute top-2 right-2 opacity-0 group-hover/card:opacity-100 transition-all duration-500">
+                          <div className="w-4 h-4 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full blur animate-ping"></div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            )}
-          </div>
-        );
-      })}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };

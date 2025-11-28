@@ -32,7 +32,7 @@ echo ===========================================
 echo Services are starting up!
 echo.
 echo 1. Backend API: http://localhost:3000
-echo 2. PostgreSQL: localhost:5435
+echo 2. PostgreSQL: localhost:5432
 echo.
 echo To view logs: docker-compose logs -f
 echo To stop: docker-compose down

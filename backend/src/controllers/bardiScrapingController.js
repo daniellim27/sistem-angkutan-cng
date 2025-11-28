@@ -1,301 +1,198 @@
+// backend/src/controllers/bardiScrapingController.js
+
 const bardiScrapingService = require('../services/bardiScrapingService');
 
 /**
- * Test if the Bardi session is valid
+ * Test Session
  */
 exports.testSession = async (req, res) => {
   try {
     const result = await bardiScrapingService.testSession();
-    
-    if (result.success) {
-      res.json({
-        success: true,
-        message: 'Session is valid and working',
-        data: result,
-      });
-    } else {
-      res.status(401).json({
-        success: false,
-        message: 'Session test failed',
-        error: result,
-      });
-    }
+    res.json(result.success ? { success: true, data: result } : { success: false, error: result });
   } catch (error) {
-    console.error('Error testing session:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to test session',
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
 /**
- * Get user information from Bardi
+ * Get User Info
  */
 exports.getUserInfo = async (req, res) => {
   try {
     const result = await bardiScrapingService.getUserInfo();
-    
-    if (result.success) {
-      res.json({
-        success: true,
-        data: result.data,
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: 'Failed to get user info',
-        error: result.error,
-      });
-    }
+    res.json(result.success ? { success: true, data: result.data } : { success: false, error: result.error });
   } catch (error) {
-    console.error('Error getting user info:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get user info',
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
 /**
- * Get all devices from Bardi
+ * Get All Devices
  */
 exports.getDevices = async (req, res) => {
   try {
     const result = await bardiScrapingService.getDevices();
-    
-    if (result.success) {
-      res.json({
-        success: true,
-        data: result.data,
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: 'Failed to get devices',
-        error: result.error,
-      });
-    }
+    res.json(result.success ? { success: true, data: result.data } : { success: false, error: result.error });
   } catch (error) {
-    console.error('Error getting devices:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get devices',
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
 /**
- * Get device details by ID
+ * Get Device Details
  */
 exports.getDeviceDetails = async (req, res) => {
   try {
     const { deviceId } = req.params;
-    
-    if (!deviceId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Device ID is required',
-      });
-    }
-    
+    if (!deviceId) return res.status(400).json({ success: false, message: 'deviceId is required' });
+
     const result = await bardiScrapingService.getDeviceDetails(deviceId);
-    
-    if (result.success) {
-      res.json({
-        success: true,
-        data: result.data,
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: 'Failed to get device details',
-        error: result.error,
-      });
-    }
+    res.json(result.success ? { success: true, data: result.data } : { success: false, error: result.error });
   } catch (error) {
-    console.error('Error getting device details:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get device details',
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
 /**
- * Get device status
+ * Get Device Status
  */
 exports.getDeviceStatus = async (req, res) => {
   try {
     const { deviceId } = req.params;
-    
-    if (!deviceId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Device ID is required',
-      });
-    }
-    
+    if (!deviceId) return res.status(400).json({ success: false, message: 'deviceId is required' });
+
     const result = await bardiScrapingService.getDeviceStatus(deviceId);
-    
-    if (result.success) {
-      res.json({
-        success: true,
-        data: result.data,
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: 'Failed to get device status',
-        error: result.error,
-      });
-    }
+    res.json(result.success ? { success: true, data: result.data } : { success: false, error: result.error });
   } catch (error) {
-    console.error('Error getting device status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get device status',
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
 /**
- * Make a custom request to Bardi API
+ * Take Screenshot – by row in sidebar (most reliable)
+ * POST /devices/:deviceId/screenshot → fallback to row 1
+ * POST /screenshot → uses body.row or defaults to 1
+ */
+// In bardiScrapingController.js → takeCameraScreenshot
+exports.takeCameraScreenshot = async (req, res) => {
+  try {
+    const row = parseInt(req.body.row) || 1;
+
+    const result = await bardiScrapingService.capturePanelScreenshot(row);
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to capture screenshot',
+        error: result.error
+      });
+    }
+
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'no-store');
+    res.send(result.imageBuffer);
+
+  } catch (error) {
+    console.error('Controller error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * Click Fullscreen – by sidebar row (1-based)
+ * POST /camera/fullscreen { "row": 2 }
+ */
+exports.clickFullscreen = async (req, res) => {
+  try {
+    const row = parseInt(req.body.row) || 1;
+    const result = await bardiScrapingService.clickFullscreen(row);
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * Click Fullscreen – by exact camera name
+ * POST /camera/fullscreen-by-name { "name": "BARDI Smart IP Camera PTZ Indoor Syno 2" }
+ */
+exports.clickFullscreenByName = async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ success: false, message: 'name is required' });
+
+    const result = await bardiScrapingService.clickFullscreenByName(name);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * PTZ Control
+ * POST /camera/ptz
+ * { "row": 1, "direction": "up", "duration": 800 }
+ * direction: up, down, left, right, zoomIn, zoomOut
+ */
+exports.controlPTZ = async (req, res) => {
+  try {
+    const { row = 1, direction = 'up', duration = 800 } = req.body;
+
+    const validDirections = ['up', 'down', 'left', 'right', 'zoomin', 'zoomout'];
+    if (!validDirections.includes(direction.toLowerCase())) {
+      return res.status(400).json({ success: false, message: 'Invalid direction' });
+    }
+
+    const result = await bardiScrapingService.controlPTZ(row, direction.toLowerCase(), duration);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * Make Custom Request (debug / advanced)
  */
 exports.makeCustomRequest = async (req, res) => {
   try {
     const { endpoint, method = 'GET', data } = req.body;
-    
-    if (!endpoint) {
-      return res.status(400).json({
-        success: false,
-        message: 'Endpoint is required',
-      });
-    }
-    
+    if (!endpoint) return res.status(400).json({ success: false, message: 'endpoint required' });
+
     const result = await bardiScrapingService.makeRequest(endpoint, method, data);
-    
-    if (result.success) {
-      res.json({
-        success: true,
-        data: result.data,
-        statusCode: result.statusCode,
-        headers: result.headers,
-      });
-    } else {
-      res.status(result.statusCode || 400).json({
-        success: false,
-        message: 'Request failed',
-        error: result.error,
-        statusCode: result.statusCode,
-      });
-    }
+    res.json(result.success ? { success: true, data: result } : { success: false, error: result.error });
   } catch (error) {
-    console.error('Error making custom request:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to make custom request',
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
 /**
- * Update session data
+ * Update Session (cookies + headers)
  */
 exports.updateSession = async (req, res) => {
   try {
     const { cookies, headers } = req.body;
-    
-    if (!cookies || !headers) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cookies and headers are required',
-      });
-    }
-    
-    const newSession = { cookies, headers };
-    const result = await bardiScrapingService.updateSession(newSession);
-    
-    res.json({
-      success: true,
-      message: result.message,
-    });
+    if (!cookies || !headers) return res.status(400).json({ success: false, message: 'cookies & headers required' });
+
+    await bardiScrapingService.updateSession({ cookies, headers });
+    res.json({ success: true, message: 'Session updated' });
   } catch (error) {
-    console.error('Error updating session:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update session',
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
 /**
- * Load and return current session data (without sensitive info)
+ * Get Session Info (safe)
  */
 exports.getSessionInfo = async (req, res) => {
   try {
     const session = await bardiScrapingService.loadSession();
-    
-    // Return session info without exposing full cookie values
-    const sessionInfo = {
-      cookies: Object.keys(session.cookies),
-      headers: Object.keys(session.headers),
-      hasValidStructure: !!(session.cookies && session.headers),
-    };
-    
     res.json({
       success: true,
-      data: sessionInfo,
+      cookieCount: Object.keys(session.cookies || {}).length,
+      headerCount: Object.keys(session.headers || {}).length,
     });
   } catch (error) {
-    console.error('Error getting session info:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get session info',
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
-
-/**
- * Take a screenshot of the camera interface
- */
-exports.takeCameraScreenshot = async (req, res) => {
-  try {
-    const { deviceId } = req.params;
-    
-    const result = await bardiScrapingService.takeCameraScreenshot(deviceId);
-    
-    if (result.success) {
-      res.json({
-        success: true,
-        message: 'Screenshot captured successfully',
-        data: result.data,
-        endpoint: result.endpoint,
-        statusCode: result.statusCode,
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: 'Failed to take screenshot',
-        error: result.error,
-        statusCode: result.statusCode,
-      });
-    }
-  } catch (error) {
-    console.error('Error taking screenshot:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to take screenshot',
-      error: error.message,
-    });
-  }
-};
-

@@ -43,7 +43,7 @@ const getOCRService = () => {
 };
 
 /**
- * Process nota image with OCR
+ * Process nota image with OCR - NEW SCHEMA ONLY
  * POST /api/ocr/process-image
  */
 exports.processImage = async (req, res) => {
@@ -76,10 +76,10 @@ exports.processImage = async (req, res) => {
     // Read image file
     const imageBuffer = fs.readFileSync(req.file.path);
     
-    // Process with OCR
+    // ✅ NEW SCHEMA: Process with NEW OCR fields
     const ocrResult = await getOCRService().processNotaImage(imageBuffer);
     
-    // Save OCR result to database
+    // ✅ NEW SCHEMA: Save OCR result with NEW fields
     const savedOCRResult = await OCRResult.create({
       delivery_order_id: delivery_order_id,
       image_url: req.file.filename,
@@ -87,21 +87,21 @@ exports.processImage = async (req, res) => {
       raw_ocr_text: JSON.stringify(ocrResult.raw_data),
       extracted_data: ocrResult,
       confidence_scores: {
-        overall: ocrResult.overall_confidence,
-        tanggal_mulai: ocrResult.confidence,
-        stan_awal: ocrResult.confidence,
-        stan_akhir: ocrResult.confidence,
-        tekanan_operasi: ocrResult.confidence,
-        temperatur_operasi: ocrResult.confidence
+        overall: ocrResult.confidence || 0,
+        stan_awal: ocrResult.confidence || 0,
+        current_stan: ocrResult.confidence || 0,
+        pressure_inlet: ocrResult.confidence || 0,
+        pressure_outlet: ocrResult.confidence || 0,
+        temperature: ocrResult.confidence || 0
       },
       processing_status: 'completed',
       processed_by: req.user?.id || null
     });
 
-    // Calculate billing if OCR data is valid
+    // ✅ NEW SCHEMA: Calculate billing with NEW fields
     let billingCalculation = null;
-    if (ocrResult.stan_awal && ocrResult.stan_akhir && 
-        ocrResult.tekanan_operasi && ocrResult.temperatur_operasi) {
+    if (ocrResult.stan_awal && ocrResult.current_stan && 
+        ocrResult.pressure_inlet && ocrResult.temperature) {
       billingCalculation = BillingCalculationService.processCompleteBilling(ocrResult);
     }
 
@@ -166,7 +166,7 @@ exports.getProcessStatus = async (req, res) => {
 };
 
 /**
- * Update extracted data manually
+ * Update extracted data manually - NEW SCHEMA ONLY
  * PUT /api/ocr/update-extracted-data/:id
  */
 exports.updateExtractedData = async (req, res) => {
@@ -189,15 +189,23 @@ exports.updateExtractedData = async (req, res) => {
       });
     }
 
-    // Update extracted data
+    // ✅ NEW SCHEMA: Update with NEW fields
     ocrResult.extracted_data = extracted_data;
+    ocrResult.confidence_scores = {
+      overall: extracted_data.confidence || 0,
+      stan_awal: extracted_data.confidence || 0,
+      current_stan: extracted_data.confidence || 0,
+      pressure_inlet: extracted_data.confidence || 0,
+      pressure_outlet: extracted_data.confidence || 0,
+      temperature: extracted_data.confidence || 0
+    };
     ocrResult.updated_at = new Date();
     await ocrResult.save();
 
-    // Recalculate billing if data is valid
+    // ✅ NEW SCHEMA: Recalculate billing with NEW fields
     let billingCalculation = null;
-    if (extracted_data.stan_awal && extracted_data.stan_akhir && 
-        extracted_data.tekanan_operasi && extracted_data.temperatur_operasi) {
+    if (extracted_data.stan_awal && extracted_data.current_stan && 
+        extracted_data.pressure_inlet && extracted_data.temperature) {
       billingCalculation = BillingCalculationService.processCompleteBilling(extracted_data);
     }
 
@@ -221,7 +229,7 @@ exports.updateExtractedData = async (req, res) => {
 };
 
 /**
- * Reprocess OCR for a delivery order
+ * Reprocess OCR for a delivery order - NEW SCHEMA ONLY
  * POST /api/ocr/reprocess/:id
  */
 exports.reprocessOCR = async (req, res) => {
@@ -248,23 +256,23 @@ exports.reprocessOCR = async (req, res) => {
     const imageBuffer = fs.readFileSync(ocrResult.image_path);
     const newOCRResult = await getOCRService().processNotaImage(imageBuffer);
     
-    // Update OCR result
+    // ✅ NEW SCHEMA: Update with NEW fields
     ocrResult.extracted_data = newOCRResult;
     ocrResult.confidence_scores = {
-      overall: newOCRResult.overall_confidence,
-      tanggal_mulai: newOCRResult.confidence,
-      stan_awal: newOCRResult.confidence,
-      stan_akhir: newOCRResult.confidence,
-      tekanan_operasi: newOCRResult.confidence,
-      temperatur_operasi: newOCRResult.confidence
+      overall: newOCRResult.confidence || 0,
+      stan_awal: newOCRResult.confidence || 0,
+      current_stan: newOCRResult.confidence || 0,
+      pressure_inlet: newOCRResult.confidence || 0,
+      pressure_outlet: newOCRResult.confidence || 0,
+      temperature: newOCRResult.confidence || 0
     };
     ocrResult.updated_at = new Date();
     await ocrResult.save();
 
-    // Recalculate billing
+    // ✅ NEW SCHEMA: Recalculate billing with NEW fields
     let billingCalculation = null;
-    if (newOCRResult.stan_awal && newOCRResult.stan_akhir && 
-        newOCRResult.tekanan_operasi && newOCRResult.temperatur_operasi) {
+    if (newOCRResult.stan_awal && newOCRResult.current_stan && 
+        newOCRResult.pressure_inlet && newOCRResult.temperature) {
       billingCalculation = BillingCalculationService.processCompleteBilling(newOCRResult);
     }
 
@@ -376,7 +384,7 @@ exports.checkConfig = async (req, res) => {
 };
 
 /**
- * Test OCR processing without delivery order requirement
+ * Test OCR processing without delivery order requirement - NEW SCHEMA ONLY
  * POST /api/ocr/test-process
  */
 exports.testProcessImage = async (req, res) => {
@@ -391,13 +399,13 @@ exports.testProcessImage = async (req, res) => {
     // Read image file
     const imageBuffer = fs.readFileSync(req.file.path);
     
-    // Process with OCR
+    // ✅ NEW SCHEMA: Process with NEW OCR fields
     const ocrResult = await getOCRService().processNotaImage(imageBuffer);
     
-    // Calculate billing if OCR data is valid
+    // ✅ NEW SCHEMA: Calculate billing with NEW fields
     let billingCalculation = null;
-    if (ocrResult.stan_awal && ocrResult.stan_akhir && 
-        ocrResult.tekanan_operasi && ocrResult.temperatur_operasi) {
+    if (ocrResult.stan_awal && ocrResult.current_stan && 
+        ocrResult.pressure_inlet && ocrResult.temperature) {
       billingCalculation = BillingCalculationService.processCompleteBilling(ocrResult);
     }
 
@@ -424,4 +432,3 @@ exports.testProcessImage = async (req, res) => {
 
 // Export multer middleware for use in routes
 exports.upload = upload;
-

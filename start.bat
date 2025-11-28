@@ -8,7 +8,7 @@ set PGPASSWORD=getsuga39
 
 REM ===== CRITICAL BACKEND CONFIG =====
 echo DB_HOST=localhost > "%ROOT%backend\.env"
-echo DB_PORT=5435 >> "%ROOT%backend\.env"
+echo DB_PORT=5432 >> "%ROOT%backend\.env"
 echo DB_NAME=angkutan_db >> "%ROOT%backend\.env"
 echo DB_USER=postgres >> "%ROOT%backend\.env"
 echo DB_PASSWORD=getsuga39 >> "%ROOT%backend\.env"
@@ -37,12 +37,12 @@ if not exist "%ROOT%pgsql_data" (
 
 echo Starting PostgreSQL...
 start "PostgreSQL" "%ROOT%postgresql-17.5-3-windows-x64-binaries\pgsql\bin\pg_ctl" ^
-  -D "%ROOT%pgsql_data" -l "%ROOT%postgres.log" start -o "-p 5435"
+  -D "%ROOT%pgsql_data" -l "%ROOT%postgres.log" start -o "-p 5432"
 
 timeout /t 10 /nobreak > nul
 
 echo Creating database...
-"%ROOT%postgresql-17.5-3-windows-x64-binaries\pgsql\bin\psql" -U postgres -p 5435 -c "CREATE DATABASE angkutan_db;" 2> nul
+"%ROOT%postgresql-17.5-3-windows-x64-binaries\pgsql\bin\psql" -U postgres -p 5432 -c "CREATE DATABASE angkutan_db;" 2> nul
 
 REM Run migrations + hashing only if NEW_DB=true
 if "%NEW_DB%"=="true" (
@@ -66,7 +66,7 @@ echo --------------------------------------------
 echo All systems are running!
 echo 1. Frontend: http://localhost:3001
 echo 2. Backend API: http://localhost:3000
-echo 3. PostgreSQL: localhost:5435
+echo 3. PostgreSQL: localhost:5432
 echo --------------------------------------------
 echo Do you want to start mobile? (y/n)
 set /p startMobile=
