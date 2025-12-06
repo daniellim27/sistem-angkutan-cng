@@ -834,15 +834,12 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
         });
         if (response.data.success) {
           const vehiclesData = response.data.data || [];
-          console.log('Fetched vehicles:', vehiclesData.length, vehiclesData);
           setVehicles(vehiclesData);
           
           // Notify parent component of active vehicles for dropdown
           if (onActiveVehiclesUpdate) {
             onActiveVehiclesUpdate(vehiclesData);
           }
-        } else {
-          console.warn('API response not successful:', response.data);
         }
       }
 
