@@ -27,8 +27,7 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
       ],
-      "package": "com.mobile.angkutankodo",
-      "googleServicesFile": "./google-services.json"
+      "package": "com.mobile.angkutankodo"
     },
     "web": {
       "bundler": "metro",
@@ -68,10 +67,7 @@
     },
     "extra": {
       "router": {},
-      "eas": {
-        "projectId": "094479bf-7829-4c18-8f92-f9a24cfd7358"
-      },
-      "EXPO_PUBLIC_API_URL": "http://localhost:3000/api"
+      "EXPO_PUBLIC_API_URL": "https://31fe2b253240.ngrok-free.app/api"
     },
     "owner": "jethroelijah"
   }

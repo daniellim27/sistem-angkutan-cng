@@ -11,6 +11,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import apiClient from "../services/api";
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 
 interface User {
   id: string;
@@ -72,12 +73,42 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signIn = async (username: string, password: string) => {
     try {
       // --- GET EXPO PUSH TOKEN ---
-      const { status } = await Notifications.requestPermissionsAsync();
+      // Note: Push notifications are NOT supported in Expo Go (SDK 53+)
+      // They only work in development builds, so we skip this in Expo Go
       let expoPushToken = null;
-
-      if (status === 'granted') {
-        const tokenData = await Notifications.getExpoPushTokenAsync();
-        expoPushToken = tokenData.data;
+      
+      // Check if we're in Expo Go (push notifications don't work here)
+      const isExpoGo = Constants.executionEnvironment === 'storeClient';
+      
+      if (!isExpoGo) {
+        // Only try to get push token if NOT in Expo Go
+        try {
+          const { status } = await Notifications.requestPermissionsAsync();
+          if (status === 'granted') {
+            try {
+              // Try to get projectId from config
+              const projectId = Constants.expoConfig?.extra?.eas?.projectId || 
+                               Constants.expoConfig?.extra?.projectId;
+              
+              if (projectId) {
+                const tokenData = await Notifications.getExpoPushTokenAsync({
+                  projectId: projectId,
+                });
+                expoPushToken = tokenData.data;
+                console.log("📱 Expo push token obtained");
+              } else {
+                console.log("ℹ️ No projectId found - skipping push token");
+              }
+            } catch (tokenError: any) {
+              console.log("ℹ️ Could not get push token:", tokenError.message);
+              // Continue without push token - not critical for login
+            }
+          }
+        } catch (notifError: any) {
+          console.log("ℹ️ Push notifications not available - continuing without token");
+        }
+      } else {
+        console.log("ℹ️ Running in Expo Go - push notifications not supported, skipping token");
       }
 
       // --- LOGIN + SEND PUSH TOKEN TO BACKEND ---
@@ -101,7 +132,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       let errorMessage = "Login gagal";
 
-      if (err.response?.status === 401) {
+      // Handle network/timeout errors
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        errorMessage = "Waktu koneksi habis. Periksa koneksi internet atau URL API.";
+      } else if (err.message === 'Network Error' || !err.response) {
+        errorMessage = err.message || "Tidak dapat terhubung ke server. Periksa koneksi internet atau pastikan backend berjalan.";
+      } else if (err.response?.status === 401) {
         errorMessage = "Username atau password salah";
       } else if (err.response?.data?.message) {
         errorMessage = err.response.data.message;

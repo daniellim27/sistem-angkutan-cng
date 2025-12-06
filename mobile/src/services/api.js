@@ -6,10 +6,30 @@ import { Platform } from "react-native";
 import { router } from "expo-router";
 import Constants from 'expo-constants';
 
-// Try to get API URL from environment or app config
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 
-                     Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL || 
-                     'http://192.168.100.27:3000/api'; // Updated to use port 3000 (backend port)
+// Helper function to get the correct API URL based on platform
+const getApiUrl = () => {
+  // First, try environment variable or app config
+  const envUrl = process.env.EXPO_PUBLIC_API_URL || Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL;
+  
+  if (envUrl) {
+    // If it's localhost and we're on a physical device (not web), we need to replace it
+    if ((envUrl.includes('localhost') || envUrl.includes('127.0.0.1')) && Platform.OS !== 'web') {
+      console.warn('⚠️ localhost detected on mobile device - this will not work!');
+      console.warn('💡 Use your computer IP address or ngrok URL instead');
+      // Return the ngrok fallback for mobile devices
+      return 'https://31fe2b253240.ngrok-free.app/api';
+    }
+    return envUrl;
+  }
+  
+  // Fallback to ngrok URL
+  return 'https://31fe2b253240.ngrok-free.app/api';
+};
+
+const API_BASE_URL = getApiUrl();
+
+// Log the API URL being used (helpful for debugging)
+console.log(`🔗 API Base URL (${Platform.OS}):`, API_BASE_URL);
 
 // Backend base URL for static files (without /api suffix)
 const BACKEND_BASE_URL = API_BASE_URL.replace('/api', '');
@@ -28,6 +48,7 @@ const apiClient = axios.create({
     "ngrok-skip-browser-warning": "true",
     "Content-Type": "application/json",
   },
+  timeout: 20000, // 20 seconds timeout - prevents infinite loading on mobile
 });
 
 // Use an interceptor to inject the token into every request
@@ -37,9 +58,12 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // Log request for debugging
+    console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`);
     return config;
   },
   (error) => {
+    console.error("❌ Request interceptor error:", error);
     return Promise.reject(error);
   }
 );
@@ -48,6 +72,7 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => {
     // Jika response berhasil, return seperti biasa
+    console.log(`✅ ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
     return response;
   },
   async (error) => {
@@ -55,6 +80,28 @@ apiClient.interceptors.response.use(
     const isLoginEndpoint =
       originalRequest?.url?.includes("/auth/login") ||
       originalRequest?.url?.includes("/auth/mobile/login");
+    
+    // Log error for debugging
+    console.error(`❌ ${originalRequest?.method?.toUpperCase()} ${originalRequest?.url} - Error:`, {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+    });
+    
+    // Handle network errors (common issue with Expo Go)
+    if (!error.response) {
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        error.message = "Waktu koneksi habis. Periksa koneksi internet atau URL API.";
+      } else if (error.message === 'Network Error' || error.code === 'ERR_NETWORK') {
+        // Check if it's a localhost issue on mobile
+        if (API_BASE_URL.includes('localhost') || API_BASE_URL.includes('127.0.0.1')) {
+          error.message = "Tidak dapat terhubung ke server. localhost tidak bekerja di Expo Go. Gunakan IP komputer Anda atau URL ngrok.";
+        } else {
+          error.message = "Tidak dapat terhubung ke server. Periksa koneksi internet atau pastikan backend berjalan.";
+        }
+      }
+    }
+    
     // Handle error response
     if (error.response?.status === 401 && !isLoginEndpoint) {
       console.log("Token expired or invalid, logging out...");
