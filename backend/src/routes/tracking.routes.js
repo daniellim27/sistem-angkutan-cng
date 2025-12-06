@@ -51,6 +51,16 @@ router.get('/vehicles-with-gps', trackingController.getVehiclesWithGPSData);
 router.get('/driver/:driverId/current', trackingController.getDriverCurrentLocation);
 
 /**
+ * GET /api/tracking/delivery/:deliveryOrderId/check-proximity
+ * Check if driver is near delivery order's target location
+ */
+router.get(
+  '/delivery/:deliveryOrderId/check-proximity',
+  checkRole(['driver']),
+  trackingController.checkProximityForDeliveryOrder
+);
+
+/**
  * GET /api/tracking/delivery/:deliveryOrderId
  * Get live tracking for a delivery order
  */
@@ -128,5 +138,50 @@ router.get('/distance-compliance/alerts', trackingController.getDistanceComplian
  * Admin/Owner only
  */
 router.post('/distance-compliance/batch-process', checkRole(['admin', 'owner']), trackingController.batchProcessDistanceCompliance);
+
+// ============================================================
+// AUTO STATUS UPDATE ROUTES
+// ============================================================
+
+/**
+ * GET /api/tracking/auto-status/stats
+ * Get auto status update service statistics
+ */
+router.get('/auto-status/stats', trackingController.getAutoStatusStats);
+
+/**
+ * PUT /api/tracking/auto-status/config
+ * Update auto status service configuration
+ * Admin/Owner only
+ */
+router.put('/auto-status/config', checkRole(['admin', 'owner']), trackingController.updateAutoStatusConfig);
+
+/**
+ * PUT /api/tracking/auto-status/toggle
+ * Enable or disable auto status updates
+ * Admin/Owner only
+ */
+router.put('/auto-status/toggle', checkRole(['admin', 'owner']), trackingController.toggleAutoStatus);
+
+/**
+ * POST /api/tracking/auto-status/check-vehicle/:vehicleId
+ * Manually trigger status check for a specific vehicle
+ * Admin/Owner only
+ */
+router.post('/auto-status/check-vehicle/:vehicleId', checkRole(['admin', 'owner']), trackingController.checkVehicleStatus);
+
+/**
+ * POST /api/tracking/auto-status/clear-cache
+ * Clear auto status update cache
+ * Admin/Owner only
+ */
+router.post('/auto-status/clear-cache', checkRole(['admin', 'owner']), trackingController.clearAutoStatusCache);
+
+/**
+ * POST /api/tracking/auto-status/test-geofence
+ * Test geofence detection for a specific delivery order
+ * Admin/Owner only
+ */
+router.post('/auto-status/test-geofence', checkRole(['admin', 'owner']), trackingController.testGeofence);
 
 module.exports = router; 

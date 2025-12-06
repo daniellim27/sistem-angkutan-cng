@@ -1,6 +1,6 @@
 // mobile/app/(tabs)/index.tsx
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Alert,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import apiClient, { updateDeliveryStatus, uploadNotaPhoto, completeLocation } from "../../src/services/api";
+import apiClient, { updateDeliveryStatus, uploadNotaPhoto, completeLocation, checkProximityForDeliveryOrder } from "../../src/services/api";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { FontAwesome5 } from "@expo/vector-icons";
 
@@ -71,7 +71,7 @@ interface DeliveryOrder {
   };
   created_at: string;
   driver_name?: string;
-  unit: 'kilogram' | 'ton' | 'kubik';
+  unit: 'kilogram' | 'ton' | 'kubik';  status_auto_updated_at?: string; // Timestamp when status was auto-updated
 }
 
 const DriverDashboard = () => {
@@ -83,6 +83,7 @@ const DriverDashboard = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
   const [currentLocationIndex, setCurrentLocationIndex] = useState<{[orderId: number]: number}>({});
+  const [proximityChecks, setProximityChecks] = useState<{[orderId: number]: {isNear: boolean, canProceed: boolean}}>({});
 
   const fetchMyTasks = async () => {
     try {
@@ -147,7 +148,8 @@ const DriverDashboard = () => {
         Alert.alert("Berhasil", "Berhasil tiba di lokasi pelanggan");
       } catch (err: any) {
         console.error(`Error updating status for order ${orderId}:`, err);
-        Alert.alert("Error", err.message || "Gagal memperbarui status");
+        const errorMessage = err.response?.data?.details || err.response?.data?.message || err.message || "Gagal memperbarui status";
+        Alert.alert("Error", errorMessage);
       } finally {
         setUpdatingStatus(null);
       }
@@ -175,7 +177,8 @@ const DriverDashboard = () => {
         Alert.alert("Berhasil", `Lokasi ${currentLocationName} berhasil diproses`);
       } catch (err: any) {
         console.error(`Error processing location for order ${orderId}:`, err);
-        Alert.alert("Error", err.message || "Gagal memproses lokasi");
+        const errorMessage = err.response?.data?.details || err.response?.data?.message || err.message || "Gagal memproses lokasi";
+        Alert.alert("Error", errorMessage);
       } finally {
         setUpdatingStatus(null);
       }
@@ -214,11 +217,8 @@ const DriverDashboard = () => {
         `Error updating status for order ${orderId}:`,
         err.response?.data || err.message
       );
-      Alert.alert(
-        "Error",
-        err.response?.data?.message ||
-          "Gagal memperbarui status. Silakan coba lagi."
-      );
+      const errorMessage = err.response?.data?.details || err.response?.data?.message || err.message || "Gagal memperbarui status. Silakan coba lagi.";
+      Alert.alert("Error", errorMessage);
     } finally {
       setUpdatingStatus(null);
     }
@@ -289,10 +289,8 @@ const DriverDashboard = () => {
       }
     } catch (err: any) {
       console.error('Error in handleNextCustomer:', err);
-      Alert.alert(
-        "Error",
-        err.response?.data?.message || "Gagal menyelesaikan lokasi"
-      );
+      const errorMessage = err.response?.data?.details || err.response?.data?.message || err.message || "Gagal menyelesaikan lokasi";
+      Alert.alert("Error", errorMessage);
     } finally {
       setUpdatingStatus(null);
     }
@@ -440,35 +438,90 @@ const DriverDashboard = () => {
     return hasMore;
   };
 
+  // Check if status was recently auto-updated (within cooldown period)
+  const isStatusRecentlyAutoUpdated = (order: DeliveryOrder): boolean => {
+    if (!order.status_auto_updated_at) return false;
+    
+    const autoUpdatedAt = new Date(order.status_auto_updated_at);
+    const now = new Date();
+    const cooldownMinutes = 5; // Match backend cooldown
+    const cooldownMs = cooldownMinutes * 60 * 1000;
+    
+    return (now.getTime() - autoUpdatedAt.getTime()) < cooldownMs;
+  };
+
+  // Check proximity for orders that need it
+  const checkProximity = useCallback(async (orderId: number, status: string) => {
+    // Only check for statuses that require proximity validation
+    if (status !== "at_spbu" && status !== "otw_to_unload_location") {
+      return;
+    }
+
+    try {
+      const response = await checkProximityForDeliveryOrder(orderId);
+      const proximityData = response.data;
+      
+      setProximityChecks(prev => ({
+        ...prev,
+        [orderId]: {
+          isNear: proximityData.isNear || false,
+          canProceed: proximityData.canProceed !== false // Default to true if not specified
+        }
+      }));
+    } catch (error) {
+      console.error(`Error checking proximity for order ${orderId}:`, error);
+      // On error, allow proceeding (fail open)
+      setProximityChecks(prev => ({
+        ...prev,
+        [orderId]: {
+          isNear: false,
+          canProceed: true
+        }
+      }));
+    }
+  }, []);
+
+  // Check proximity when orders are fetched
+  useEffect(() => {
+    deliveryOrders.forEach(order => {
+      if (order.status === "at_spbu" || order.status === "otw_to_unload_location") {
+        checkProximity(order.id, order.status);
+      }
+    });
+  }, [deliveryOrders, checkProximity]);
+
   // === NEW STATUS ACTIONS MAPPING ===
   const getStatusActions = (order: DeliveryOrder) => {
     const isUpdating = updatingStatus === order.id;
+    const isAutoUpdated = isStatusRecentlyAutoUpdated(order);
+    const proximityCheck = proximityChecks[order.id];
+    const isNotNear = proximityCheck && !proximityCheck.canProceed;
 
     switch (order.status) {
       case "assigned":
         return {
           action: "start",
-          label: "Mulai Perjalanan ke SPBU",
+          label: isAutoUpdated ? "Status Diperbarui Otomatis" : "Mulai Perjalanan ke SPBU",
           icon: "play-circle",
-          color: "#3498db",
-          disabled: isUpdating,
+          color: isAutoUpdated ? "#95a5a6" : "#3498db",
+          disabled: isUpdating || isAutoUpdated,
         };
       case "at_spbu":
         return {
           action: "navigate_to_confirm",
-          label: "Konfirmasi Muatan & Berangkat",
+          label: isNotNear ? "Anda Belum di SPBU" : "Konfirmasi Muatan & Berangkat",
           icon: "clipboard-check",
-          color: "#e67e22",
-          disabled: false,
+          color: isNotNear ? "#95a5a6" : "#e67e22",
+          disabled: isNotNear, // Disable if not near SPBU
           special: true, // This will navigate to detail page
         };
       case "otw_to_unload_location":
         return {
           action: "arrive_at_unload",
-          label: "Tiba di lokasi pelanggan.",
+          label: isNotNear ? "Anda Belum di Lokasi Pelanggan" : (isAutoUpdated ? "Status Diperbarui Otomatis" : "Tiba di lokasi pelanggan."),
           icon: "map-marker-alt",
-          color: "#9b59b6",
-          disabled: isUpdating,
+          color: (isNotNear || isAutoUpdated) ? "#95a5a6" : "#9b59b6",
+          disabled: isUpdating || isAutoUpdated || isNotNear, // Disable if not near customer location
         };
       case "at_unload_location":
         // Check if this order has multiple customer locations and if there are more locations to complete
@@ -546,6 +599,12 @@ const DriverDashboard = () => {
     if (!actionConfig) return null;
 
     const handlePress = () => {
+      // Prevent action if button is disabled
+      if (actionConfig.disabled) {
+        console.log(`Button disabled for order ${order.id}`);
+        return;
+      }
+
       console.log(`Button pressed for order ${order.id}, action: ${actionConfig.action}`);
       if (actionConfig.special) {
         // Navigate to detail page for load confirmation
@@ -557,9 +616,14 @@ const DriverDashboard = () => {
 
     return (
       <TouchableOpacity
-        style={[styles.actionButton, { backgroundColor: actionConfig.color }]}
+        style={[
+          styles.actionButton, 
+          { backgroundColor: actionConfig.color },
+          actionConfig.disabled && styles.disabledButton
+        ]}
         onPress={handlePress}
         disabled={actionConfig.disabled}
+        activeOpacity={actionConfig.disabled ? 1 : 0.7}
       >
         {updatingStatus === order.id ? (
           <ActivityIndicator size="small" color="white" />
@@ -613,11 +677,37 @@ const DriverDashboard = () => {
 
   const renderTaskItem = ({ item }: { item: DeliveryOrder }) => {
     const isCompleted = item.status === "completed";
+    const actionConfig = getStatusActions(item);
+    const isButtonDisabled = actionConfig?.disabled || false;
+    
+    // Only allow card navigation if button is not disabled (or if there's no action button)
+    const handleCardPress = () => {
+      // If button is disabled due to proximity, prevent navigation and show alert
+      if (isButtonDisabled && actionConfig) {
+        const proximityCheck = proximityChecks[item.id];
+        if (proximityCheck && !proximityCheck.canProceed) {
+          Alert.alert(
+            "Lokasi Tidak Sesuai",
+            actionConfig.label || "Anda belum berada di lokasi yang tepat. Harap mendekati lokasi terlebih dahulu.",
+            [{ text: "OK" }]
+          );
+          return; // Prevent navigation
+        }
+        // If disabled for other reasons (like auto-updated), still allow navigation
+      }
+      // Allow navigation for completed trips or when button is not disabled
+      router.push(`/trip-detail/${item.id}`);
+    };
 
     return (
       <TouchableOpacity
-        onPress={() => router.push(`/trip-detail/${item.id}`)}
-        style={[styles.card, isCompleted && styles.completedCard]}
+        onPress={handleCardPress}
+        style={[
+          styles.card, 
+          isCompleted && styles.completedCard,
+          isButtonDisabled && actionConfig && styles.cardDisabled
+        ]}
+        activeOpacity={isButtonDisabled && actionConfig ? 1 : 0.7}
       >
         <View style={styles.cardHeader}>
           <Text style={styles.doNumber}>{item.do_number}</Text>
@@ -779,6 +869,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  cardDisabled: {
+    opacity: 0.7,
   },
   actionButtonText: {
     color: "white",

@@ -295,6 +295,11 @@ module.exports = (sequelize) => {
       arrived_at_unload_location_at: { type: DataTypes.DATE },
       departed_from_unload_location_at: { type: DataTypes.DATE },
       completed_at: { type: DataTypes.DATE },
+      status_auto_updated_at: { 
+        type: DataTypes.DATE, 
+        allowNull: true,
+        comment: "Timestamp when status was last auto-updated by GPS system"
+      },
     },
     {
       tableName: "delivery_orders",

@@ -96,6 +96,7 @@ const customerRoutes = require("./routes/customer.routes");
 const bardiScrapingRoutes = require("./routes/bardiScraping");
 const receiptOcrRoutes = require("./routes/receiptOcr");
 const cctvMonitoringRoutes = require("./routes/cctvMonitoring.routes");
+const notificationRoutes = require("./routes/notification.routes");
 console.log('✓ CCTV monitoring routes module loaded:', typeof cctvMonitoringRoutes);
 const scheduledScrapingService = require("./services/scheduledScraper");
 const cctvScheduler = require("./services/cctvScheduler");
@@ -348,6 +349,11 @@ initializeDatabase().then(() => {
   // Add customer routes
   app.use("/api/customers", customerRoutes);
   app.use("/api/web/customers", customerRoutes);
+  
+  // Add notification routes
+  app.use("/api/notifications", notificationRoutes);
+  app.use("/api/web/notifications", notificationRoutes);
+  
   app.use("/api/web/nota-kecils", webNotaKecilRoutes);
   app.use("/api/web", webNotaBesarRoutes);
   app.use("/api/web/image-upload", webImageUploadRoutes);

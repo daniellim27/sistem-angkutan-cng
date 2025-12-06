@@ -1976,7 +1976,7 @@ const TripDetailScreen = () => {
         </View>
 
         {/* SURAT JALAN PHOTOS SECTION */}
-        {trip.status !== "assigned" && trip.status !== "at_spbu" && (
+        {(trip.status === "at_spbu" || trip.status === "otw_to_unload_location" || trip.status === "at_unload_location") && (
           <View style={styles.detailCard}>
             <Text style={styles.cardTitle}>📄 Foto Surat Jalan</Text>
             
@@ -2018,7 +2018,7 @@ const TripDetailScreen = () => {
         )}
 
         {/* RECEIPT SECTION */}
-        {trip.status !== "assigned" && trip.status !== "at_spbu" && (
+        {(trip.status === "at_spbu" || trip.status === "otw_to_unload_location" || trip.status === "at_unload_location") && (
           <View style={styles.detailCard}>
             <Text style={styles.cardTitle}>🧾 CNG Receipts</Text>
             

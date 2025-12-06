@@ -24,6 +24,13 @@ router.get(
   depositGroupController.getSPBGLocationsWithCoords
 );
 
+// POST /api/web/deposit-groups/update-coordinates - Update coordinates for all SPBG locations
+router.post(
+  "/update-coordinates",
+  checkRole(["admin", "owner"]),
+  depositGroupController.updateSPBGCoordinates
+);
+
 router.get(
   "/:id",
   checkRole(["admin", "owner"]),

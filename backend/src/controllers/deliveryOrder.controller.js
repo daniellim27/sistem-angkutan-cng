@@ -13,6 +13,7 @@ const {
   DeliveryOrderAdjustments,
   DeliveryOrderPayments, // <<< FIX: Make sure this is imported
   NotaKecil, // Add NotaKecil
+  DriverLocation, // Add DriverLocation for GPS validation
   sequelize,
   Sequelize,
 } = require("../models");
@@ -1115,8 +1116,11 @@ exports.completeLocation = async (req, res, next) => {
 // === UPDATE HELPER FUNCTION updateStatus ===
 const updateStatus = async (orderId, driverId, newStatus, timestampField) => {
   try {
+    const locationStatusService = require('../services/locationStatusService');
+    
     const order = await DeliveryOrder.findOne({
       where: { id: orderId, driver_id: driverId },
+      include: [{ model: Vehicle, as: 'vehicle' }]
     });
 
     if (!order) {
@@ -1140,9 +1144,98 @@ const updateStatus = async (orderId, driverId, newStatus, timestampField) => {
       };
     }
 
+    // GPS Proximity Validation - Check if driver is actually near the location
+    // Only validate if both GPS location and target coordinates are available
+    if (newStatus === 'at_spbu' || newStatus === 'at_unload_location') {
+      // Get latest GPS location for this vehicle/driver
+      let latestLocation = null;
+      
+      if (order.vehicle_id) {
+        latestLocation = await DriverLocation.findOne({
+          where: { vehicle_id: order.vehicle_id },
+          order: [['timestamp', 'DESC']],
+          limit: 1
+        });
+      }
+      
+      if (!latestLocation && driverId) {
+        latestLocation = await DriverLocation.findOne({
+          where: { driver_id: driverId },
+          order: [['timestamp', 'DESC']],
+          limit: 1
+        });
+      }
+
+      // If GPS location is not available, skip validation (allow manual update)
+      if (!latestLocation || !latestLocation.latitude || !latestLocation.longitude) {
+        // GPS not available - allow manual update (can't validate without GPS)
+        // Continue with the update without proximity check
+      } else {
+        // GPS location is available - proceed with validation if coordinates exist
+        const currentLat = parseFloat(latestLocation.latitude);
+        const currentLng = parseFloat(latestLocation.longitude);
+
+        if (newStatus === 'at_spbu') {
+          // Check if near SPBU (load location)
+          // Only validate if coordinates are available
+          if (order.load_latitude && order.load_longitude) {
+            const spbuLat = parseFloat(order.load_latitude);
+            const spbuLng = parseFloat(order.load_longitude);
+            
+            // Validate parsed coordinates
+            if (!isNaN(spbuLat) && !isNaN(spbuLng)) {
+              const { isNear, distance } = locationStatusService.isNearLocation(
+                currentLat, 
+                currentLng, 
+                spbuLat, 
+                spbuLng
+              );
+
+              if (!isNear) {
+                throw {
+                  status: 400,
+                  message: `Anda belum berada di dekat SPBU. Jarak saat ini: ${(distance / 1000).toFixed(2)} km. Harap mendekati lokasi SPBU terlebih dahulu.`,
+                };
+              }
+            }
+            // If coordinates are invalid, skip validation (allow manual update)
+          }
+          // If coordinates are missing, skip validation (allow manual update)
+        } else if (newStatus === 'at_unload_location') {
+          // Check if near customer location
+          const allLocations = await locationStatusService.getAllCustomerLocations(order);
+          
+          // Only validate if coordinates are available
+          if (allLocations.length > 0) {
+            const currentLocationIndex = await locationStatusService.getCurrentLocationIndex(order);
+            const targetLocation = allLocations[currentLocationIndex];
+
+            if (targetLocation && targetLocation.latitude && targetLocation.longitude) {
+              const { isNear, distance } = locationStatusService.isNearLocation(
+                currentLat,
+                currentLng,
+                targetLocation.latitude,
+                targetLocation.longitude
+              );
+
+              if (!isNear) {
+                throw {
+                  status: 400,
+                  message: `Anda belum berada di dekat lokasi pelanggan (${targetLocation.name}). Jarak saat ini: ${(distance / 1000).toFixed(2)} km. Harap mendekati lokasi pelanggan terlebih dahulu.`,
+                };
+              }
+            }
+            // If target location or coordinates are missing, skip validation (allow manual update)
+          }
+          // If no customer locations found, skip validation (allow manual update)
+        }
+      }
+    }
+
     const updateData = {
       status: newStatus,
       [timestampField]: new Date(),
+      status_auto_updated_at: null, // Clear auto-update flag when manually updated
     };
 
     await order.update(updateData);

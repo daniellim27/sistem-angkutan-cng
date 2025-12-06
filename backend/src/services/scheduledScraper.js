@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const InovatracksScraper = require('./inovatracksScraper');
 const { DriverLocation } = require('../models');
 const logger = require('../utils/logger');
+const idleVehicleDetectionService = require('./idleVehicleDetectionService');
 
 class ScheduledScrapingService {
   constructor() {
@@ -43,6 +44,9 @@ class ScheduledScrapingService {
 
     logger.info('GPS tracking service started successfully');
     logger.info(`Next scraping scheduled for: ${this.nextRunTime}`);
+
+    // Start idle vehicle detection scheduler
+    this.startIdleDetectionSchedule();
 
     // Run initial scraping after a short delay
     setTimeout(() => {
@@ -165,6 +169,52 @@ class ScheduledScrapingService {
   async triggerManual() {
     logger.info('Manual GPS scraping triggered');
     return await this.runScrapingTask();
+  }
+
+  /**
+   * Start idle vehicle detection schedule
+   */
+  startIdleDetectionSchedule() {
+    // Get check interval from environment (default: 15 minutes)
+    const checkIntervalMinutes = parseInt(process.env.IDLE_CHECK_INTERVAL_MINUTES) || 15;
+    const cronExpression = `*/${checkIntervalMinutes} * * * *`; // Every N minutes
+
+    logger.info(`Starting idle vehicle detection - checking every ${checkIntervalMinutes} minute(s)`);
+
+    // Schedule the idle detection task
+    this.idleDetectionJob = cron.schedule(cronExpression, async () => {
+      await this.runIdleDetectionTask();
+    }, {
+      scheduled: false // Don't start immediately
+    });
+
+    // Start the cron job
+    this.idleDetectionJob.start();
+
+    logger.info('Idle vehicle detection service started successfully');
+
+    // Run initial check after a delay
+    setTimeout(() => {
+      this.runIdleDetectionTask();
+    }, 30000); // 30 seconds delay
+  }
+
+  /**
+   * Run idle vehicle detection task
+   */
+  async runIdleDetectionTask() {
+    try {
+      logger.debug('Running idle vehicle detection...');
+      const result = await idleVehicleDetectionService.processIdleVehicles();
+      
+      if (result.success) {
+        logger.debug(`Idle detection completed: ${result.checked} checked, ${result.idle} idle, ${result.notified} notified`);
+      } else {
+        logger.warn(`Idle detection skipped: ${result.message}`);
+      }
+    } catch (error) {
+      logger.error('Error in idle vehicle detection:', error);
+    }
   }
 
   /**

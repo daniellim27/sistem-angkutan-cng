@@ -244,6 +244,20 @@ const createCustomer = async (req, res) => {
     ) {
       customerPayload.latitude = coordinateResult.latitude;
       customerPayload.longitude = coordinateResult.longitude;
+    } else {
+      // Try to auto-geocode if coordinates not provided
+      try {
+        const { scrapeLocationCoordinates } = require('../utils/locationScraper');
+        const coords = await scrapeLocationCoordinates(location.trim());
+        if (coords && coords.lat && coords.lng) {
+          customerPayload.latitude = coords.lat;
+          customerPayload.longitude = coords.lng;
+          console.log(`✅ Auto-geocoded customer location: ${location.trim()} -> ${coords.lat}, ${coords.lng}`);
+        }
+      } catch (geocodeError) {
+        // Non-fatal: customer will be created without coordinates
+        console.warn(`⚠️ Could not auto-geocode location "${location.trim()}":`, geocodeError.message);
+      }
     }
 
     const customer = await Customer.create(customerPayload);

@@ -67,13 +67,45 @@ module.exports = {
   // src/controllers/web/depositGroup.controller.js
   async createGroup(req, res) {
     try {
-       const { spbg_location, deposited_amount, unit, delivery_order_ids = [], purchase_order_id } = req.body;
+       const { spbg_name, spbg_location, deposited_amount, unit, delivery_order_ids = [], purchase_order_id, latitude, longitude } = req.body;
       
       // Force unit to always be 'kubik' for deposit groups
       const finalUnit = 'kubik';
       
       // Handle optional deposited_amount
       const finalDepositedAmount = deposited_amount ? parseFloat(deposited_amount) : 0;
+      
+      // Normalize coordinates helper (similar to customer controller)
+      const normalizeCoordinateValue = (value) => {
+        if (value === null || value === undefined) return null;
+        if (typeof value === "number") return Number.isNaN(value) ? null : value;
+        const parsed = parseFloat(String(value).trim());
+        return Number.isNaN(parsed) ? null : parsed;
+      };
+      
+      let finalLatitude = normalizeCoordinateValue(latitude);
+      let finalLongitude = normalizeCoordinateValue(longitude);
+      
+      // Auto-geocode if coordinates not provided
+      if ((finalLatitude === null || finalLongitude === null) && spbg_location) {
+        try {
+          const { scrapeLocationCoordinates } = require('../../utils/locationScraper');
+          const logger = require('../../utils/logger');
+          logger.info(`Attempting to geocode SPBG location for new deposit group: ${spbg_location}`);
+          const coords = await scrapeLocationCoordinates(spbg_location.trim());
+          if (coords && coords.lat && coords.lng) {
+            finalLatitude = coords.lat;
+            finalLongitude = coords.lng;
+            logger.info(`Successfully geocoded new SPBG ${spbg_location}: ${coords.lat}, ${coords.lng}`);
+          } else {
+            logger.warn(`Failed to geocode location for new SPBG: ${spbg_location}. Deposit group will be created without coordinates.`);
+          }
+        } catch (geocodeError) {
+          const logger = require('../../utils/logger');
+          logger.error(`Error during geocoding for new SPBG ${spbg_location}: ${geocodeError.message}`);
+          logger.warn(`Deposit group ${spbg_location} will be created without coordinates due to geocoding error.`);
+        }
+      }
       
       // *** FIX STARTS HERE ***
       // The initial balance of the group should be the amount that was deposited.
@@ -82,13 +114,16 @@ module.exports = {
       const completed_quantity = 0; // Initial completed = 0
       
       const group = await DepositGroup.create({
+        spbg_name: spbg_name || null, // Optional SPBG name
         spbg_location, 
         balance, // Use the deposited amount as the starting balance
         deposited_amount: finalDepositedAmount, 
         remaining_quantity, 
         completed_quantity,
         unit: finalUnit, // Always kubik
-        status: 'active'
+        status: 'active',
+        latitude: finalLatitude,
+        longitude: finalLongitude
       });
 
       let doIdsToAdd = delivery_order_ids;
@@ -345,15 +380,51 @@ async getGroupDetails(req, res) {
   async updateGroup(req, res) {
     try {
       const { id } = req.params;
-      const { spbg_location, balance } = req.body;
+      const { spbg_name, spbg_location, balance, latitude, longitude } = req.body;
+      const logger = require('../../utils/logger');
       
       const group = await DepositGroup.findByPk(id);
       if (!group) {
         return res.status(404).json({ error: "Group not found" });
       }
       
+      // Normalize coordinates helper
+      const normalizeCoordinateValue = (value) => {
+        if (value === null || value === undefined) return null;
+        if (typeof value === "number") return Number.isNaN(value) ? null : value;
+        const parsed = parseFloat(String(value).trim());
+        return Number.isNaN(parsed) ? null : parsed;
+      };
+      
+      const locationChanged = spbg_location && spbg_location !== group.spbg_location;
+      
+      if (spbg_name !== undefined) group.spbg_name = spbg_name || null;
       if (spbg_location) group.spbg_location = spbg_location;
       if (balance !== undefined) group.balance = parseFloat(balance);
+      
+      // Handle coordinates
+      if (latitude !== undefined || longitude !== undefined) {
+        const finalLatitude = normalizeCoordinateValue(latitude);
+        const finalLongitude = normalizeCoordinateValue(longitude);
+        group.latitude = finalLatitude;
+        group.longitude = finalLongitude;
+      } else if (locationChanged) {
+        // Auto-geocode if location changed and no coordinates provided
+        try {
+          const { scrapeLocationCoordinates } = require('../../utils/locationScraper');
+          logger.info(`Attempting to geocode updated SPBG location: ${spbg_location}`);
+          const coords = await scrapeLocationCoordinates(spbg_location.trim());
+          if (coords && coords.lat && coords.lng) {
+            group.latitude = coords.lat;
+            group.longitude = coords.lng;
+            logger.info(`Successfully geocoded updated SPBG ${spbg_location}: ${coords.lat}, ${coords.lng}`);
+          } else {
+            logger.warn(`Failed to geocode location for updated SPBG: ${spbg_location}`);
+          }
+        } catch (geocodeError) {
+          logger.error(`Error during geocoding for updated SPBG ${spbg_location}: ${geocodeError.message}`);
+        }
+      }
       
       await group.save();
       res.json(group);
@@ -794,52 +865,39 @@ async linkPOToGroup(req, res) {
   // Get deposit groups as SPBG locations with coordinates for map display
   async getSPBGLocationsWithCoords(req, res) {
     try {
-      console.log('🔍 Fetching SPBG locations from deposit groups...');
+      const logger = require('../../utils/logger');
+      logger.info('🔍 Fetching SPBG locations from deposit groups...');
       
-      // Get all active deposit groups with unique locations
+      // Get all active deposit groups with coordinates (only return those with valid coordinates)
       const groups = await DepositGroup.findAll({
-        attributes: ['id', 'spbg_location'],
+        attributes: ['id', 'spbg_location', 'latitude', 'longitude'],
         where: { 
-          status: ['active', 'fulfilled', 'overdrawn', 'pending_selisih'] // Include active statuses
+          status: ['active', 'fulfilled', 'overdrawn', 'pending_selisih'],
+          latitude: { [Op.not]: null },
+          longitude: { [Op.not]: null }
         },
-        group: ['id', 'spbg_location'], // Get unique locations
         order: [['spbg_location', 'ASC']]
       });
 
-      console.log(`📊 Found ${groups.length} SPBG locations to geocode`);
+      const locationsWithCoords = groups
+        .filter(group => {
+          const lat = parseFloat(group.latitude);
+          const lng = parseFloat(group.longitude);
+          return !isNaN(lat) && !isNaN(lng) && 
+                 lat >= -90 && lat <= 90 && 
+                 lng >= -180 && lng <= 180;
+        })
+        .map(group => ({
+          id: group.id,
+          name: group.spbg_location,
+          location: group.spbg_location, 
+          latitude: parseFloat(group.latitude),
+          longitude: parseFloat(group.longitude),
+          type: 'SPBG',
+          display_name: `SPBG - ${group.spbg_location}`
+        }));
 
-      const { scrapeLocationCoordinates } = require('../../utils/locationScraper');
-      const locationsWithCoords = [];
-
-      // Convert each location to coordinates using existing geocoding system
-      for (const group of groups) {
-        try {
-          console.log(`🔍 Geocoding SPBG location: ${group.spbg_location}`);
-          const coords = await scrapeLocationCoordinates(group.spbg_location);
-          
-          if (coords && coords.lat && coords.lng) {
-            locationsWithCoords.push({
-              id: group.id,
-              name: group.spbg_location,
-              location: group.spbg_location, 
-              latitude: coords.lat,
-              longitude: coords.lng,
-              type: 'SPBG',
-              display_name: `SPBG - ${group.spbg_location}`
-            });
-            console.log(`✅ Geocoded ${group.spbg_location}: ${coords.lat}, ${coords.lng}`);
-          } else {
-            console.log(`❌ No coordinates found for ${group.spbg_location}`);
-          }
-          
-          // Add delay to be respectful to the geocoding service
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } catch (error) {
-          console.error(`❌ Error geocoding ${group.spbg_location}:`, error.message);
-        }
-      }
-
-      console.log(`🎯 Successfully geocoded ${locationsWithCoords.length}/${groups.length} SPBG locations`);
+      logger.info(`✅ Found ${locationsWithCoords.length} SPBG locations with coordinates`);
 
       res.json({
         success: true,
@@ -847,10 +905,89 @@ async linkPOToGroup(req, res) {
         count: locationsWithCoords.length
       });
     } catch (error) {
-      console.error("Error fetching SPBG locations with coordinates:", error);
+      const logger = require('../../utils/logger');
+      logger.error("Error fetching SPBG locations with coordinates:", error);
       res.status(500).json({
         success: false,
         message: "Failed to fetch SPBG locations with coordinates",
+        error: error.message,
+      });
+    }
+  },
+
+  // Update coordinates for all SPBG locations (similar to customer update-coordinates)
+  async updateSPBGCoordinates(req, res) {
+    try {
+      const logger = require('../../utils/logger');
+      const { scrapeLocationCoordinates } = require('../../utils/locationScraper');
+      
+      logger.info('🔍 Starting SPBG coordinates update...');
+      
+      // Get all deposit groups without coordinates or with invalid coordinates
+      const groups = await DepositGroup.findAll({
+        where: {
+          status: ['active', 'fulfilled', 'overdrawn', 'pending_selisih']
+        }
+      });
+
+      let updated = 0;
+      let failed = 0;
+      const errors = [];
+
+      for (const group of groups) {
+        try {
+          // Skip if already has valid coordinates
+          const lat = parseFloat(group.latitude);
+          const lng = parseFloat(group.longitude);
+          if (!isNaN(lat) && !isNaN(lng) && 
+              lat >= -90 && lat <= 90 && 
+              lng >= -180 && lng <= 180) {
+            continue; // Skip groups with valid coordinates
+          }
+
+          logger.info(`🔍 Geocoding SPBG location: ${group.spbg_location}`);
+          const coords = await scrapeLocationCoordinates(group.spbg_location);
+          
+          if (coords && coords.lat && coords.lng) {
+            await group.update({
+              latitude: coords.lat,
+              longitude: coords.lng
+            });
+            updated++;
+            logger.info(`✅ Geocoded ${group.spbg_location}: ${coords.lat}, ${coords.lng}`);
+          } else {
+            failed++;
+            errors.push({ location: group.spbg_location, error: 'No coordinates found' });
+            logger.warn(`❌ No coordinates found for ${group.spbg_location}`);
+          }
+          
+          // Add delay to be respectful to the geocoding service
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (error) {
+          failed++;
+          errors.push({ location: group.spbg_location, error: error.message });
+          logger.error(`❌ Error geocoding ${group.spbg_location}:`, error.message);
+        }
+      }
+
+      logger.info(`🎯 SPBG coordinates update completed: ${updated} updated, ${failed} failed`);
+
+      res.json({
+        success: true,
+        message: `Updated ${updated} SPBG location(s) with coordinates`,
+        data: {
+          total: groups.length,
+          updated,
+          failed,
+          errors: errors.slice(0, 10) // Limit error details
+        }
+      });
+    } catch (error) {
+      const logger = require('../../utils/logger');
+      logger.error("Error updating SPBG coordinates:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to update SPBG coordinates",
         error: error.message,
       });
     }

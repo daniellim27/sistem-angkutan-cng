@@ -476,6 +476,11 @@ export const getBudgetRequestDetails = async (requestId) => {
   return apiClient.get(`/budget-requests/${requestId}`);
 };
 
+// Check if driver is near delivery order's target location
+export const checkProximityForDeliveryOrder = async (deliveryOrderId) => {
+  return apiClient.get(`/tracking/delivery/${deliveryOrderId}/check-proximity`);
+};
+
 export const deleteBudgetRequest = async (requestId) => {
   return apiClient.delete(`/budget-requests/${requestId}`);
 };
