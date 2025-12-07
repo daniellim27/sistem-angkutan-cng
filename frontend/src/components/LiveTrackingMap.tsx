@@ -168,6 +168,17 @@ const vehicleMarkerStyles = `
   .vehicle-marker-with-label {
     background: transparent !important;
     border: none !important;
+    position: relative !important;
+    z-index: 1000 !important;
+    width: 90px !important;
+    height: 50px !important;
+  }
+  
+  .vehicle-marker-with-label > div {
+    position: relative !important;
+    z-index: 1000 !important;
+    width: 100% !important;
+    height: 100% !important;
   }
   
   .vehicle-label {
@@ -191,6 +202,12 @@ const vehicleMarkerStyles = `
   
   .vehicle-icon {
     transition: transform 0.2s ease !important;
+    font-size: 18px !important;
+    line-height: 1 !important;
+    position: relative !important;
+    z-index: 1000 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
   }
   
   .vehicle-marker-with-label:hover .vehicle-icon {
@@ -279,8 +296,14 @@ const createVehicleIcon = (status: string, heading?: number, licensePlate?: stri
           justify-content: center;
           transform: rotate(${rotation}deg);
           box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+          font-size: 18px;
+          line-height: 1;
+          position: relative;
+          z-index: 1000;
+          visibility: visible;
+          opacity: 1;
         ">
-          🚛
+          <span style="display: inline-block; font-size: 18px; line-height: 1;">🚛</span>
         </div>
       </div>
     `,
