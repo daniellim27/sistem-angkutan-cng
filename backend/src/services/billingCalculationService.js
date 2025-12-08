@@ -1,14 +1,14 @@
 /**
- * Billing Calculation Service
+ * Billing Calculation Service - NEW SCHEMA
  * Implements the billing formula for gas volume calculation
  * 
  * Formula: V = Vt x ((1.01325 + p) / 1.01325) x (300 / (273 + t)) x k
  * 
  * Where:
  * - V = Volume Gas (m³) - Final calculated volume for billing
- * - Vt = Volume from Meter (m³) - stan_akhir - stan_awal
- * - p = Gas Pressure (Bar) - tekanan_operasi
- * - t = Gas Temperature (°C) - temperatur_operasi
+ * - Vt = Volume from Meter (m³) - volume_delta (current_stan - stan_awal)
+ * - p = Gas Pressure (Bar) - pressure_inlet
+ * - t = Gas Temperature (°C) - temperature
  * - k = Super Compressibility Factor
  */
 
@@ -28,19 +28,19 @@ class BillingCalculationService {
   }
 
   /**
-   * Calculate the final billable volume using the billing formula
+   * Calculate the final billable volume using the billing formula - NEW SCHEMA
    * @param {Object} notaKecil - The nota kecil data
-   * @param {number} notaKecil.Vt - Volume from meter (stan_akhir - stan_awal)
-   * @param {number} notaKecil.tekanan_operasi - Gas pressure in Bar
-   * @param {number} notaKecil.temperatur_operasi - Gas temperature in °C
+   * @param {number} notaKecil.volume_delta - Volume from meter (current_stan - stan_awal)
+   * @param {number} notaKecil.pressure_inlet - Gas pressure in Bar
+   * @param {number} notaKecil.temperature - Gas temperature in °C
    * @returns {Object} Calculation result with volume and details
    */
   calculateVolume(notaKecil) {
     try {
-      // Extract and validate input data
-      const Vt = parseFloat(notaKecil.Vt || 0);
-      const p = parseFloat(notaKecil.tekanan_operasi || 0);
-      const t = parseFloat(notaKecil.temperatur_operasi || 0);
+      // ✅ NEW SCHEMA: Extract and validate NEW fields
+      const Vt = parseFloat(notaKecil.volume_delta || notaKecil.Vt || 0);
+      const p = parseFloat(notaKecil.pressure_inlet || 0);
+      const t = parseFloat(notaKecil.temperature || 0);
 
       // Validate inputs
       if (Vt <= 0) {
@@ -68,7 +68,7 @@ class BillingCalculationService {
         volume: parseFloat(V.toFixed(3)),
         details: {
           Vt: Vt,
-          pressure: p,
+          pressure_inlet: p,
           temperature: t,
           pressureFactor: parseFloat(pressureFactor.toFixed(6)),
           temperatureFactor: parseFloat(temperatureFactor.toFixed(6)),
@@ -97,20 +97,16 @@ class BillingCalculationService {
       return 1 + (0.0002 * p);
     } else {
       // For p >= 4 bar: k = [FPV]² (per A.G.A Report NX-19)
-      // This is a simplified implementation - in production, you'd use the full FPV calculation
       return this.calculateFPV(p);
     }
   }
 
   /**
    * Calculate FPV (Fugacity Pressure Volume) factor for high pressure
-   * This is a simplified implementation - in production, use the full A.G.A Report NX-19 formula
    * @param {number} p - Gas pressure in Bar
    * @returns {number} FPV factor
    */
   calculateFPV(p) {
-    // Simplified FPV calculation for demonstration
-    // In production, implement the full A.G.A Report NX-19 formula
     const baseFPV = 1 + (0.0001 * p) + (0.00001 * p * p);
     return baseFPV * baseFPV; // FPV²
   }
@@ -118,7 +114,7 @@ class BillingCalculationService {
   /**
    * Calculate total price for a volume
    * @param {number} volume - Volume in m³
-   * @param {number} pricePerM3 - Price per m³ (optional, uses default if not provided)
+   * @param {number} pricePerM3 - Price per m³ (optional)
    * @returns {number} Total price
    */
   calculatePrice(volume, pricePerM3 = null) {
@@ -127,7 +123,7 @@ class BillingCalculationService {
   }
 
   /**
-   * Process multiple nota kecils and calculate total volume and price
+   * Process multiple nota kecils and calculate total volume and price - NEW SCHEMA
    * @param {Array} notaKecils - Array of nota kecil objects
    * @param {number} gasPricePerM3 - Gas price per m³ (optional)
    * @returns {Object} Processing result with totals and individual calculations
@@ -177,23 +173,27 @@ class BillingCalculationService {
   }
 
   /**
-   * Validate nota kecil data for billing calculation
+   * Validate nota kecil data for billing calculation - NEW SCHEMA
    * @param {Object} notaKecil - The nota kecil data to validate
    * @returns {Object} Validation result
    */
   validateNotaKecil(notaKecil) {
     const errors = [];
 
-    if (!notaKecil.Vt || parseFloat(notaKecil.Vt) <= 0) {
-      errors.push('Volume from meter (Vt) is required and must be greater than 0');
+    // ✅ NEW SCHEMA: Validate NEW fields
+    const Vt = parseFloat(notaKecil.volume_delta || notaKecil.Vt || 0);
+    if (!Vt || Vt <= 0) {
+      errors.push('Volume from meter (volume_delta or Vt) is required and must be greater than 0');
     }
 
-    if (!notaKecil.tekanan_operasi || parseFloat(notaKecil.tekanan_operasi) < 0) {
-      errors.push('Gas pressure is required and cannot be negative');
+    const pressure = parseFloat(notaKecil.pressure_inlet || 0);
+    if (!pressure || pressure < 0) {
+      errors.push('Gas pressure (pressure_inlet) is required and cannot be negative');
     }
 
-    if (!notaKecil.temperatur_operasi || parseFloat(notaKecil.temperatur_operasi) < -273) {
-      errors.push('Gas temperature is required and cannot be below absolute zero');
+    const temperature = parseFloat(notaKecil.temperature || 0);
+    if (!temperature || temperature < -273) {
+      errors.push('Gas temperature (temperature) is required and cannot be below absolute zero');
     }
 
     if (!notaKecil.customer_name) {
@@ -204,6 +204,45 @@ class BillingCalculationService {
       isValid: errors.length === 0,
       errors: errors
     };
+  }
+
+  /**
+   * Process complete billing from raw OCR data - NEW SCHEMA
+   * @param {Object} ocrData - Raw OCR extracted data
+   * @returns {Object} Billing calculation result
+   */
+  processCompleteBilling(ocrData) {
+    try {
+      // ✅ NEW SCHEMA: Map OCR data to nota kecil format
+      const notaKecilData = {
+        volume_delta: ocrData.current_stan ? 
+          parseFloat(ocrData.current_stan) - parseFloat(ocrData.stan_awal || 0) : 
+          parseFloat(ocrData.Vt || 0),
+        pressure_inlet: parseFloat(ocrData.pressure_inlet || 0),
+        temperature: parseFloat(ocrData.temperature || 0),
+        Vt: parseFloat(ocrData.Vt || 0)
+      };
+
+      const calculation = this.calculateVolume(notaKecilData);
+      
+      if (calculation.success) {
+        return {
+          success: true,
+          ...calculation,
+          ocr_source: true
+        };
+      } else {
+        return {
+          success: false,
+          error: calculation.error
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   }
 
   /**

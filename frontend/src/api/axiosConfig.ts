@@ -73,7 +73,8 @@ apiClient.interceptors.response.use(
       response.config.url?.includes("/customers/locations-with-coords") ||
       response.config.url?.includes("/customers/update-coordinates") ||
       response.config.url?.includes("/ocr/") ||
-      response.config.url?.includes("/cctv-monitoring/")
+      response.config.url?.includes("/cctv-monitoring/") ||
+      response.config.url?.includes("/notifications")
     ) {
       return response; // Return full response for these endpoints
     }

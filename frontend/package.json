@@ -27,6 +27,7 @@
     "chart.js": "^4.5.0",
     "dayjs": "^1.11.13",
     "express": "^4.18.2",
+    "file-saver": "^2.0.5",
     "jspdf": "^3.0.1",
     "jspdf-autotable": "^5.0.2",
     "leaflet": "^1.9.4",
@@ -78,6 +79,7 @@
     ]
   },
   "devDependencies": {
+    "@types/file-saver": "^2.0.7",
     "@types/lodash.debounce": "^4.0.9",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",

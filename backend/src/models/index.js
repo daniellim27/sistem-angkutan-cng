@@ -39,6 +39,9 @@ const setupDepositGroupMemberModel = require("./depositGroupMember.model");
 // GPS Tracking Model
 const setupDriverLocationModel = require("./driverLocation.model");
 
+// Notification Model
+const setupNotificationModel = require("./notification.model");
+
 // Gas Station Model
 const setupGasStationModel = require("./gasStation.model");
 
@@ -137,6 +140,9 @@ db.DepositGroupMember = setupDepositGroupMemberModel(sequelize);
 
 // GPS Tracking Model
 db.DriverLocation = setupDriverLocationModel(sequelize);
+
+// Notification Model
+db.Notification = setupNotificationModel(sequelize);
 
 // Gas Station Model
 db.GasStation = setupGasStationModel(sequelize);
@@ -592,6 +598,24 @@ DriverLocation.belongsTo(DeliveryOrder, {
   as: "deliveryOrder",
 });
 
+// Notification Associations
+Vehicle.hasMany(db.Notification, {
+  foreignKey: "vehicle_id",
+  as: "notifications",
+});
+db.Notification.belongsTo(Vehicle, {
+  foreignKey: "vehicle_id",
+  as: "vehicle",
+});
+
+User.hasMany(db.Notification, {
+  foreignKey: "driver_id",
+  as: "notifications",
+});
+db.Notification.belongsTo(User, {
+  foreignKey: "driver_id",
+  as: "driver",
+});
 
 // === Infrastructure Inventory Associations ===
 InfrastructureCategory.hasMany(InfrastructureItem, {

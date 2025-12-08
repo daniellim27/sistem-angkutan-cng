@@ -130,7 +130,7 @@ module.exports = (sequelize) => {
     }
   );
 
-  // Instance methods
+  // ✅ NEW SCHEMA: Instance methods with NEW fields
   OCRResult.prototype.isProcessingComplete = function() {
     return this.processing_status === 'completed';
   };
@@ -143,25 +143,29 @@ module.exports = (sequelize) => {
     return this.confidence_scores?.overall || 0;
   };
 
+  // ✅ NEW SCHEMA: Validate NEW fields ONLY
   OCRResult.prototype.hasValidData = function() {
     if (!this.extracted_data) return false;
     
     const data = this.extracted_data;
-    return !!(data.stan_awal && data.stan_akhir && 
-              data.tekanan_operasi && data.temperatur_operasi);
+    // ✅ NEW SCHEMA: current_stan, pressure_inlet, temperature
+    return !!(data.stan_awal && data.current_stan && 
+              data.pressure_inlet && data.temperature);
   };
 
+  // ✅ NEW SCHEMA: Summary with NEW fields
   OCRResult.prototype.getExtractedDataSummary = function() {
     if (!this.extracted_data) return null;
     
     const data = this.extracted_data;
     return {
       has_date_range: !!(data.tanggal_mulai && data.tanggal_selesai),
-      has_meter_readings: !!(data.stan_awal && data.stan_akhir),
-      has_operational_data: !!(data.tekanan_operasi && data.temperatur_operasi),
+      has_meter_readings: !!(data.stan_awal && data.current_stan),
+      // ✅ NEW SCHEMA: pressure_inlet, temperature
+      has_operational_data: !!(data.pressure_inlet && data.temperature),
       has_pricing_data: !!(data.harga_satuan && data.total_harga),
-      meter_difference: data.stan_akhir && data.stan_awal ? 
-        data.stan_akhir - data.stan_awal : null,
+      meter_difference: data.current_stan && data.stan_awal ? 
+        data.current_stan - data.stan_awal : null,
       confidence: this.getOverallConfidence()
     };
   };
@@ -204,4 +208,3 @@ module.exports = (sequelize) => {
 
   return OCRResult;
 };
-

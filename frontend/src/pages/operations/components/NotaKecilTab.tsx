@@ -2,76 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import apiClient, { authClient } from '../../../api/axiosConfig';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { 
-  faTachometerAlt, 
-  faThermometerHalf, 
-  faPlay, 
-  faSquare,
-  faEye,
-  faTimes,
-  faChevronDown,
-  faChevronRight,
-  faTruck,
-  faMapMarkerAlt
-} from '@fortawesome/free-solid-svg-icons';
+import { exportNotaKecilsToExcel, exportSummaryReport } from '../../../utils/excelExport';
+import { NotaKecil } from '../../../types/notaKecil';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000';
-
-interface NotaKecil {
-  id: number;
-  customer_name: string;
-  customer_address?: string;
-  customer_location_index: number;
-  ocr_processing_status?: string;
-  stan_awal: string;
-  stan_akhir: string;
-  tekanan_operasi: string;
-  temperatur_operasi: string;
-  Vt: string;
-  k: string;
-  V: string;
-  created_at: string;
-  deliveryOrder: {
-    id: number;
-    do_number: string;
-  };
-  driver_notes?: string;
-  pressure_bar_photos?: string[];
-  temperature_photos?: string[];
-  stan_awal_photos?: string[];
-  stan_akhir_photos?: string[];
-  pressure_bar_photos_urls?: Array<{
-    url: string;
-    filename: string;
-    fileId: string;
-    uploadedAt: string;
-  }>;
-  temperature_photos_urls?: Array<{
-    url: string;
-    filename: string;
-    fileId: string;
-    uploadedAt: string;
-  }>;
-  stan_awal_photos_urls?: Array<{
-    url: string;
-    filename: string;
-    fileId: string;
-    uploadedAt: string;
-  }>;
-  stan_akhir_photos_urls?: Array<{
-    url: string;
-    filename: string;
-    fileId: string;
-    uploadedAt: string;
-  }>;
-  photos?: {
-    pressure_bar: string[];
-    temperature: string[];
-    stan_awal: string[];
-    stan_akhir: string[];
-  };
-}
 
 interface DeliveryOrderGroup {
   id: number;
@@ -106,6 +40,7 @@ const NotaKecilTab: React.FC = () => {
   const [gasPricePerM3, setGasPricePerM3] = useState<number>(15000);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [exporting, setExporting] = useState(false);
   
   // Expand/collapse states
   const [expandedDOs, setExpandedDOs] = useState<Set<number>>(new Set());
@@ -128,13 +63,10 @@ const NotaKecilTab: React.FC = () => {
       const notaKecilsData = response.data.data || [];
       setNotaKecils(notaKecilsData);
       
-      // Group by DO and Customer
       const grouped = groupNotaKecilsByDOAndCustomer(notaKecilsData);
       setDeliveryOrderGroups(grouped);
       
-      // Keep all DOs closed by default
       setExpandedDOs(new Set());
-      
       console.log('Fetched and grouped nota kecils:', grouped);
     } catch (error) {
       console.error('Error fetching nota kecils:', error);
@@ -163,7 +95,6 @@ const NotaKecilTab: React.FC = () => {
 
       const doGroup = doMap.get(doId)!;
       
-      // Find or create customer group
       const customerKey = `${nota.customer_name}_${nota.customer_location_index}`;
       let customerGroup = doGroup.customers.find(
         c => c.customer_name === nota.customer_name && c.customer_location_index === nota.customer_location_index
@@ -186,13 +117,10 @@ const NotaKecilTab: React.FC = () => {
       doGroup.notaCount += 1;
     });
 
-    // Sort by DO ID (newest first)
     const sortedGroups = Array.from(doMap.values()).sort((a, b) => b.id - a.id);
     
-    // Sort customers within each DO
     sortedGroups.forEach(doGroup => {
       doGroup.customers.sort((a, b) => a.customer_location_index - b.customer_location_index);
-      // Sort nota kecils by created_at
       doGroup.customers.forEach(customer => {
         customer.notaKecils.sort((a, b) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -212,14 +140,50 @@ const NotaKecilTab: React.FC = () => {
     }
   };
 
+  // Export handlers
+  const handleExportAllToExcel = async () => {
+    try {
+      setExporting(true);
+      const success = exportNotaKecilsToExcel(notaKecils, 'all_nota_kecils');
+      if (!success) alert('Failed to export to Excel');
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('Error exporting to Excel');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportSummary = () => {
+    try {
+      setExporting(true);
+      exportSummaryReport(deliveryOrderGroups);
+    } catch (err) {
+      console.error('Summary export error:', err);
+      alert('Error exporting summary');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportSelectedDO = (doGroup: DeliveryOrderGroup) => {
+    try {
+      setExporting(true);
+      const doNotaKecils = doGroup.customers.flatMap(customer => customer.notaKecils);
+      exportNotaKecilsToExcel(doNotaKecils, `nota_kecils_${doGroup.do_number}`);
+    } catch (err) {
+      console.error('DO export error:', err);
+      alert('Error exporting delivery order data');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const toggleDO = (doId: number) => {
     setExpandedDOs(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(doId)) {
-        newSet.delete(doId);
-      } else {
-        newSet.add(doId);
-      }
+      if (newSet.has(doId)) newSet.delete(doId);
+      else newSet.add(doId);
       return newSet;
     });
   };
@@ -228,11 +192,8 @@ const NotaKecilTab: React.FC = () => {
     const key = `${doId}_${customerKey}`;
     setExpandedCustomers(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(key)) {
-        newSet.delete(key);
-      } else {
-        newSet.add(key);
-      }
+      if (newSet.has(key)) newSet.delete(key);
+      else newSet.add(key);
       return newSet;
     });
   };
@@ -245,6 +206,35 @@ const NotaKecilTab: React.FC = () => {
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  const getOcrStatusBadge = (status?: string) => {
+    if (!status) return null;
+
+    const statusConfig = {
+      'insufficient_data': { bg: 'from-yellow-400 to-amber-500', text: 'text-yellow-900', label: 'Insufficient Data' },
+      'invalid_data': { bg: 'from-orange-400 to-red-500', text: 'text-white', label: 'Invalid Data' }
+    };
+
+    const match = status.match(/^(\d+)_failed$/);
+    if (match) {
+      return (
+        <span className="inline-flex px-2 py-1 text-xs font-bold rounded-full bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-sm">
+          {match[1]} Failed
+        </span>
+      );
+    }
+
+    const config = statusConfig[status as keyof typeof statusConfig];
+    if (config) {
+      return (
+        <span className={`inline-flex px-2 py-1 text-xs font-bold rounded-full bg-gradient-to-r ${config.bg} ${config.text} shadow-sm`}>
+          {config.label}
+        </span>
+      );
+    }
+
+    return null;
   };
 
   const getThumbnailUrl = (fileId: string) => {
@@ -283,41 +273,16 @@ const NotaKecilTab: React.FC = () => {
     let title = '';
 
     switch (photoType) {
-      case 'pressure_bar':
-        title = 'Pressure Bar Photos';
-        break;
-      case 'temperature':
-        title = 'Temperature Photos';
-        break;
-      case 'stan_awal':
-        title = 'Stan Awal Photos';
-        break;
-      case 'stan_akhir':
-        title = 'Stan Akhir Photos';
-        break;
+      case 'pressure_bar': title = 'Pressure Inlet Photos'; break;
+      case 'temperature': title = 'Temperature Photos'; break;
+      case 'stan_awal': title = 'Stan Awal Photos'; break;
+      case 'stan_akhir': title = 'Current Stan Photos'; break;
     }
 
     if (realPhotos.length > 0) {
       setSelectedPhotos(realPhotos);
       setPhotoModalTitle(title);
       setShowPhotoModal(true);
-    } else {
-      alert(`No real ${photoType} photos available for this nota kecil.`);
-    }
-  };
-
-  const getPhotoIcon = (photoType: 'pressure_bar' | 'temperature' | 'stan_awal' | 'stan_akhir') => {
-    switch (photoType) {
-      case 'pressure_bar':
-        return faTachometerAlt;
-      case 'temperature':
-        return faThermometerHalf;
-      case 'stan_awal':
-        return faPlay;
-      case 'stan_akhir':
-        return faSquare;
-      default:
-        return faEye;
     }
   };
 
@@ -325,21 +290,26 @@ const NotaKecilTab: React.FC = () => {
     const realPhotos = getRealPhotoUrls(notaKecil, photoType);
     const hasRealPhotos = realPhotos.length > 0;
     
+    const icons = {
+      pressure_bar: '📊',
+      temperature: '🌡️',
+      stan_awal: '⏮️',
+      stan_akhir: '⏭️'
+    };
+
     return (
       <button
         onClick={() => viewPhotos(notaKecil, photoType)}
-        className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-          hasRealPhotos 
-            ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' 
-            : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60'
-        }`}
+        className={`
+          flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-sm
+          ${hasRealPhotos 
+            ? 'bg-gradient-to-r from-blue-500 to-cyan-600 text-white hover:from-blue-600 hover:to-cyan-700 hover:shadow-md hover:scale-105' 
+            : 'bg-gradient-to-r from-gray-400 to-gray-500 text-white/80 cursor-not-allowed opacity-60'
+          }`}
         disabled={!hasRealPhotos}
-        title={hasRealPhotos ? `View ${realPhotos.length} photo(s)` : 'No real photos available'}
+        title={hasRealPhotos ? `View ${realPhotos.length} photo(s)` : 'No photos available'}
       >
-        <FontAwesomeIcon 
-          icon={getPhotoIcon(photoType)} 
-          className="w-3 h-3" 
-        />
+        <span className="text-sm">{icons[photoType]}</span>
         <span>{hasRealPhotos ? realPhotos.length : '0'}</span>
       </button>
     );
@@ -348,11 +318,8 @@ const NotaKecilTab: React.FC = () => {
   const handleNotaKecilCheckboxChange = (notaKecilId: number, checked: boolean) => {
     setSelectedNotaKecils(prev => {
       const newSet = new Set(prev);
-      if (checked) {
-        newSet.add(notaKecilId);
-      } else {
-        newSet.delete(notaKecilId);
-      }
+      if (checked) newSet.add(notaKecilId);
+      else newSet.delete(notaKecilId);
       return newSet;
     });
   };
@@ -360,7 +327,6 @@ const NotaKecilTab: React.FC = () => {
   const handleStartSelection = (doId: number) => {
     setIsSelectionMode(true);
     setSelectedNotaKecils(new Set());
-    // Expand the DO automatically
     setExpandedDOs(prev => new Set(prev).add(doId));
   };
 
@@ -377,19 +343,15 @@ const NotaKecilTab: React.FC = () => {
 
     try {
       setCalculatingNotaBesar(true);
-
       const response = await authClient.post(`/delivery-orders/${doId}/nota-besar/calculate`, {
         notaKecilIds: Array.from(selectedNotaKecils),
         gasPricePerM3: gasPricePerM3
       });
 
       console.log('Nota besar created:', response.data);
-      
       setSelectedNotaKecils(new Set());
       setIsSelectionMode(false);
-      
       alert('Nota besar created successfully!');
-      
       window.location.reload();
     } catch (error: any) {
       console.error('Error creating nota besar:', error);
@@ -423,327 +385,533 @@ const NotaKecilTab: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="text-center py-8">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <p className="mt-2 text-gray-600">Loading nota kecils...</p>
+      <div className="flex items-center justify-center py-16 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100 rounded-2xl">
+        <div className="flex flex-col items-center">
+          <div className="relative">
+            <div className="animate-spin rounded-full h-20 w-20 border-4 border-blue-600 border-t-transparent"></div>
+            <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 blur opacity-30 animate-pulse"></div>
+          </div>
+          <p className="mt-6 text-xl font-semibold text-gray-700">Loading Nota Kecils...</p>
+          <p className="mt-2 text-gray-500">Fetching delivery orders & customer data</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="text-center py-8">
-        <div className="text-red-600 mb-4">{error}</div>
-        <button
-          onClick={fetchAllNotaKecils}
-          className="bg-blue-500 hover:bg-blue-700 text-white px-4 py-2 rounded"
-        >
-          Retry
-        </button>
+      <div className="min-h-[400px] flex items-center justify-center bg-gradient-to-br from-red-50 to-rose-100">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+          <div className="mx-auto h-20 w-20 bg-red-100 rounded-full flex items-center justify-center mb-6">
+            <svg className="h-12 w-12 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Failed to Load</h2>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={fetchAllNotaKecils}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg font-semibold"
+            >
+              🔄 Retry
+            </button>
+            <button
+              onClick={() => navigate('/operations/nota-besar')}
+              className="px-6 py-3 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all shadow-lg font-semibold"
+            >
+              ← View Nota Besar
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (deliveryOrderGroups.length === 0) {
     return (
-      <div className="text-center py-12">
-        <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        <p className="text-gray-500 text-lg">No nota kecils found</p>
-        <p className="text-gray-400 text-sm mt-2">Nota kecils will appear here once drivers upload them</p>
+      <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl shadow-lg p-16 text-center border border-dashed border-gray-300">
+        <div className="mx-auto h-24 w-24 bg-gradient-to-br from-gray-300 to-gray-400 rounded-2xl flex items-center justify-center mb-6">
+          <svg className="h-12 w-12 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </div>
+        <h3 className="text-3xl font-bold text-gray-900 mb-3">No Nota Kecils Yet</h3>
+        <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+          Drivers will upload nota kecils here after delivery. Check back later or view existing nota besars.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <button
+            onClick={() => navigate('/operations/nota-besar')}
+            className="px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl text-lg font-bold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-1"
+          >
+            👀 View Nota Besar
+          </button>
+          <button
+            onClick={() => navigate('/delivery-orders')}
+            className="px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl text-lg font-bold hover:from-emerald-700 hover:to-teal-700 transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-1"
+          >
+            🚚 Delivery Orders
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Global Export Buttons */}
+      <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-2xl p-4 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center text-white">
+              📊
+            </div>
+            <div>
+              <h3 className="font-semibold text-blue-900">Export Data</h3>
+              <p className="text-sm text-blue-700">Download nota kecils in Excel format</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleExportAllToExcel}
+              disabled={exporting || notaKecils.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:from-green-600 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 transition-all shadow-lg font-semibold text-sm"
+            >
+              {exporting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <span>📥</span>
+                  Export All ({notaKecils.length})
+                </>
+              )}
+            </button>
+            
+            <button
+              onClick={handleExportSummary}
+              disabled={exporting || deliveryOrderGroups.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 transition-all shadow-lg font-semibold text-sm"
+            >
+              <span>📋</span>
+              Summary Report
+            </button>
+          </div>
+        </div>
+      </div>
       {/* Selection Mode Info */}
       {isSelectionMode && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-blue-900">
-                {selectedNotaKecils.size > 0 
-                  ? `${selectedNotaKecils.size} nota kecil${selectedNotaKecils.size > 1 ? 's' : ''} selected`
-                  : 'Select nota kecils to create nota besar'
-                }
-              </p>
-              <p className="text-xs text-blue-700 mt-1">
-                Check the boxes next to nota kecils you want to include in the nota besar
-              </p>
+        <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-2xl p-6 shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg">
+                {selectedNotaKecils.size}
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-blue-900">
+                  {selectedNotaKecils.size > 0 
+                    ? `${selectedNotaKecils.size} nota kecil${selectedNotaKecils.size > 1 ? 's' : ''} selected` 
+                    : 'Select nota kecils to create nota besar'
+                  }
+                </p>
+                <p className="text-sm text-blue-700 mt-1">
+                  Check the boxes next to nota kecils you want to group into a nota besar
+                </p>
+              </div>
             </div>
             <button
               onClick={handleCancelSelection}
-              className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              className="px-8 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all shadow-lg font-semibold transform hover:-translate-y-0.5"
             >
-              Cancel Selection
+              ❌ Cancel Selection
             </button>
           </div>
         </div>
       )}
 
       {/* Delivery Order Groups */}
-      {deliveryOrderGroups.map((doGroup) => {
-        const isExpanded = expandedDOs.has(doGroup.id);
-        
-        return (
-          <div key={doGroup.id} className="bg-white rounded-lg shadow-md overflow-hidden">
-            {/* DO Header */}
-            <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 flex-1">
-                  <button
-                    onClick={() => toggleDO(doGroup.id)}
-                    className="hover:bg-blue-400 p-2 rounded transition-colors"
-                  >
-                    <FontAwesomeIcon 
-                      icon={isExpanded ? faChevronDown : faChevronRight} 
-                      className="w-4 h-4"
-                    />
-                  </button>
-                  <FontAwesomeIcon icon={faTruck} className="w-5 h-5" />
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold">{doGroup.do_number}</h3>
-                    <p className="text-sm text-blue-100">
-                      {doGroup.notaCount} nota kecil{doGroup.notaCount > 1 ? 's' : ''} • {doGroup.customers.length} customer{doGroup.customers.length > 1 ? 's' : ''} • Total: {doGroup.totalV.toLocaleString('id-ID', { minimumFractionDigits: 2 })} m³
-                    </p>
+      <div className="space-y-6">
+        {deliveryOrderGroups.map((doGroup) => {
+          const isExpanded = expandedDOs.has(doGroup.id);
+          
+          return (
+            <div key={doGroup.id} className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden border border-white/50">
+              {/* DO Header */}
+              <div className="bg-gradient-to-r from-indigo-600 via-blue-700 to-cyan-800 text-white p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4 flex-1">
+                    <button
+                      onClick={() => toggleDO(doGroup.id)}
+                      className="group/chevron p-3 bg-white/20 backdrop-blur-sm rounded-xl hover:bg-white/30 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                    >
+                      <svg 
+                        className={`w-5 h-5 transition-transform duration-500 ${isExpanded ? 'rotate-180' : ''}`}
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    <div className="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center text-white font-bold text-2xl shadow-lg">
+                      🚚
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-2xl font-bold tracking-tight">{doGroup.do_number}</h3>
+                      <div className="flex flex-wrap items-center gap-6 mt-2 text-sm opacity-90">
+                        <span className="inline-flex items-center gap-2">
+                          <span className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center text-xs font-bold">
+                            {doGroup.notaCount}
+                          </span>
+                          <span>Nota Kecil</span>
+                        </span>
+                        <span className="inline-flex items-center gap-2">
+                          <span className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center text-xs font-bold">
+                            {doGroup.customers.length}
+                          </span>
+                          <span>Customers</span>
+                        </span>
+                        <span className="font-mono text-lg">
+                          {doGroup.totalV.toLocaleString('id-ID', { minimumFractionDigits: 3 })} m³
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-3">
+                    {/* Export DO Button */}
+                    <button
+                      onClick={() => handleExportSelectedDO(doGroup)}
+                      disabled={exporting}
+                      className="group flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm text-white rounded-xl hover:bg-white/30 transition-all font-semibold border border-white/20 shadow-lg hover:shadow-xl transform hover:scale-105 text-sm"
+                      title="Export this delivery order to Excel"
+                    >
+                      {exporting ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      ) : (
+                        <span>📥</span>
+                      )}
+                      Export DO
+                    </button>
+                    {!isSelectionMode && (
+                      <button
+                        onClick={() => handleStartSelection(doGroup.id)}
+                        className="group flex items-center gap-3 px-6 py-3 bg-white/20 backdrop-blur-sm text-white rounded-xl hover:bg-white/30 transition-all font-semibold border border-white/20 shadow-lg hover:shadow-xl transform hover:scale-105"
+                      >
+                        <svg className="w-4 h-4 group-hover:rotate-12 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Create Nota Besar
+                      </button>
+                    )}
+                    {isSelectionMode && selectedNotaKecils.size > 0 && (
+                      <button
+                        onClick={() => handleCreateNotaBesar(doGroup.id)}
+                        disabled={calculatingNotaBesar}
+                        className="group flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl hover:from-emerald-600 hover:to-teal-700 disabled:from-gray-400 disabled:to-gray-500 transition-all shadow-lg hover:shadow-xl font-semibold transform hover:scale-105 disabled:transform-none"
+                      >
+                        {calculatingNotaBesar ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                            Creating...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            Create ({selectedNotaKecils.size})
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
-                {!isSelectionMode && (
-                  <button
-                    onClick={() => handleStartSelection(doGroup.id)}
-                    className="bg-white text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                    </svg>
-                    Create Nota Besar
-                  </button>
-                )}
-                {isSelectionMode && selectedNotaKecils.size > 0 && (
-                  <button
-                    onClick={() => handleCreateNotaBesar(doGroup.id)}
-                    disabled={calculatingNotaBesar}
-                    className="bg-white text-blue-600 hover:bg-blue-50 disabled:bg-blue-200 px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
-                  >
-                    {calculatingNotaBesar ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                        Creating...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Create with {selectedNotaKecils.size} selected
-                      </>
-                    )}
-                  </button>
-                )}
               </div>
-            </div>
 
-            {/* Customer Groups (Collapsible) */}
-            {isExpanded && (
-              <div className="divide-y divide-gray-200">
-                {doGroup.customers.map((customerGroup) => {
-                  const customerKey = `${customerGroup.customer_name}_${customerGroup.customer_location_index}`;
-                  const isCustomerExpanded = expandedCustomers.has(`${doGroup.id}_${customerKey}`);
-                  const customerInfo = getCustomerInfo(customerGroup.notaKecils[0]);
-                  
-                  return (
-                    <div key={customerKey} className="bg-gray-50">
-                      {/* Customer Header */}
-                      <div className="p-4 hover:bg-gray-100 transition-colors">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3 flex-1">
-                            <button
-                              onClick={() => toggleCustomer(doGroup.id, customerKey)}
-                              className="hover:bg-gray-200 p-2 rounded transition-colors"
-                            >
-                              <FontAwesomeIcon 
-                                icon={isCustomerExpanded ? faChevronDown : faChevronRight} 
-                                className="w-4 h-4 text-gray-600"
-                              />
-                            </button>
-                            <FontAwesomeIcon icon={faMapMarkerAlt} className="w-4 h-4 text-gray-500" />
-                            <div className="flex-1">
-                              <h4 className="font-semibold text-gray-900">
-                                {customerInfo.customer_name}
-                                <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                                  Location {customerGroup.customer_location_index}
-                                </span>
-                              </h4>
-                              <p className="text-sm text-gray-600">
-                                {customerInfo.customer_location || 'Location not available'} • 
-                                {customerGroup.notaKecils.length} nota kecil{customerGroup.notaKecils.length > 1 ? 's' : ''} • 
-                                Total: {customerGroup.totalV.toLocaleString('id-ID', { minimumFractionDigits: 2 })} m³
-                              </p>
+              {/* Animated Collapse/Expand */}
+              <div 
+                className={`
+                  overflow-hidden transition-all duration-700 ease-in-out
+                  ${isExpanded ? 'max-h-[3000px] opacity-100' : 'max-h-0 opacity-0'}
+                `}
+              >
+                <div className="divide-y divide-gray-100">
+                  {doGroup.customers.map((customerGroup) => {
+                    const customerKey = `${customerGroup.customer_name}_${customerGroup.customer_location_index}`;
+                    const isCustomerExpanded = expandedCustomers.has(`${doGroup.id}_${customerKey}`);
+                    const customerInfo = getCustomerInfo(customerGroup.notaKecils[0]);
+                    
+                    return (
+                      <div key={customerKey} className="bg-gradient-to-r from-gray-50 to-blue-50/30">
+                        {/* Customer Header */}
+                        <div className="p-6 hover:bg-gray-100/50 transition-all duration-300">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4 flex-1">
+                              <button
+                                onClick={() => toggleCustomer(doGroup.id, customerKey)}
+                                className="group/chevron p-3 bg-white/30 backdrop-blur-sm rounded-xl hover:bg-white/50 transition-all duration-300 shadow-sm hover:shadow-md transform hover:scale-105"
+                              >
+                                <svg 
+                                  className={`w-5 h-5 transition-transform duration-500 ${isCustomerExpanded ? 'rotate-180' : ''}`}
+                                  fill="none" 
+                                  stroke="currentColor" 
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                              <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg">
+                                🏪
+                              </div>
+                              <div className="flex-1">
+                                <h4 className="font-bold text-lg text-gray-900">
+                                  {customerInfo.customer_name}
+                                </h4>
+                                <div className="flex items-center gap-4 mt-2 text-sm">
+                                  <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                                    📍 Location {customerGroup.customer_location_index}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1">
+                                    <span className="font-mono">{customerGroup.notaKecils.length}</span>
+                                    <span className="text-gray-600">nota kecil</span>
+                                  </span>
+                                  <span className="font-mono text-purple-600">
+                                    {customerGroup.totalV.toLocaleString('id-ID', { minimumFractionDigits: 3 })} m³
+                                  </span>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
 
-                      {/* Nota Kecils List (Collapsible) - 2 Column Grid */}
-                      {isCustomerExpanded && (
-                        <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {customerGroup.notaKecils.map((notaKecil) => {
-                            const stanAwal = parseFloat(notaKecil.stan_awal || '0');
-                            const stanAkhir = parseFloat(notaKecil.stan_akhir || '0');
-                            const selisih = stanAkhir - stanAwal;
-                            const isSelected = selectedNotaKecils.has(notaKecil.id);
-                            
-                            return (
-                              <div 
-                                key={notaKecil.id}
-                                className={`bg-white border-2 rounded-lg p-3 transition-all ${
-                                  isSelected 
-                                    ? 'border-blue-500 shadow-md' 
-                                    : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                                }`}
-                              >
-                                <div className="flex items-start gap-2">
+                        {/* Nota Kecil Cards - 2 Column Grid */}
+                        {isCustomerExpanded && (
+                          <div className="px-6 pb-6 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
+                            {customerGroup.notaKecils.map((notaKecil) => {
+                              const stanAwal = parseFloat(notaKecil.stan_awal || '0');
+                              const currentStan = parseFloat(notaKecil.current_stan || '0');
+                              const selisih = currentStan - stanAwal;
+                              const isSelected = selectedNotaKecils.has(notaKecil.id);
+                              
+                              return (
+                                <div 
+                                  key={notaKecil.id}
+                                  className={`
+                                    group/card bg-gradient-to-br from-white to-gray-50 rounded-2xl p-6 shadow-sm border border-gray-200
+                                    hover:shadow-xl hover:border-blue-300 hover:-translate-y-2 transition-all duration-500
+                                    ${isSelected ? 'border-2 border-blue-500 bg-blue-50 shadow-lg ring-2 ring-blue-200/50' : ''}
+                                    relative overflow-hidden cursor-pointer
+                                  `}
+                                  onClick={() => isSelectionMode && handleNotaKecilCheckboxChange(notaKecil.id, !isSelected)}
+                                >
+                                  {/* Selection Ring */}
+                                  {isSelectionMode && (
+                                    <div className="absolute inset-0 bg-blue-500/10 rounded-2xl opacity-0 group-hover/card:opacity-100 transition-opacity"></div>
+                                  )}
+                                  
                                   {/* Checkbox */}
                                   {isSelectionMode && (
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={(e) => handleNotaKecilCheckboxChange(notaKecil.id, e.target.checked)}
-                                      className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded flex-shrink-0"
-                                    />
+                                    <div className="absolute top-4 right-4 z-10">
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={(e) => handleNotaKecilCheckboxChange(notaKecil.id, e.target.checked)}
+                                        className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-2 border-gray-300 rounded-lg flex-shrink-0 shadow-sm"
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* NK Badge */}
+                                  <div className="absolute top-4 left-4 z-10">
+                                    <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg">
+                                      NK
+                                    </div>
+                                  </div>
+
+                                  {/* ✅ NEW: Screenshot Preview (from guide) */}
+                                  {notaKecil.representative_screenshot_url && (
+                                    <div className="relative group/screenshot mb-4">
+                                      <img
+                                        src={notaKecil.representative_screenshot_url}
+                                        alt={`Screenshot for ${notaKecil.customer_name}`}
+                                        className="w-full h-32 object-cover rounded-xl border border-gray-200 cursor-pointer"
+                                        onClick={() => window.open(notaKecil.representative_screenshot_url, '_blank')}
+                                      />
+                                      <div className="absolute inset-0 bg-black/0 group-hover/screenshot:bg-black/20 transition-all rounded-xl flex items-center justify-center opacity-0 group-hover/screenshot:opacity-100">
+                                        <span className="text-white text-sm font-semibold bg-black/50 px-3 py-1 rounded-lg">
+                                          📸 View Full Size
+                                        </span>
+                                      </div>
+                                    </div>
                                   )}
 
                                   {/* Content */}
-                                  <div className="flex-1 space-y-2">
-                                    {/* Time & Date */}
-                                    <div className="text-xs text-gray-500">
-                              {formatDate(notaKecil.created_at)}
-                              {/* Label for imperfect nota kecil (>=10 failed OCRs) */}
-                              {(() => {
-                                const status = notaKecil.ocr_processing_status || '';
-                                // Check for insufficient_data first (highest priority)
-                                if (status === 'insufficient_data') {
-                                  return (
-                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-yellow-100 text-yellow-700 border border-yellow-200">
-                                      insufficient data
-                                    </span>
-                                  );
-                                }
-                                // Check for failed count pattern
-                                const match = status.match(/^(\d+)_failed$/);
-                                if (match) {
-                                  const failedNum = match[1];
-                                  return (
-                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200">
-                                      {failedNum} failed
-                                    </span>
-                                  );
-                                }
-                                // Check for invalid_data
-                                if (status === 'invalid_data') {
-                                  return (
-                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700 border border-orange-200">
-                                      invalid data
-                                    </span>
-                                  );
-                                }
-                                return null;
-                              })()}
+                                  <div className="relative z-10 space-y-4">
+                                    {/* Time & OCR Status */}
+                                    <div className="flex items-center justify-between">
+                                      <div className="text-xs text-gray-500 font-mono bg-gray-100 px-3 py-1.5 rounded-full inline-flex items-center gap-2">
+                                        {formatDate(notaKecil.created_at)}
+                                        {getOcrStatusBadge(notaKecil.ocr_processing_status)}
+                                      </div>
                                     </div>
 
-                                    {/* Stand Meter - Compact */}
-                                    <div>
-                                      <p className="text-xs text-gray-500 mb-1">Stand Meter (m³)</p>
-                                      <div className="flex items-center gap-2 text-xs">
-                                        <span className="font-medium">{stanAwal.toFixed(2)}</span>
+                                    {/* Stand Meter */}
+                                    <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl">
+                                      <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2">Stand Meter</p>
+                                      <div className="flex items-center justify-between text-sm">
+                                        <span className="font-mono text-gray-600">Awal</span>
+                                        <span className="font-mono font-bold text-purple-600">{stanAwal.toFixed(3)}</span>
                                         <span className="text-gray-400">→</span>
-                                        <span className="font-medium">{stanAkhir.toFixed(2)}</span>
+                                        <span className="font-mono font-bold text-indigo-600">{currentStan.toFixed(3)}</span>
                                         <span className="text-gray-400">=</span>
-                                        <span className="font-bold text-blue-600">{selisih.toFixed(2)}</span>
+                                        <span className="font-mono font-bold text-blue-600">{selisih.toFixed(3)}</span>
                                       </div>
                                     </div>
 
-                                    {/* Tekanan & Suhu - Side by Side */}
-                                    <div className="grid grid-cols-2 gap-2">
-                                      <div>
-                                        <p className="text-xs text-gray-500">Tekanan</p>
-                                        <p className="text-sm font-medium">
-                                          {notaKecil.tekanan_operasi ? parseFloat(notaKecil.tekanan_operasi).toFixed(2) : 'N/A'} bar
+                                    {/* Measurements Grid */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                      <div className="p-3 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl text-center">
+                                        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Pressure Inlet</p>
+                                        <p className="text-sm font-mono font-bold text-blue-800">
+                                          {notaKecil.pressure_inlet ? parseFloat(notaKecil.pressure_inlet).toFixed(2) : 'N/A'} bar
                                         </p>
                                       </div>
-                                      <div>
-                                        <p className="text-xs text-gray-500">Suhu</p>
-                                        <p className="text-sm font-medium">
-                                          {notaKecil.temperatur_operasi ? parseFloat(notaKecil.temperatur_operasi).toFixed(2) : 'N/A'} °C
+                                      <div className="p-3 bg-gradient-to-br from-cyan-50 to-sky-50 rounded-xl text-center">
+                                        <p className="text-xs font-semibold text-cyan-700 uppercase tracking-wide">Pressure Outlet</p>
+                                        <p className="text-sm font-mono font-bold text-cyan-800">
+                                          {notaKecil.pressure_outlet ? parseFloat(notaKecil.pressure_outlet).toFixed(2) : 'N/A'} bar
+                                        </p>
+                                      </div>
+                                      <div className="p-3 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl text-center">
+                                        <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Temperature</p>
+                                        <p className="text-sm font-mono font-bold text-emerald-800">
+                                          {notaKecil.temperature ? parseFloat(notaKecil.temperature).toFixed(1) : 'N/A'} °C
+                                        </p>
+                                      </div>
+                                      <div className="p-3 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl text-center">
+                                        <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">Correction (k)</p>
+                                        <p className="text-sm font-mono font-bold text-purple-800">
+                                          {notaKecil.k ? parseFloat(notaKecil.k).toFixed(6) : '1.000000'}
                                         </p>
                                       </div>
                                     </div>
 
-                                    {/* Faktor Koreksi */}
-                                    <div>
-                                      <p className="text-xs text-gray-500">Faktor Koreksi (k)</p>
-                                      <p className="text-sm font-medium">
-                                        {notaKecil.k ? parseFloat(notaKecil.k).toFixed(6) : 'N/A'}
-                                      </p>
+                                    {/* Usage Display */}
+                                    <div className="pt-4 border-t border-gray-200">
+                                      <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Final Usage</p>
+                                      <div className={`
+                                        flex items-center justify-center gap-2 p-4 rounded-xl text-white
+                                        ${parseFloat(notaKecil.volume_delta || '0') > 0 
+                                          ? 'bg-gradient-to-r from-green-500 to-emerald-600 shadow-lg' 
+                                          : 'bg-gradient-to-r from-red-500 to-rose-600 shadow-lg'
+                                        }
+                                      `}>
+                                        <span className="text-2xl font-bold font-mono">
+                                          {notaKecil.volume_delta ? parseFloat(notaKecil.volume_delta).toFixed(3) : '0.000'}
+                                        </span>
+                                        <span className="text-sm">m³</span>
+                                      </div>
+                                      {parseFloat(notaKecil.V || '0') === 0 && (
+                                        <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                          <p className="text-xs text-yellow-700 text-center">
+                                            ⚠️ Check: Stan Awal={notaKecil.stan_awal}, Current={notaKecil.current_stan}, Vt={notaKecil.Vt}
+                                          </p>
+                                        </div>
+                                      )}
                                     </div>
 
-                                    {/* Pemakaian - Highlighted */}
-                                    <div className="pt-2 border-t border-gray-100">
-                                      <p className="text-xs text-gray-500">Pemakaian</p>
-                                      <p className="text-lg font-bold text-purple-600">
-                                        {notaKecil.V ? parseFloat(notaKecil.V).toFixed(2) : 'N/A'} m³
-                                      </p>
+                                    {/* Photo Buttons */}
+                                    <div className="flex flex-wrap gap-2 pt-4 border-t border-gray-100">
+                                      {renderPhotoButton(notaKecil, 'pressure_bar')}
+                                      {renderPhotoButton(notaKecil, 'temperature')}
+                                      {renderPhotoButton(notaKecil, 'stan_awal')}
+                                      {renderPhotoButton(notaKecil, 'stan_akhir')}
                                     </div>
                                   </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
 
-      {/* Photo Modal */}
+                                  {/* Hover Sparkle */}
+                                  <div className="absolute top-2 right-2 opacity-0 group-hover/card:opacity-100 transition-all duration-700 delay-300">
+                                    <div className="w-3 h-3 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full blur animate-pulse"></div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Enhanced Photo Modal */}
       {showPhotoModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg max-w-4xl max-h-[90vh] w-full mx-4 overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">{photoModalTitle}</h3>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white/95 backdrop-blur-2xl rounded-3xl max-w-7xl max-h-[95vh] w-full overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-white to-gray-50/50">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-2xl flex items-center justify-center text-white font-bold text-lg">
+                  📸
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900">{photoModalTitle}</h3>
+                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                  {selectedPhotos.length} photos
+                </span>
+              </div>
               <button
                 onClick={() => setShowPhotoModal(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-2xl transition-all group"
               >
-                <FontAwesomeIcon icon={faTimes} className="w-5 h-5" />
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
-            <div className="p-4 max-h-[70vh] overflow-y-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-6 max-h-[75vh] overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {selectedPhotos.map((photoUrl, index) => (
-                  <div key={index} className="relative">
-                    <img
-                      src={photoUrl}
-                      alt={`Photo ${index + 1}`}
-                      className="w-full h-auto rounded-lg shadow-md cursor-pointer hover:shadow-lg transition-shadow"
-                      onClick={() => window.open(photoUrl, '_blank')}
-                    />
-                    <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
-                      {index + 1}
+                  <div 
+                    key={index} 
+                    className="group relative bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-4 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300"
+                  >
+                    <div className="relative h-64 rounded-xl overflow-hidden bg-gradient-to-br from-blue-500/5 to-purple-500/5">
+                      <img
+                        src={photoUrl}
+                        alt={`Photo ${index + 1}`}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                        onClick={() => window.open(photoUrl, '_blank')}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      <div className="absolute bottom-3 left-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <button 
+                          onClick={() => window.open(photoUrl, '_blank')} 
+                          className="w-full bg-white/90 backdrop-blur-sm text-gray-900 px-4 py-2 rounded-xl font-semibold hover:bg-white hover:shadow-md transition-all text-sm"
+                        >
+                          🔗 Open Full Size
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-4 text-center">
+                      <p className="text-sm font-medium text-gray-900">Photo {index + 1}</p>
                     </div>
                   </div>
                 ))}
               </div>
               {selectedPhotos.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  No photos available
+                <div className="text-center py-12 bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl">
+                  <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <p className="text-lg text-gray-500 font-medium">No photos available</p>
                 </div>
               )}
             </div>
@@ -754,4 +922,4 @@ const NotaKecilTab: React.FC = () => {
   );
 };
 
-export default NotaKecilTab;
+export default NotaKecilTab; 

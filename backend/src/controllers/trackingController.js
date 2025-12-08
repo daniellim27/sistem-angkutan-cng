@@ -1,8 +1,9 @@
-const { DriverLocation, Vehicle, User, DeliveryOrder, DriverProfile } = require('../models');
+const { DriverLocation, Vehicle, User, DeliveryOrder, DriverProfile, DepositGroup, Customer } = require('../models');
 const { Op } = require('sequelize');
 const InovatracksScraper = require('../services/inovatracksScraper');
 const DistanceCalculationService = require('../services/distanceCalculationService');
 const DistanceTrackingService = require('../services/distanceTrackingService');
+const locationStatusService = require('../services/locationStatusService');
 
 // Initialize scraper instance
 const scraper = new InovatracksScraper();
@@ -126,6 +127,167 @@ exports.getDriverCurrentLocation = async (req, res, next) => {
 
   } catch (error) {
     console.error('Error getting driver location:', error);
+    next(error);
+  }
+};
+
+/**
+ * Check if driver is near a delivery order's target location
+ * Used to disable buttons in mobile app when driver is not near location
+ */
+exports.checkProximityForDeliveryOrder = async (req, res, next) => {
+  try {
+    const { deliveryOrderId } = req.params;
+    const driverId = req.user.id;
+    const locationStatusService = require('../services/locationStatusService');
+    const { DeliveryOrder, DepositGroup, Customer } = require('../models');
+
+    // Get delivery order
+    const deliveryOrder = await DeliveryOrder.findOne({
+      where: { id: deliveryOrderId, driver_id: driverId }
+    });
+
+    if (!deliveryOrder) {
+      return res.status(404).json({
+        success: false,
+        message: 'Delivery order not found'
+      });
+    }
+
+    // Get latest GPS location
+    let latestLocation = null;
+    
+    if (deliveryOrder.vehicle_id) {
+      latestLocation = await DriverLocation.findOne({
+        where: { vehicle_id: deliveryOrder.vehicle_id },
+        order: [['timestamp', 'DESC']],
+        limit: 1
+      });
+    }
+    
+    if (!latestLocation && driverId) {
+      latestLocation = await DriverLocation.findOne({
+        where: { driver_id: driverId },
+        order: [['timestamp', 'DESC']],
+        limit: 1
+      });
+    }
+
+    if (!latestLocation || !latestLocation.latitude || !latestLocation.longitude) {
+      return res.json({
+        success: true,
+        isNear: false,
+        canProceed: true, // Allow if GPS not available
+        message: 'GPS location not available'
+      });
+    }
+
+    const currentLat = parseFloat(latestLocation.latitude);
+    const currentLng = parseFloat(latestLocation.longitude);
+    let isNear = false;
+    let distance = null;
+    let targetName = null;
+
+    // Check proximity based on status
+    if (deliveryOrder.status === 'at_spbu') {
+      // Check if near SPBU
+      let spbuLat, spbuLng;
+      
+      if (deliveryOrder.load_latitude && deliveryOrder.load_longitude) {
+        spbuLat = parseFloat(deliveryOrder.load_latitude);
+        spbuLng = parseFloat(deliveryOrder.load_longitude);
+        targetName = deliveryOrder.load_location || 'SPBU';
+      } else if (deliveryOrder.load_location) {
+        const depositGroup = await DepositGroup.findOne({
+          where: {
+            spbg_location: { [Op.iLike]: `%${deliveryOrder.load_location}%` },
+            latitude: { [Op.not]: null },
+            longitude: { [Op.not]: null },
+            status: { [Op.in]: ['active', 'fulfilled', 'overdrawn', 'pending_selisih'] }
+          },
+          order: [['created_at', 'DESC']]
+        });
+        
+        if (depositGroup && depositGroup.latitude && depositGroup.longitude) {
+          spbuLat = parseFloat(depositGroup.latitude);
+          spbuLng = parseFloat(depositGroup.longitude);
+          targetName = depositGroup.spbg_name || depositGroup.spbg_location || deliveryOrder.load_location;
+        }
+      }
+
+      if (spbuLat && spbuLng && !isNaN(spbuLat) && !isNaN(spbuLng)) {
+        const result = locationStatusService.isNearLocation(currentLat, currentLng, spbuLat, spbuLng);
+        isNear = result.isNear;
+        distance = result.distance;
+      } else {
+        // Coordinates not available - allow
+        return res.json({
+          success: true,
+          isNear: false,
+          canProceed: true,
+          message: 'SPBU coordinates not available'
+        });
+      }
+    } else if (deliveryOrder.status === 'otw_to_unload_location') {
+      // Check if near customer location
+      const allLocations = await locationStatusService.getAllCustomerLocations(deliveryOrder);
+      
+      if (allLocations.length > 0) {
+        const currentLocationIndex = await locationStatusService.getCurrentLocationIndex(deliveryOrder);
+        const targetLocation = allLocations[currentLocationIndex];
+
+        if (targetLocation && targetLocation.latitude && targetLocation.longitude) {
+          const result = locationStatusService.isNearLocation(
+            currentLat,
+            currentLng,
+            targetLocation.latitude,
+            targetLocation.longitude
+          );
+          isNear = result.isNear;
+          distance = result.distance;
+          targetName = targetLocation.name;
+        } else {
+          // Coordinates not available - allow
+          return res.json({
+            success: true,
+            isNear: false,
+            canProceed: true,
+            message: 'Customer location coordinates not available'
+          });
+        }
+      } else {
+        // No customer locations - allow
+        return res.json({
+          success: true,
+          isNear: false,
+          canProceed: true,
+          message: 'No customer locations found'
+        });
+      }
+    } else {
+      // For other statuses, don't check proximity
+      return res.json({
+        success: true,
+        isNear: true,
+        canProceed: true,
+        message: 'Proximity check not required for this status'
+      });
+    }
+
+    res.json({
+      success: true,
+      isNear,
+      canProceed: isNear, // Can only proceed if near
+      distance: distance ? Math.round(distance) : null,
+      distanceKm: distance ? (distance / 1000).toFixed(2) : null,
+      targetName,
+      message: isNear 
+        ? `Anda berada di dekat ${targetName || 'lokasi target'}`
+        : `Anda belum berada di dekat ${targetName || 'lokasi target'}${distance ? ` (${(distance / 1000).toFixed(2)} km)` : ''}`
+    });
+
+  } catch (error) {
+    console.error('Error checking proximity:', error);
     next(error);
   }
 };
@@ -1322,6 +1484,220 @@ exports.batchProcessDistanceCompliance = async (req, res, next) => {
 
   } catch (error) {
     console.error('Error batch processing distance compliance:', error);
+    next(error);
+  }
+};
+
+// ============================================================
+// AUTO STATUS UPDATE ENDPOINTS
+// ============================================================
+
+/**
+ * Get auto status update service statistics
+ * GET /api/tracking/auto-status/stats
+ */
+exports.getAutoStatusStats = async (req, res, next) => {
+  try {
+    const stats = locationStatusService.getStats();
+    
+    res.json({
+      success: true,
+      data: stats
+    });
+
+  } catch (error) {
+    console.error('Error getting auto status stats:', error);
+    next(error);
+  }
+};
+
+/**
+ * Update auto status service configuration
+ * PUT /api/tracking/auto-status/config
+ */
+exports.updateAutoStatusConfig = async (req, res, next) => {
+  try {
+    const { geofenceRadiusMeters, cooldownMinutes, isEnabled } = req.body;
+    
+    locationStatusService.updateConfig({
+      geofenceRadiusMeters,
+      cooldownMinutes,
+      isEnabled
+    });
+    
+    res.json({
+      success: true,
+      message: 'Auto status configuration updated',
+      data: locationStatusService.getStats()
+    });
+
+  } catch (error) {
+    console.error('Error updating auto status config:', error);
+    next(error);
+  }
+};
+
+/**
+ * Enable or disable auto status updates
+ * PUT /api/tracking/auto-status/toggle
+ */
+exports.toggleAutoStatus = async (req, res, next) => {
+  try {
+    const { enabled } = req.body;
+    
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'enabled must be a boolean'
+      });
+    }
+    
+    locationStatusService.setEnabled(enabled);
+    
+    res.json({
+      success: true,
+      message: `Auto status updates ${enabled ? 'enabled' : 'disabled'}`,
+      data: { isEnabled: enabled }
+    });
+
+  } catch (error) {
+    console.error('Error toggling auto status:', error);
+    next(error);
+  }
+};
+
+/**
+ * Manually trigger status check for a specific vehicle
+ * POST /api/tracking/auto-status/check-vehicle/:vehicleId
+ */
+exports.checkVehicleStatus = async (req, res, next) => {
+  try {
+    const { vehicleId } = req.params;
+    
+    // Get latest GPS data for this vehicle
+    const latestLocation = await DriverLocation.findOne({
+      where: { vehicle_id: vehicleId },
+      order: [['timestamp', 'DESC']]
+    });
+    
+    if (!latestLocation) {
+      return res.status(404).json({
+        success: false,
+        message: 'No GPS data found for this vehicle'
+      });
+    }
+    
+    const result = await locationStatusService.checkAndUpdateStatusForLocation({
+      vehicle_id: vehicleId,
+      latitude: latestLocation.latitude,
+      longitude: latestLocation.longitude,
+      device_id: latestLocation.device_id
+    });
+    
+    res.json({
+      success: true,
+      message: 'Vehicle status check completed',
+      data: result
+    });
+
+  } catch (error) {
+    console.error('Error checking vehicle status:', error);
+    next(error);
+  }
+};
+
+/**
+ * Clear auto status update cache
+ * POST /api/tracking/auto-status/clear-cache
+ */
+exports.clearAutoStatusCache = async (req, res, next) => {
+  try {
+    locationStatusService.clearCache();
+    
+    res.json({
+      success: true,
+      message: 'Auto status cache cleared'
+    });
+
+  } catch (error) {
+    console.error('Error clearing auto status cache:', error);
+    next(error);
+  }
+};
+
+/**
+ * Test geofence detection for a specific delivery order
+ * POST /api/tracking/auto-status/test-geofence
+ */
+exports.testGeofence = async (req, res, next) => {
+  try {
+    const { deliveryOrderId, latitude, longitude } = req.body;
+    
+    if (!deliveryOrderId || !latitude || !longitude) {
+      return res.status(400).json({
+        success: false,
+        message: 'deliveryOrderId, latitude, and longitude are required'
+      });
+    }
+    
+    const deliveryOrder = await DeliveryOrder.findByPk(deliveryOrderId);
+    
+    if (!deliveryOrder) {
+      return res.status(404).json({
+        success: false,
+        message: 'Delivery order not found'
+      });
+    }
+    
+    const currentLat = parseFloat(latitude);
+    const currentLng = parseFloat(longitude);
+    
+    // Test against SPBU location
+    let spbuResult = null;
+    if (deliveryOrder.load_latitude && deliveryOrder.load_longitude) {
+      const spbuDistance = locationStatusService.isNearLocation(
+        currentLat,
+        currentLng,
+        parseFloat(deliveryOrder.load_latitude),
+        parseFloat(deliveryOrder.load_longitude)
+      );
+      spbuResult = {
+        location: deliveryOrder.load_location || 'SPBU',
+        ...spbuDistance
+      };
+    }
+    
+    // Test against all customer locations
+    const customerLocations = locationStatusService.getAllCustomerLocations(deliveryOrder);
+    const customerResults = customerLocations.map(loc => {
+      const result = locationStatusService.isNearLocation(
+        currentLat,
+        currentLng,
+        loc.latitude,
+        loc.longitude
+      );
+      return {
+        index: loc.index,
+        location: loc.name,
+        ...result
+      };
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        deliveryOrderId,
+        currentStatus: deliveryOrder.status,
+        testCoordinates: { latitude: currentLat, longitude: currentLng },
+        geofenceRadius: locationStatusService.geofenceRadiusMeters,
+        spbuLocation: spbuResult,
+        customerLocations: customerResults,
+        currentLocationIndex: locationStatusService.getCurrentLocationIndex(deliveryOrder)
+      }
+    });
+
+  } catch (error) {
+    console.error('Error testing geofence:', error);
     next(error);
   }
 }; 

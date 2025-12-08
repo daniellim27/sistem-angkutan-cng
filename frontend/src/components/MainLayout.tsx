@@ -1,13 +1,113 @@
 // src/components/MainLayout.tsx
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import DropdownNavSection from "./ui/DropdownNavSection";
+import { Bell, X, Check } from "lucide-react";
+import { getNotifications, getUnreadCount, markAsRead, markAllAsRead, deleteNotification, Notification } from "../api/notificationApi";
 
 const MainLayout = () => {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [hasNotifications, setHasNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const notificationRef = useRef<HTMLDivElement>(null);
+
+  // Fetch unread count on mount and periodically
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const response = await getUnreadCount();
+        setUnreadCount(response.unreadCount);
+        setHasNotifications(response.unreadCount > 0);
+      } catch (error) {
+        console.error('Error fetching unread count:', error);
+      }
+    };
+
+    fetchUnreadCount();
+    const interval = setInterval(fetchUnreadCount, 30000); // Check every 30 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch notifications when dropdown is opened
+  useEffect(() => {
+    if (showNotifications) {
+      fetchNotifications();
+    }
+  }, [showNotifications]);
+
+  const fetchNotifications = async () => {
+    setLoadingNotifications(true);
+    try {
+      const response = await getNotifications(1, 20);
+      setNotifications(response.notifications);
+      setUnreadCount(response.unreadCount);
+      setHasNotifications(response.unreadCount > 0);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  const handleMarkAsRead = async (id: number) => {
+    try {
+      await markAsRead(id);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+      setHasNotifications(unreadCount - 1 > 0);
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await markAllAsRead();
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+      setHasNotifications(false);
+    } catch (error) {
+      console.error('Error marking all as read:', error);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await deleteNotification(id);
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      const deleted = notifications.find(n => n.id === id);
+      if (deleted && !deleted.is_read) {
+        setUnreadCount(prev => Math.max(0, prev - 1));
+        setHasNotifications(unreadCount - 1 > 0);
+      }
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+    }
+  };
+
+  // Close notification dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+
+    if (showNotifications) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showNotifications]);
   
   // State for dropdown sections
   const [dropdownStates, setDropdownStates] = useState({
@@ -370,7 +470,123 @@ const MainLayout = () => {
       <main className="flex-1 flex flex-col">
         <header className="bg-white shadow p-4 flex justify-between items-center">
           <h2 className="text-xl font-semibold">{getPageTitle()}</h2>
-          <div className="flex items-center">
+          <div className="flex items-center gap-4">
+            {/* Notification Icon */}
+            <div className="relative" ref={notificationRef}>
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Notifications"
+              >
+                <Bell className="h-6 w-6" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 flex items-center justify-center min-w-[1.25rem] h-5 px-1 text-xs font-bold text-white bg-red-500 rounded-full ring-2 ring-white">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+              
+              {/* Notification Dropdown */}
+              {showNotifications && (
+                <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-[32rem] overflow-hidden flex flex-col">
+                  <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
+                      {unreadCount > 0 && (
+                        <span className="px-2 py-0.5 text-xs font-medium text-white bg-red-500 rounded-full">
+                          {unreadCount} new
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={handleMarkAllAsRead}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                          title="Mark all as read"
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setShowNotifications(false)}
+                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                        aria-label="Close notifications"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="overflow-y-auto flex-1">
+                    {loadingNotifications ? (
+                      <div className="p-8 text-center">
+                        <p className="text-gray-500">Loading notifications...</p>
+                      </div>
+                    ) : notifications.length === 0 ? (
+                      <div className="p-8 text-center">
+                        <p className="text-gray-500">No notifications at this time</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-gray-200">
+                        {notifications.map((notification) => (
+                          <div
+                            key={notification.id}
+                            className={`p-4 hover:bg-gray-50 transition-colors ${
+                              !notification.is_read ? 'bg-blue-50' : ''
+                            }`}
+                          >
+                            <div className="flex justify-between items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start gap-2">
+                                  {!notification.is_read && (
+                                    <span className="mt-1.5 h-2 w-2 rounded-full bg-blue-500 flex-shrink-0"></span>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm font-semibold text-gray-900 truncate">
+                                      {notification.title}
+                                    </h4>
+                                    <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                                      {notification.message}
+                                    </p>
+                                    {notification.vehicle && (
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        Vehicle: {notification.vehicle.license_plate || notification.vehicle.device_id}
+                                      </p>
+                                    )}
+                                    <p className="text-xs text-gray-400 mt-1">
+                                      {new Date(notification.created_at).toLocaleString()}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                {!notification.is_read && (
+                                  <button
+                                    onClick={() => handleMarkAsRead(notification.id)}
+                                    className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                                    title="Mark as read"
+                                  >
+                                    <Check className="h-4 w-4" />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleDelete(notification.id)}
+                                  className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                  title="Delete"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <span className="mr-4 hidden sm:inline">
               Welcome,{" "}
               <strong className="font-semibold">

@@ -21,9 +21,10 @@ const OCRDataEditor: React.FC<OCRDataEditorProps> = ({
     tanggal_mulai: null,
     tanggal_selesai: null,
     stan_awal: null,
-    stan_akhir: null,
-    tekanan_operasi: null,
-    temperatur_operasi: null,
+    current_stan: null,
+    pressure_inlet: null,
+    pressure_outlet: null,
+    temperature: null,
     harga_satuan: null,
     total_harga: null,
     confidence: 0,
@@ -58,35 +59,35 @@ const OCRDataEditor: React.FC<OCRDataEditorProps> = ({
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    // Validate required fields
+    // ✅ NEW SCHEMA: Validate NEW required fields
     if (!formData.stan_awal || formData.stan_awal <= 0) {
       newErrors.stan_awal = 'Stan awal must be a positive number';
     }
 
-    if (!formData.stan_akhir || formData.stan_akhir <= 0) {
-      newErrors.stan_akhir = 'Stan akhir must be a positive number';
+    if (!formData.current_stan || formData.current_stan <= 0) {
+      newErrors.current_stan = 'Current stan must be a positive number';
     }
 
-    if (!formData.tekanan_operasi || formData.tekanan_operasi <= 0) {
-      newErrors.tekanan_operasi = 'Tekanan operasi must be a positive number';
+    if (!formData.pressure_inlet || formData.pressure_inlet <= 0) {
+      newErrors.pressure_inlet = 'Pressure inlet must be a positive number';
     }
 
-    if (!formData.temperatur_operasi || formData.temperatur_operasi <= 0) {
-      newErrors.temperatur_operasi = 'Temperatur operasi must be a positive number';
+    if (!formData.temperature) {
+      newErrors.temperature = 'Temperature is required';
     }
 
     // Validate logical constraints
-    if (formData.stan_akhir && formData.stan_awal && formData.stan_akhir <= formData.stan_awal) {
-      newErrors.stan_akhir = 'Stan akhir must be greater than stan awal';
+    if (formData.current_stan && formData.stan_awal && formData.current_stan <= formData.stan_awal) {
+      newErrors.current_stan = 'Current stan must be greater than stan awal';
     }
 
-    // Validate ranges
-    if (formData.tekanan_operasi && (formData.tekanan_operasi < 0.1 || formData.tekanan_operasi > 100)) {
-      newErrors.tekanan_operasi = 'Tekanan operasi should be between 0.1 and 100 bar';
+    // ✅ NEW SCHEMA: Validate ranges
+    if (formData.pressure_inlet && (formData.pressure_inlet < 0.1 || formData.pressure_inlet > 100)) {
+      newErrors.pressure_inlet = 'Pressure inlet should be between 0.1 and 100 bar';
     }
 
-    if (formData.temperatur_operasi && (formData.temperatur_operasi < -50 || formData.temperatur_operasi > 100)) {
-      newErrors.temperatur_operasi = 'Temperatur operasi should be between -50°C and 100°C';
+    if (formData.temperature && (formData.temperature < -50 || formData.temperature > 100)) {
+      newErrors.temperature = 'Temperature should be between -50°C and 100°C';
     }
 
     setErrors(newErrors);
@@ -114,7 +115,7 @@ const OCRDataEditor: React.FC<OCRDataEditorProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <h2 className="text-2xl font-bold text-gray-900">Edit OCR Data</h2>
@@ -129,37 +130,37 @@ const OCRDataEditor: React.FC<OCRDataEditorProps> = ({
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-6">
           {/* Date/Time Fields */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Tanggal Mulai
               </label>
               <input
                 type="datetime-local"
                 value={formatDateTime(formData.tanggal_mulai)}
                 onChange={(e) => handleInputChange('tanggal_mulai', parseDateTime(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Tanggal Selesai
               </label>
               <input
                 type="datetime-local"
                 value={formatDateTime(formData.tanggal_selesai)}
                 onChange={(e) => handleInputChange('tanggal_selesai', parseDateTime(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
           </div>
 
-          {/* Meter Readings */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* ✅ NEW SCHEMA: Meter Readings */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Stan Awal (m³) *
               </label>
               <input
@@ -167,79 +168,92 @@ const OCRDataEditor: React.FC<OCRDataEditorProps> = ({
                 step="0.001"
                 value={formData.stan_awal || ''}
                 onChange={(e) => handleInputChange('stan_awal', e.target.value ? parseFloat(e.target.value) : null)}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                   errors.stan_awal ? 'border-red-500' : 'border-gray-300'
                 }`}
                 placeholder="Enter stan awal"
               />
               {errors.stan_awal && (
-                <p className="mt-1 text-sm text-red-600">{errors.stan_awal}</p>
+                <p className="mt-2 text-sm text-red-600">{errors.stan_awal}</p>
               )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Stan Akhir (m³) *
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Current Stan (m³) *
               </label>
               <input
                 type="number"
                 step="0.001"
-                value={formData.stan_akhir || ''}
-                onChange={(e) => handleInputChange('stan_akhir', e.target.value ? parseFloat(e.target.value) : null)}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.stan_akhir ? 'border-red-500' : 'border-gray-300'
+                value={formData.current_stan || ''}
+                onChange={(e) => handleInputChange('current_stan', e.target.value ? parseFloat(e.target.value) : null)}
+                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  errors.current_stan ? 'border-red-500' : 'border-gray-300'
                 }`}
-                placeholder="Enter stan akhir"
+                placeholder="Enter current stan"
               />
-              {errors.stan_akhir && (
-                <p className="mt-1 text-sm text-red-600">{errors.stan_akhir}</p>
+              {errors.current_stan && (
+                <p className="mt-2 text-sm text-red-600">{errors.current_stan}</p>
               )}
             </div>
           </div>
 
-          {/* Operational Data */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* ✅ NEW SCHEMA: Operational Data */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Tekanan Operasi (Bar) *
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Pressure Inlet (Bar) *
               </label>
               <input
                 type="number"
                 step="0.01"
-                value={formData.tekanan_operasi || ''}
-                onChange={(e) => handleInputChange('tekanan_operasi', e.target.value ? parseFloat(e.target.value) : null)}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.tekanan_operasi ? 'border-red-500' : 'border-gray-300'
+                value={formData.pressure_inlet || ''}
+                onChange={(e) => handleInputChange('pressure_inlet', e.target.value ? parseFloat(e.target.value) : null)}
+                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  errors.pressure_inlet ? 'border-red-500' : 'border-gray-300'
                 }`}
-                placeholder="Enter tekanan operasi"
+                placeholder="Enter pressure inlet"
               />
-              {errors.tekanan_operasi && (
-                <p className="mt-1 text-sm text-red-600">{errors.tekanan_operasi}</p>
+              {errors.pressure_inlet && (
+                <p className="mt-2 text-sm text-red-600">{errors.pressure_inlet}</p>
               )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Temperatur Operasi (°C) *
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Pressure Outlet (Bar)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.pressure_outlet || ''}
+                onChange={(e) => handleInputChange('pressure_outlet', e.target.value ? parseFloat(e.target.value) : null)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Enter pressure outlet"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Temperature (°C) *
               </label>
               <input
                 type="number"
                 step="0.1"
-                value={formData.temperatur_operasi || ''}
-                onChange={(e) => handleInputChange('temperatur_operasi', e.target.value ? parseFloat(e.target.value) : null)}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.temperatur_operasi ? 'border-red-500' : 'border-gray-300'
+                value={formData.temperature || ''}
+                onChange={(e) => handleInputChange('temperature', e.target.value ? parseFloat(e.target.value) : null)}
+                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  errors.temperature ? 'border-red-500' : 'border-gray-300'
                 }`}
-                placeholder="Enter temperatur operasi"
+                placeholder="Enter temperature"
               />
-              {errors.temperatur_operasi && (
-                <p className="mt-1 text-sm text-red-600">{errors.temperatur_operasi}</p>
+              {errors.temperature && (
+                <p className="mt-2 text-sm text-red-600">{errors.temperature}</p>
               )}
             </div>
           </div>
 
           {/* Pricing Data */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Harga Satuan (IDR)
               </label>
               <input
@@ -247,12 +261,12 @@ const OCRDataEditor: React.FC<OCRDataEditorProps> = ({
                 step="0.01"
                 value={formData.harga_satuan || ''}
                 onChange={(e) => handleInputChange('harga_satuan', e.target.value ? parseFloat(e.target.value) : null)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter harga satuan"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Total Harga (IDR)
               </label>
               <input
@@ -260,43 +274,84 @@ const OCRDataEditor: React.FC<OCRDataEditorProps> = ({
                 step="0.01"
                 value={formData.total_harga || ''}
                 onChange={(e) => handleInputChange('total_harga', e.target.value ? parseFloat(e.target.value) : null)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter total harga"
               />
             </div>
           </div>
 
           {/* Confidence Score */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Confidence Score (0-100)
-            </label>
-            <input
-              type="number"
-              min="0"
-              max="100"
-              value={formData.confidence || ''}
-              onChange={(e) => handleInputChange('confidence', e.target.value ? parseFloat(e.target.value) : 0)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter confidence score"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Confidence Score (0-100)
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={formData.confidence || 0}
+                onChange={(e) => handleInputChange('confidence', parseFloat(e.target.value))}
+                className="w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="flex justify-between text-sm text-gray-600 mt-1">
+                <span>Low</span>
+                <span>{Math.round(formData.confidence || 0)}%</span>
+                <span>High</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Overall Confidence
+              </label>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div
+                  className="bg-gradient-to-r from-blue-400 to-blue-600 h-3 rounded-full"
+                  style={{ width: `${formData.overall_confidence || 0}%` }}
+                ></div>
+              </div>
+              <p className="text-sm text-gray-600 mt-1">
+                {Math.round(formData.overall_confidence || 0)}%
+              </p>
+            </div>
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-end space-x-3 p-6 border-t bg-gray-50">
+        <div className="flex items-center justify-end space-x-4 p-6 border-t bg-gray-50">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 transition-colors"
+            className="px-6 py-3 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors font-medium"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            disabled={isSaving}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            disabled={isSaving || Object.keys(errors).length > 0}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-2"
           >
-            {isSaving ? 'Saving...' : 'Save Changes'}
+            {isSaving ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Saving...
+              </>
+            ) : (
+              'Save Changes'
+            )}
           </button>
         </div>
       </div>
@@ -305,4 +360,3 @@ const OCRDataEditor: React.FC<OCRDataEditorProps> = ({
 };
 
 export default OCRDataEditor;
-

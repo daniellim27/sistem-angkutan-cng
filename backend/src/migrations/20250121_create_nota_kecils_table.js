@@ -4,7 +4,6 @@ const { DataTypes } = require('sequelize');
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    // Create nota_kecils table
     await queryInterface.createTable('nota_kecils', {
       id: {
         type: DataTypes.INTEGER,
@@ -36,137 +35,138 @@ module.exports = {
         allowNull: true,
         comment: 'Customer address for this nota kecil'
       },
-      
-      // Raw OCR Extracted Values (from photos)
-      stan_awal: {
-        type: DataTypes.DECIMAL(10, 3),
+      representative_screenshot_url: {
+        type: DataTypes.STRING(500),
         allowNull: true,
-        comment: 'Initial meter reading from OCR'
+        comment: 'URL of the representative screenshot for this nota kecil'
+      },
+      representative_screenshot_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'cctv_screenshots',
+          key: 'id'
+        },
+        comment: 'Reference to the representative CCTVScreenshot'
+      },
+      
+      // ✅ NEW: CONTINUOUS STAN MONITORING
+      stan_awal: {
+        type: DataTypes.DECIMAL(12, 3),
+        allowNull: true,
+        comment: 'Initial stan reading (first reading of session/batch)'
+      },
+      current_stan: {
+        type: DataTypes.DECIMAL(12, 3),
+        allowNull: false,
+        comment: 'Current/latest stan reading'
       },
       stan_akhir: {
-        type: DataTypes.DECIMAL(10, 3),
+        type: DataTypes.DECIMAL(12, 3),
         allowNull: true,
-        comment: 'Final meter reading from OCR'
-      },
-      tekanan_operasi: {
-        type: DataTypes.DECIMAL(10, 3),
-        allowNull: true,
-        comment: 'Pressure in Bar from OCR'
-      },
-      temperatur_operasi: {
-        type: DataTypes.DECIMAL(10, 3),
-        allowNull: true,
-        comment: 'Temperature in Celsius from OCR'
+        comment: 'Calculated: current_stan - stan_awal'
       },
       
-      // Calculated Values (derived from raw values)
-      Vt: {
+      // ✅ NEW: SEPARATE PRESSURE SENSORS
+      pressure_inlet: {
         type: DataTypes.DECIMAL(10, 3),
         allowNull: true,
-        comment: 'Volume from Meter: stan_akhir - stan_awal'
+        comment: 'Pressure inlet (bar) - average from batch'
+      },
+      pressure_outlet: {
+        type: DataTypes.DECIMAL(10, 3),
+        allowNull: true,
+        comment: 'Pressure outlet (bar) - average from batch'
+      },
+      temperature: {
+        type: DataTypes.DECIMAL(10, 3),
+        allowNull: true,
+        comment: 'Temperature (°C) - average from batch'
+      },
+      
+      // Calculated Values
+      volume_delta: {
+        type: DataTypes.DECIMAL(10, 3),
+        allowNull: true,
+        comment: 'Volume consumed in this batch: stan_akhir * k'
       },
       k: {
         type: DataTypes.DECIMAL(10, 6),
         allowNull: true,
-        comment: 'Super Compressibility Factor'
-      },
-      V: {
-        type: DataTypes.DECIMAL(10, 3),
-        allowNull: true,
-        comment: 'Final Volume Gas (m³): Vt * k'
+        comment: 'Super Compressibility Factor (calculated)'
       },
       
-      // Photos (JSONB array of URLs)
-      pressure_bar_photos: {
-        type: DataTypes.JSONB,
+      // ✅ NEW: BATCH TRACKING
+      cctv_session_id: {
+        type: DataTypes.INTEGER,
         allowNull: true,
-        defaultValue: [],
-        comment: 'Array of pressure bar photo URLs'
+        references: {
+          model: 'cctv_sessions',
+          key: 'id'
+        },
+        comment: 'CCTV session this nota was created from'
       },
-      temperature_photos: {
-        type: DataTypes.JSONB,
+      batch_start_sequence: {
+        type: DataTypes.INTEGER,
         allowNull: true,
-        defaultValue: [],
-        comment: 'Array of temperature photo URLs'
+        comment: 'Starting sequence number of batch'
       },
-      stan_awal_photos: {
-        type: DataTypes.JSONB,
+      batch_end_sequence: {
+        type: DataTypes.INTEGER,
         allowNull: true,
-        defaultValue: [],
-        comment: 'Array of stan awal photo URLs'
+        comment: 'Ending sequence number of batch'
       },
-      stan_akhir_photos: {
-        type: DataTypes.JSONB,
-        allowNull: true,
-        defaultValue: [],
-        comment: 'Array of stan akhir photo URLs'
+      screenshots_count: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+        comment: 'Number of screenshots used for this nota'
+      },
+      ocr_success_count: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+        comment: 'Number of successful OCR readings'
       },
       
       // OCR Metadata
-      ocr_confidence_scores: {
-        type: DataTypes.JSONB,
+      ocr_confidence_avg: {
+        type: DataTypes.DECIMAL(5, 4),
         allowNull: true,
-        comment: 'OCR confidence scores for each field'
+        comment: 'Average OCR confidence score'
       },
       ocr_processing_status: {
-        type: DataTypes.STRING(50),
-        allowNull: true,
-        defaultValue: 'pending',
-        comment: 'OCR processing status: pending, processing, completed, failed'
+        type: DataTypes.ENUM('pending', 'processing', 'completed', 'insufficient_data', 'invalid_data'),
+        allowNull: false,
+        defaultValue: 'pending'
       },
       ocr_processed_at: {
         type: DataTypes.DATE,
         allowNull: true,
-        comment: 'Timestamp when OCR processing completed'
       },
       
-      // Driver Confirmation & Validation
+      // Driver Confirmation
       driver_confirmed: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
-        defaultValue: false,
-        comment: 'Whether driver has confirmed the values'
+        defaultValue: false
       },
       driver_confirmed_at: {
         type: DataTypes.DATE,
         allowNull: true,
-        comment: 'Timestamp when driver confirmed the values'
       },
       driver_notes: {
         type: DataTypes.TEXT,
         allowNull: true,
-        comment: 'Optional notes from driver'
       },
       
-      // Manual Override (if driver corrects OCR values)
-      manual_stan_awal: {
-        type: DataTypes.DECIMAL(10, 3),
-        allowNull: true,
-        comment: 'Manually corrected stan awal value'
-      },
-      manual_stan_akhir: {
-        type: DataTypes.DECIMAL(10, 3),
-        allowNull: true,
-        comment: 'Manually corrected stan akhir value'
-      },
-      manual_tekanan: {
-        type: DataTypes.DECIMAL(10, 3),
-        allowNull: true,
-        comment: 'Manually corrected pressure value'
-      },
-      manual_temperatur: {
-        type: DataTypes.DECIMAL(10, 3),
-        allowNull: true,
-        comment: 'Manually corrected temperature value'
-      },
-      manual_calculation: {
+      // Manual Override
+      manual_values_used: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
-        defaultValue: false,
-        comment: 'Whether manual values were used for calculation'
+        defaultValue: false
       },
       
-      // Audit Trail
       created_at: {
         type: DataTypes.DATE,
         allowNull: false,
@@ -179,12 +179,12 @@ module.exports = {
       },
     });
 
-    // Add indexes for better query performance
-    await queryInterface.addIndex('nota_kecils', ['delivery_order_id']);
-    await queryInterface.addIndex('nota_kecils', ['customer_location_index']);
+    // Indexes
+    await queryInterface.addIndex('nota_kecils', ['delivery_order_id', 'customer_location_index']);
+    await queryInterface.addIndex('nota_kecils', ['cctv_session_id']);
+    await queryInterface.addIndex('nota_kecils', ['ocr_processing_status']);
     await queryInterface.addIndex('nota_kecils', ['driver_confirmed']);
     await queryInterface.addIndex('nota_kecils', ['created_at']);
-    await queryInterface.addIndex('nota_kecils', ['delivery_order_id', 'customer_location_index']);
   },
 
   down: async (queryInterface, Sequelize) => {

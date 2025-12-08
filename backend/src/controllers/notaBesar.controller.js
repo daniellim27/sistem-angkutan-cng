@@ -101,7 +101,7 @@ exports.calculateNotaBesar = async (req, res, next) => {
       });
     }
 
-    // Get selected nota kecils
+    // ✅ NEW SCHEMA: Get selected nota kecils with NEW fields
     const notaKecils = await NotaKecil.findAll({
       where: {
         id: { [Op.in]: notaKecilIds },
@@ -117,7 +117,7 @@ exports.calculateNotaBesar = async (req, res, next) => {
       });
     }
 
-    // Validate all nota kecils have required data
+    // Validate all nota kecils have required NEW SCHEMA data
     const validationErrors = [];
     for (const notaKecil of notaKecils) {
       const validation = billingCalculationService.validateNotaKecil(notaKecil);
@@ -154,7 +154,7 @@ exports.calculateNotaBesar = async (req, res, next) => {
     let customerId = null;
     let customerBalanceUpdated = false;
     
-    // Get customer info from first nota kecil
+    // ✅ NEW SCHEMA: Use customer_name and customer_address
     const firstNotaKecil = notaKecils[0];
     const customerName = firstNotaKecil.customer_name;
     const customerLocation = firstNotaKecil.customer_address || 'Unknown Location';
@@ -165,7 +165,6 @@ exports.calculateNotaBesar = async (req, res, next) => {
     });
     
     if (!customer) {
-      // Create new customer if doesn't exist
       customer = await Customer.create({
         customer_name: customerName,
         location: customerLocation,
@@ -187,7 +186,7 @@ exports.calculateNotaBesar = async (req, res, next) => {
       status: 'draft',
       notes: notes || null,
       customer_id: customerId,
-      applied_to_customer: false // Will be applied when confirmed
+      applied_to_customer: false
     });
 
     // Create nota besar items
@@ -202,34 +201,7 @@ exports.calculateNotaBesar = async (req, res, next) => {
       notaBesarItems.push(notaBesarItem);
     }
 
-    // If nota besar is confirmed, update customer balance immediately
-    // Otherwise, balance will be updated when status changes to 'confirmed'
-    if (notaBesar.status === 'confirmed') {
-      const currentNotaBesarBalance = parseFloat(customer.nota_besar) || 0;
-      const currentNotaKecilBalance = parseFloat(customer.nota_kecil) || 0;
-      const notaBesarAmount = parseFloat(calculationResult.totalPrice) || 0;
-      const notaKecilVolume = parseFloat(calculationResult.totalVolume) || 0;
-      
-      await Customer.update(
-        { 
-          nota_besar: currentNotaBesarBalance + notaBesarAmount,
-          nota_kecil: currentNotaKecilBalance + notaKecilVolume,
-          updated_at: new Date() 
-        },
-        { where: { id: customer.id } }
-      );
-      
-      await notaBesar.update({
-        applied_to_customer: true,
-        applied_to_customer_at: new Date()
-      });
-      
-      customerBalanceUpdated = true;
-      
-      console.log(`✅ Nota Besar #${notaBesar.id} added to customer "${customerName}": Rp ${notaBesarAmount.toLocaleString('id-ID')} (${notaKecilVolume.toFixed(2)} m³)`);
-    }
-
-    // Fetch the complete nota besar with associations
+    // Fetch the complete nota besar with NEW SCHEMA associations
     const completeNotaBesar = await NotaBesar.findByPk(notaBesar.id, {
       include: [
         {
@@ -254,7 +226,24 @@ exports.calculateNotaBesar = async (req, res, next) => {
             {
               model: NotaKecil,
               as: 'notaKecil',
-              attributes: ['id', 'customer_name', 'customer_location_index', 'stan_awal', 'stan_akhir', 'tekanan_operasi', 'temperatur_operasi', 'Vt', 'k', 'V']
+              // ✅ NEW SCHEMA FIELDS ONLY
+              attributes: [
+                'id', 
+                'customer_name', 
+                'customer_address', 
+                'customer_location_index', 
+                'stan_awal', 
+                'current_stan', 
+                'stan_akhir',
+                'pressure_inlet', 
+                'pressure_outlet', 
+                'temperature',
+                'volume_delta', 
+                'Vt', 
+                'k', 
+                'V',
+                'created_at'
+              ]
             }
           ]
         }
@@ -357,7 +346,24 @@ exports.getNotaBesarDetail = async (req, res, next) => {
             {
               model: NotaKecil,
               as: 'notaKecil',
-              attributes: ['id', 'customer_name', 'customer_address', 'customer_location_index', 'stan_awal', 'stan_akhir', 'tekanan_operasi', 'temperatur_operasi', 'Vt', 'k', 'V', 'created_at']
+              // ✅ NEW SCHEMA FIELDS ONLY
+              attributes: [
+                'id', 
+                'customer_name', 
+                'customer_address', 
+                'customer_location_index', 
+                'stan_awal', 
+                'current_stan', 
+                'stan_akhir',
+                'pressure_inlet', 
+                'pressure_outlet', 
+                'temperature',
+                'volume_delta', 
+                'Vt', 
+                'k', 
+                'V', 
+                'created_at'
+              ]
             }
           ],
           order: [['created_at', 'ASC']]
@@ -459,7 +465,6 @@ exports.updateNotaBesarStatus = async (req, res, next) => {
       const customer = await Customer.findByPk(notaBesar.customer_id);
       
       if (customer) {
-        // Calculate total volume from nota besar items
         const items = await NotaBesarItem.findAll({
           where: { nota_besar_id: notaBesar.id }
         });
@@ -492,7 +497,6 @@ exports.updateNotaBesarStatus = async (req, res, next) => {
       const customer = await Customer.findByPk(notaBesar.customer_id);
       
       if (customer) {
-        // Calculate total volume from nota besar items
         const items = await NotaBesarItem.findAll({
           where: { nota_besar_id: notaBesar.id }
         });
@@ -520,10 +524,31 @@ exports.updateNotaBesarStatus = async (req, res, next) => {
       }
     }
 
+    // Return updated nota besar with full details
+    const updatedNotaBesar = await NotaBesar.findByPk(notaBesarId, {
+      include: [
+        {
+          model: DeliveryOrder,
+          as: 'deliveryOrder',
+          attributes: ['id', 'do_number', 'status']
+        },
+        {
+          model: User,
+          as: 'creator',
+          attributes: ['id', 'username', 'role']
+        },
+        {
+          model: Customer,
+          as: 'customer',
+          attributes: ['id', 'customer_name', 'location', 'nota_besar', 'nota_kecil']
+        }
+      ]
+    });
+
     res.status(200).json({
       success: true,
       message: 'Nota besar status updated successfully',
-      data: notaBesar
+      data: updatedNotaBesar
     });
 
   } catch (error) {

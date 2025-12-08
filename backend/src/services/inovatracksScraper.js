@@ -2,6 +2,7 @@ const { chromium } = require('playwright');
 const { DriverLocation } = require('../models');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
+const locationStatusService = require('./locationStatusService');
 
 class InovatracksScraper {
   constructor() {
@@ -881,6 +882,27 @@ class InovatracksScraper {
       }
       
       logger.info(`💾 Successfully saved ${gpsData.length} GPS records to database`);
+      
+      // Trigger automatic status updates based on GPS locations
+      try {
+        if (process.env.AUTO_STATUS_UPDATE_ENABLED !== 'false') {
+          const statusResults = await locationStatusService.processBatchGPSData(
+            gpsData.map(data => ({
+              device_id: data.deviceId,
+              latitude: data.latitude,
+              longitude: data.longitude,
+              timestamp: data.timestamp
+            }))
+          );
+          
+          if (statusResults.updated > 0) {
+            logger.info(`🚀 Auto status updates: ${statusResults.updated} delivery orders updated`);
+          }
+        }
+      } catch (statusError) {
+        // Don't fail the GPS save if status update fails
+        logger.error('⚠️ Error in automatic status update (non-fatal):', statusError.message);
+      }
       
     } catch (error) {
       logger.error('❌ Failed to save GPS data:', error);

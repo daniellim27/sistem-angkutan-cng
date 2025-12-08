@@ -1,8 +1,10 @@
 // src/controllers/loadConfirmation.controller.js
-const { DeliveryOrder, DriverProfile, Vehicle } = require("../models");
+const { DeliveryOrder, DriverProfile, Vehicle, DriverLocation, DepositGroup } = require("../models");
+const { Op } = require("sequelize");
 const path = require("path");
 const fs = require("fs");
 const ocrService = require("../services/ocrService");
+const locationStatusService = require("../services/locationStatusService");
 
 /**
  * @desc    Confirm load - Driver confirms actual load and uploads surat jalan photo
@@ -110,6 +112,79 @@ exports.confirmLoad = async (req, res, next) => {
         message: `Tidak dapat konfirmasi muatan. Status saat ini: ${deliveryOrder.status}. Anda harus berada di SPBU untuk konfirmasi muatan.`,
       });
     }
+
+    // GPS Proximity Validation - Check if driver is actually near SPBU
+    let latestLocation = null;
+    
+    if (deliveryOrder.vehicle_id) {
+      latestLocation = await DriverLocation.findOne({
+        where: { vehicle_id: deliveryOrder.vehicle_id },
+        order: [['timestamp', 'DESC']],
+        limit: 1
+      });
+    }
+    
+    if (!latestLocation && driverId) {
+      latestLocation = await DriverLocation.findOne({
+        where: { driver_id: driverId },
+        order: [['timestamp', 'DESC']],
+        limit: 1
+      });
+    }
+
+    // If GPS location is available, validate proximity
+    if (latestLocation && latestLocation.latitude && latestLocation.longitude) {
+      const currentLat = parseFloat(latestLocation.latitude);
+      const currentLng = parseFloat(latestLocation.longitude);
+      
+      let spbuLat, spbuLng, spbuName;
+      
+      // First try to use coordinates from delivery order
+      if (deliveryOrder.load_latitude && deliveryOrder.load_longitude) {
+        spbuLat = parseFloat(deliveryOrder.load_latitude);
+        spbuLng = parseFloat(deliveryOrder.load_longitude);
+        spbuName = deliveryOrder.load_location || 'SPBU';
+      } else if (deliveryOrder.load_location) {
+        // Fetch from DepositGroup model if coordinates not in delivery order
+        try {
+          const depositGroup = await DepositGroup.findOne({
+            where: {
+              spbg_location: { [Op.iLike]: `%${deliveryOrder.load_location}%` },
+              latitude: { [Op.not]: null },
+              longitude: { [Op.not]: null },
+              status: { [Op.in]: ['active', 'fulfilled', 'overdrawn', 'pending_selisih'] }
+            },
+            order: [['created_at', 'DESC']] // Get most recent match
+          });
+          
+          if (depositGroup && depositGroup.latitude && depositGroup.longitude) {
+            spbuLat = parseFloat(depositGroup.latitude);
+            spbuLng = parseFloat(depositGroup.longitude);
+            spbuName = depositGroup.spbg_name || depositGroup.spbg_location || deliveryOrder.load_location;
+          }
+        } catch (error) {
+          console.error('Error fetching SPBG coordinates:', error);
+        }
+      }
+      
+      // Validate proximity if coordinates are available
+      if (spbuLat && spbuLng && !isNaN(spbuLat) && !isNaN(spbuLng)) {
+        const { isNear, distance } = locationStatusService.isNearLocation(
+          currentLat, 
+          currentLng, 
+          spbuLat, 
+          spbuLng
+        );
+
+        if (!isNear) {
+          return res.status(400).json({
+            message: `Anda belum berada di dekat SPBU (${spbuName || deliveryOrder.load_location || 'SPBU'}). Jarak saat ini: ${(distance / 1000).toFixed(2)} km. Harap mendekati lokasi SPBU terlebih dahulu sebelum konfirmasi muatan.`,
+          });
+        }
+      }
+      // If coordinates are not available, skip validation (allow manual confirmation)
+    }
+    // If GPS location is not available, skip validation (allow manual confirmation)
 
     // Validasi quantity - allow 0 to bypass minimal check
     const actualQuantity = parseFloat(actual_load_quantity);

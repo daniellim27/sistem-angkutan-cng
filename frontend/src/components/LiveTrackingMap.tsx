@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import apiClient from '../api/axiosConfig';
@@ -68,6 +68,48 @@ const createLocationIcon = (type: 'spbu' | 'unload' | 'additional_unload') => {
   });
 };
 
+// Component to fit map bounds to include customer locations
+const FitCustomerBounds: React.FC<{ customerLocations: CustomerLocation[]; showCustomerLocations: boolean }> = ({ customerLocations, showCustomerLocations }) => {
+  const map = useMap();
+  const lastProcessedLength = useRef(0);
+  
+  useEffect(() => {
+    if (!map || !showCustomerLocations || customerLocations.length === 0) return;
+    
+    // Only process if the length changed (new locations added/removed)
+    if (customerLocations.length === lastProcessedLength.current) return;
+    lastProcessedLength.current = customerLocations.length;
+    
+    try {
+      const validLocations = customerLocations
+        .map(c => {
+          const lat = typeof c.latitude === 'string' ? parseFloat(c.latitude) : c.latitude;
+          const lng = typeof c.longitude === 'string' ? parseFloat(c.longitude) : c.longitude;
+          if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+            return [lat, lng] as [number, number];
+          }
+          return null;
+        })
+        .filter((loc): loc is [number, number] => loc !== null);
+      
+      if (validLocations.length > 0) {
+        const timeoutId = setTimeout(() => {
+          if (map && map.getContainer()) {
+            const bounds = L.latLngBounds(validLocations);
+            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+          }
+        }, 100);
+        
+        return () => clearTimeout(timeoutId);
+      }
+    } catch (error) {
+      // Silently handle errors
+    }
+  }, [map, showCustomerLocations, customerLocations.length]); // Only depend on length
+  
+  return null;
+};
+
 // Custom icons for customer and SPBG locations (moved outside component to avoid recreation)
 const createCustomerIcon = () => {
   return L.divIcon({
@@ -126,6 +168,17 @@ const vehicleMarkerStyles = `
   .vehicle-marker-with-label {
     background: transparent !important;
     border: none !important;
+    position: relative !important;
+    z-index: 1000 !important;
+    width: 90px !important;
+    height: 50px !important;
+  }
+  
+  .vehicle-marker-with-label > div {
+    position: relative !important;
+    z-index: 1000 !important;
+    width: 100% !important;
+    height: 100% !important;
   }
   
   .vehicle-label {
@@ -149,6 +202,12 @@ const vehicleMarkerStyles = `
   
   .vehicle-icon {
     transition: transform 0.2s ease !important;
+    font-size: 18px !important;
+    line-height: 1 !important;
+    position: relative !important;
+    z-index: 1000 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
   }
   
   .vehicle-marker-with-label:hover .vehicle-icon {
@@ -172,16 +231,14 @@ if (typeof document !== 'undefined') {
   }
 }
 
-// Color palette for vehicle trails - ensuring good contrast and visibility
+// Color palette for vehicle trails - ensuring good contrast and visibility (no yellow to avoid blending with map)
 const TRAIL_COLORS = [
   '#FF6B6B', // Red
   '#4ECDC4', // Teal  
   '#45B7D1', // Blue
   '#96CEB4', // Green
-  '#FFEAA7', // Yellow
   '#DDA0DD', // Plum
   '#98D8C8', // Mint
-  '#F7DC6F', // Gold
   '#BB8FCE', // Lavender
   '#85C1E9', // Sky Blue
   '#F8C471', // Orange
@@ -190,10 +247,12 @@ const TRAIL_COLORS = [
   '#AED6F1', // Light Blue
   '#D7BDE2', // Light Purple
   '#A3E4D7', // Aqua
-  '#FAD7A0', // Peach
   '#D5A6BD', // Rose
   '#A9DFBF', // Pale Green
-  '#F9E79F'  // Pale Yellow
+  '#E74C3C', // Bright Red
+  '#9B59B6', // Purple
+  '#3498DB', // Bright Blue
+  '#1ABC9C'  // Turquoise
 ];
 
 // Generate unique color for vehicle based on index
@@ -237,8 +296,14 @@ const createVehicleIcon = (status: string, heading?: number, licensePlate?: stri
           justify-content: center;
           transform: rotate(${rotation}deg);
           box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+          font-size: 18px;
+          line-height: 1;
+          position: relative;
+          z-index: 1000;
+          visibility: visible;
+          opacity: 1;
         ">
-          🚛
+          <span style="display: inline-block; font-size: 18px; line-height: 1;">🚛</span>
         </div>
       </div>
     `,
@@ -375,6 +440,7 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
   const [customerLocations, setCustomerLocations] = useState<CustomerLocation[]>([]);
   const [loadingCustomerLocations, setLoadingCustomerLocations] = useState(false);
   const [updatingCustomerCoordinates, setUpdatingCustomerCoordinates] = useState(false);
+  const [updatingSPBGCoordinates, setUpdatingSPBGCoordinates] = useState(false);
   
   // Show/hide toggles
   const [showCustomerLocations, setShowCustomerLocations] = useState(false);
@@ -504,26 +570,13 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
   const fetchCustomerLocations = useCallback(async () => {
     try {
       setLoadingCustomerLocations(true);
-      console.log('🔍 Fetching customer locations...');
+      // Use the customerApi function which includes cache-busting
+      const locations = await getCustomerLocationsWithCoords();
       
-      // Use the same pattern as SPBG - direct API call
-      const response = await apiClient.get('/customers/locations-with-coords');
+      setCustomerLocations(locations);
       
-      if (response.data && response.data.success && response.data.data) {
-        const locations = response.data.data;
-        console.log('✅ Customer locations received:', {
-          count: locations.length,
-          sample: locations[0],
-          allData: locations
-        });
-        setCustomerLocations(locations);
-        
-        if (locations.length === 0) {
-          console.warn('⚠️ No customer locations with coordinates found in database');
-        }
-      } else {
-        console.error('❌ API response not successful:', response.data);
-        setCustomerLocations([]);
+      if (locations.length === 0) {
+        console.warn('⚠️ No customer locations with coordinates found in database');
       }
     } catch (err: any) {
       console.error('❌ Error fetching customer locations:', err);
@@ -545,27 +598,22 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     }
     try {
       setUpdatingCustomerCoordinates(true);
-      console.log('🔍 Updating customer coordinates...');
       const response = await apiClient.post('/customers/update-coordinates');
-      console.log('📡 Update coordinates response:', response.data);
       
       if (response.data && response.data.success) {
         if (!silent) {
           const data = response.data.data || {};
           alert(`✅ Successfully updated ${data.updated || 0} customer location(s)!\n\nTotal: ${data.total || 0}\nUpdated: ${data.updated || 0}\nFailed: ${data.failed || 0}`);
         }
-        if (showCustomerLocations) {
-          await fetchCustomerLocations();
-        }
+        // Refresh customer locations if they're currently shown
+        await fetchCustomerLocations();
       } else {
         const errorMsg = response.data?.message || response.data?.error || 'Unknown error occurred';
-        console.error('❌ Update coordinates failed:', response.data);
         if (!silent) {
           alert('❌ Failed to update customer coordinates: ' + errorMsg);
         }
       }
     } catch (err: any) {
-      console.error('❌ Error updating customer coordinates:', err);
       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message || 'Network error occurred';
       if (!silent) {
         alert('❌ Error updating customer coordinates: ' + errorMsg);
@@ -573,17 +621,55 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     } finally {
       setUpdatingCustomerCoordinates(false);
     }
-  }, [showCustomerLocations, fetchCustomerLocations]);
+  }, [fetchCustomerLocations]);
 
-  // When toggling customer locations on, ensure coordinates are updated first (SPBG-like behavior)
+  // When toggling customer locations on, fetch locations
   const handleToggleCustomerLocations = useCallback(async (checked: boolean) => {
     setShowCustomerLocations(checked);
-    if (!checked) return;
+    if (checked) {
+      // Only fetch, don't auto-update coordinates (user can click button if needed)
+      fetchCustomerLocations();
+    }
+  }, [fetchCustomerLocations]);
+
+  // Update SPBG coordinates using geocoding
+  const handleUpdateSPBGCoordinates = useCallback(async (
+    options: { skipConfirm?: boolean; silent?: boolean } = {}
+  ) => {
+    const { skipConfirm = false, silent = false } = options;
+    if (!skipConfirm) {
+      if (!window.confirm('This will geocode all SPBG locations without coordinates. This may take a few minutes. Continue?')) {
+        return;
+      }
+    }
     try {
-      await handleUpdateCustomerCoordinates({ skipConfirm: true, silent: true });
-    } catch {}
-    await fetchCustomerLocations();
-  }, [handleUpdateCustomerCoordinates, fetchCustomerLocations]);
+      setUpdatingSPBGCoordinates(true);
+      const response = await apiClient.post('/deposit-groups/update-coordinates');
+      
+      if (response.data && response.data.success) {
+        if (!silent) {
+          const data = response.data.data || {};
+          alert(`✅ Successfully updated ${data.updated || 0} SPBG location(s)!\n\nTotal: ${data.total || 0}\nUpdated: ${data.updated || 0}\nFailed: ${data.failed || 0}`);
+        }
+        // Refresh SPBG locations if they're currently shown
+        if (showSPBGLocations) {
+          await fetchGasStations();
+        }
+      } else {
+        const errorMsg = response.data?.message || response.data?.error || 'Unknown error occurred';
+        if (!silent) {
+          alert('❌ Failed to update SPBG coordinates: ' + errorMsg);
+        }
+      }
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message || 'Network error occurred';
+      if (!silent) {
+        alert('❌ Error updating SPBG coordinates: ' + errorMsg);
+      }
+    } finally {
+      setUpdatingSPBGCoordinates(false);
+    }
+  }, [fetchGasStations, showSPBGLocations]);
 
   const handleToggleSPBGLocations = useCallback(async (checked: boolean) => {
     setShowSPBGLocations(checked);
@@ -770,11 +856,12 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
           timeout: 20000
         });
         if (response.data.success) {
-          setVehicles(response.data.data);
+          const vehiclesData = response.data.data || [];
+          setVehicles(vehiclesData);
           
           // Notify parent component of active vehicles for dropdown
           if (onActiveVehiclesUpdate) {
-            onActiveVehiclesUpdate(response.data.data);
+            onActiveVehiclesUpdate(vehiclesData);
           }
         }
       }
@@ -874,12 +961,8 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
     }
   }, [showSPBGLocations, fetchGasStations]);
 
-  // Effect for customer locations - matching SPBG pattern
-  useEffect(() => {
-    if (showCustomerLocations) {
-      fetchCustomerLocations();
-    }
-  }, [showCustomerLocations, fetchCustomerLocations]);
+  // Effect for customer locations - only fetch when toggled on (handleToggleCustomerLocations handles the fetch)
+  // No effect needed here since handleToggleCustomerLocations already calls fetchCustomerLocations
 
   // Effect for delivery order locations
   useEffect(() => {
@@ -1033,6 +1116,27 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
             <span className="text-green-600 text-xs">✓ {gasStations.length} SPBG location{gasStations.length !== 1 ? 's' : ''} loaded</span>
           )}
 
+          {/* Update coordinates buttons */}
+          {showCustomerLocations && (
+            <button
+              onClick={() => handleUpdateCustomerCoordinates()}
+              disabled={updatingCustomerCoordinates}
+              className="mt-2 px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {updatingCustomerCoordinates ? 'Updating...' : 'Update Customer Coordinates'}
+            </button>
+          )}
+
+          {showSPBGLocations && (
+            <button
+              onClick={() => handleUpdateSPBGCoordinates()}
+              disabled={updatingSPBGCoordinates}
+              className="mt-2 px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {updatingSPBGCoordinates ? 'Updating...' : 'Update SPBG Coordinates'}
+            </button>
+          )}
+
           {loadingGasStations && (
             <span className="text-gray-500">Loading gas stations...</span>
           )}
@@ -1130,6 +1234,11 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
             maxZoom={19}
           />
           
+          {/* Fit bounds to customer locations when shown */}
+          {showCustomerLocations && customerLocations.length > 0 && (
+            <FitCustomerBounds customerLocations={customerLocations} showCustomerLocations={showCustomerLocations} />
+          )}
+          
           {/* Vehicle Trails */}
           {showTrails && trails.map((trail) => {
             const trailColor = getVehicleTrailColor(trail.colorIndex);
@@ -1141,9 +1250,9 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
                 positions={positions}
                 pathOptions={{
                   color: trailColor,
-                  weight: 3,
-                  opacity: 0.7,
-                  dashArray: '5, 10' // Dashed line style
+                  weight: 6,
+                  opacity: 0.9,
+                  dashArray: '10, 5' // Bolder dashed line style
                 }}
               >
                 <Popup>
@@ -1180,53 +1289,64 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
           })}
           
           {/* Current Vehicle Positions */}
-          {vehicles.map((vehicle) => (
-            <Marker
-              key={vehicle.id}
-              position={[vehicle.latitude, vehicle.longitude]}
-              icon={createVehicleIcon(vehicle.status, vehicle.heading, vehicle.vehicle?.license_plate, vehicle.device_id)}
-            >
-              <Popup>
-                <div className="p-2 min-w-[200px]">
-                  <h4 className="font-semibold text-blue-600 mb-2">
-                    {vehicle.vehicle?.license_plate || `GPS Device: ${vehicle.device_id || 'Unknown'}`}
-                  </h4>
-                  
-                  {vehicle.driver?.driverProfile && (
-                    <div className="mb-2">
-                      <strong>Driver:</strong> {vehicle.driver.driverProfile.full_name}
-                      {vehicle.driver.driverProfile.phone && (
-                        <div className="text-sm text-gray-600">📞 {vehicle.driver.driverProfile.phone}</div>
+          {vehicles.length > 0 ? (
+            vehicles.map((vehicle) => {
+              // Validate coordinates before rendering
+              const lat = typeof vehicle.latitude === 'string' ? parseFloat(vehicle.latitude) : Number(vehicle.latitude);
+              const lng = typeof vehicle.longitude === 'string' ? parseFloat(vehicle.longitude) : Number(vehicle.longitude);
+              if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+                console.warn('Invalid coordinates for vehicle:', vehicle.id, lat, lng);
+                return null;
+              }
+              return (
+                <Marker
+                  key={vehicle.id}
+                  position={[lat, lng]}
+                  icon={createVehicleIcon(vehicle.status, vehicle.heading, vehicle.vehicle?.license_plate, vehicle.device_id)}
+                >
+                  <Popup>
+                    <div className="p-2 min-w-[200px]">
+                      <h4 className="font-semibold text-blue-600 mb-2">
+                        {vehicle.vehicle?.license_plate || `GPS Device: ${vehicle.device_id || 'Unknown'}`}
+                      </h4>
+                      
+                      {vehicle.driver?.driverProfile && (
+                        <div className="mb-2">
+                          <strong>Driver:</strong> {vehicle.driver.driverProfile.full_name}
+                          {vehicle.driver.driverProfile.phone && (
+                            <div className="text-sm text-gray-600">📞 {vehicle.driver.driverProfile.phone}</div>
+                          )}
+                        </div>
                       )}
-                    </div>
-                  )}
-                  
-                  {vehicle.deliveryOrder && (
-                    <div className="mb-2">
-                      <strong>Delivery:</strong> {vehicle.deliveryOrder.do_number}
-                      <div className="text-sm">
-                        Status: <span className="text-blue-600">{vehicle.deliveryOrder.status}</span>
+                      
+                      {vehicle.deliveryOrder && (
+                        <div className="mb-2">
+                          <strong>Delivery:</strong> {vehicle.deliveryOrder.do_number}
+                          <div className="text-sm">
+                            Status: <span className="text-blue-600">{vehicle.deliveryOrder.status}</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="text-sm text-gray-600 space-y-1">
+                        <div>📍 Lat: {lat.toFixed(5)}, Lng: {lng.toFixed(5)}</div>
+                        {vehicle.speed && <div>🚗 Speed: {vehicle.speed} km/h</div>}
+                        <div>🕒 {formatTimeAgo(vehicle.timestamp)}</div>
+                        <div>
+                          Status: <span className={`font-semibold ${
+                            vehicle.status === 'active' ? 'text-green-600' : 
+                            vehicle.status === 'idle' ? 'text-orange-600' : 'text-red-600'
+                          }`}>
+                            {vehicle.status}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  )}
-                  
-                  <div className="text-sm text-gray-600 space-y-1">
-                    <div>📍 Lat: {vehicle.latitude.toFixed(5)}, Lng: {vehicle.longitude.toFixed(5)}</div>
-                    {vehicle.speed && <div>🚗 Speed: {vehicle.speed} km/h</div>}
-                    <div>🕒 {formatTimeAgo(vehicle.timestamp)}</div>
-                    <div>
-                      Status: <span className={`font-semibold ${
-                        vehicle.status === 'active' ? 'text-green-600' : 
-                        vehicle.status === 'idle' ? 'text-orange-600' : 'text-red-600'
-                      }`}>
-                        {vehicle.status}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+                  </Popup>
+                </Marker>
+              );
+            }).filter(Boolean)
+          ) : null}
 
           {/* Delivery Order Location Markers */}
           {locationMarkers && locationMarkers.map((marker, index) => (
@@ -1274,28 +1394,49 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
           ))}
 
           {/* Customer Location Markers */}
-          {showCustomerLocations && customerLocations && customerLocations.map((customer) => (
-            <Marker
-              key={`customer-${customer.id}`}
-              position={[customer.latitude, customer.longitude]}
-              icon={createCustomerIcon()}
-            >
-              <Popup>
-                <div className="p-2 min-w-[200px]">
-                  <h4 className="font-semibold text-blue-600 mb-2">
-                    Customer Location
-                  </h4>
-                  <div className="space-y-1">
-                    <p><strong>Name:</strong> {customer.customer_name}</p>
-                    <p><strong>Address:</strong> {customer.location}</p>
-                    <p className="text-xs text-gray-500">
-                      {customer.latitude.toFixed(6)}, {customer.longitude.toFixed(6)}
-                    </p>
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+          {(() => {
+            if (!showCustomerLocations || !customerLocations || customerLocations.length === 0) {
+              return null;
+            }
+            
+            const validCustomers = customerLocations.filter(customer => {
+              // Validate coordinates - handle both string and number types
+              const lat = typeof customer.latitude === 'string' ? parseFloat(customer.latitude) : customer.latitude;
+              const lng = typeof customer.longitude === 'string' ? parseFloat(customer.longitude) : customer.longitude;
+              const isValid = !isNaN(lat) && !isNaN(lng) && 
+                             lat >= -90 && lat <= 90 && 
+                             lng >= -180 && lng <= 180;
+              // Silently skip invalid coordinates
+              return isValid;
+            });
+            
+            return validCustomers.map((customer) => {
+              const lat = typeof customer.latitude === 'string' ? parseFloat(customer.latitude) : customer.latitude;
+              const lng = typeof customer.longitude === 'string' ? parseFloat(customer.longitude) : customer.longitude;
+              return (
+                <Marker
+                  key={`customer-${customer.id}`}
+                  position={[lat, lng]}
+                  icon={createCustomerIcon()}
+                >
+                  <Popup>
+                    <div className="p-2 min-w-[200px]">
+                      <h4 className="font-semibold text-blue-600 mb-2">
+                        Customer Location
+                      </h4>
+                      <div className="space-y-1">
+                        <p><strong>Name:</strong> {customer.customer_name}</p>
+                        <p><strong>Address:</strong> {customer.location}</p>
+                        <p className="text-xs text-gray-500">
+                          {lat.toFixed(6)}, {lng.toFixed(6)}
+                        </p>
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            });
+          })()}
 
           {/* SPBG (Gas Station) Location Markers */}
           {showSPBGLocations && gasStations && gasStations.length > 0 ? (

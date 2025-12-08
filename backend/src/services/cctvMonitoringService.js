@@ -1,3 +1,5 @@
+// backend/src/services/cctvMonitoringService.js
+
 /**
  * CCTV Monitoring Service
  * 
@@ -8,7 +10,7 @@
  * - Integration with BARDI API and OCR processing
  */
 
-const { Op } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 const db = require('../models');
 const bardiScrapingService = require('./bardiScrapingService');
 const meterOcrService = require('./meterOcrService');
@@ -51,13 +53,14 @@ class CCTVMonitoringService {
         where: {
           delivery_order_id,
           customer_location_index,
-          status: 'active',
-        },
+          meter_type,        // ✅ NOW CHECKS METER TYPE
+          status: 'active'
+        }
       });
 
       if (existingSession) {
         throw new Error(
-          `An active monitoring session already exists for this delivery order and location (Session ID: ${existingSession.id})`
+          `An active monitoring session already exists for this delivery order, location, and meter type (Session ID: ${existingSession.id})`
         );
       }
 
@@ -138,82 +141,57 @@ class CCTVMonitoringService {
    * @param {Object} filters - Query filters
    * @returns {Promise<Object>} Sessions and statistics
    */
-  async getSessions(filters = {}) {
+  async getSessions(filters) {
     try {
       console.log('🔍 cctvMonitoringService.getSessions called with filters:', filters);
       
-      const {
-        status = null,
-        delivery_order_id = null,
-        limit = 50,
-        offset = 0,
-      } = filters;
-      
-      console.log('CCTVSession model:', typeof CCTVSession);
+      const { status, delivery_order_id, limit = 10, offset = 0 } = filters;
 
       const whereClause = {};
       if (status) whereClause.status = status;
       if (delivery_order_id) whereClause.delivery_order_id = delivery_order_id;
 
-      const { count, rows: sessions } = await CCTVSession.findAndCountAll({
+      // 🔥 ULTRA SAFE - NO NOTA KECIL INCLUDE!
+      const sessions = await CCTVSession.findAndCountAll({
         where: whereClause,
-        include: [
-          { model: DeliveryOrder, as: 'delivery_order' },
-          { model: User, as: 'creator' },
-          { model: NotaKecil, as: 'created_nota_kecil' },
-        ],
-        order: [['created_at', 'DESC']],
         limit: parseInt(limit),
         offset: parseInt(offset),
-      });
-
-      // Pre-compute nota kecil counts for each session (count nota created after session start)
-      const notaCounts = {};
-      await Promise.all(
-        sessions.map(async (session) => {
-          try {
-            const count = await NotaKecil.count({
-              where: {
-                delivery_order_id: session.delivery_order_id,
-                customer_location_index: session.customer_location_index,
-                created_at: {
-                  [Op.gte]: session.start_time,
-                },
-              },
-            });
-            notaCounts[session.id] = count;
-          } catch (error) {
-            console.error(`Error counting nota kecils for session ${session.id}:`, error.message);
-            notaCounts[session.id] = 0;
+        order: [['created_at', 'DESC']],
+        include: [
+          {
+            model: DeliveryOrder,
+            as: 'delivery_order',
+            attributes: [
+              'id', 
+              'do_number', 
+              'status', 
+              'customer_name', 
+              'customer_location'
+            ]
+          },
+          {
+            model: User,
+            as: 'creator',
+            attributes: ['id', 'username']
           }
-        })
-      );
-
-      // Calculate health status for each session
-      const sessionsWithHealth = sessions.map((session) => {
-        const sessionData = session.toJSON();
-        sessionData.health_status = session.getHealthStatus();
-        sessionData.time_since_last_capture = session.getTimeSinceLastCapture();
-        sessionData.nota_kecil_count = notaCounts[session.id] || 0;
-        return sessionData;
+          // ✅ NO created_nota_kecil = NO MORE ERRORS!
+        ],
+        // 🔥 ADD created_nota_kecil_id to main CCTVSession attributes
+        attributes: {
+          include: [
+            [Sequelize.literal(`(SELECT "id" FROM "nota_kecils" WHERE "nota_kecils"."id" = "CCTVSession"."created_nota_kecil_id")`), 'has_nota_kecil']
+          ]
+        }
       });
 
-      // Calculate statistics
-      const stats = await this.calculateHealthStats(sessions);
-
+      console.log(`✅ Successfully fetched ${sessions.count} CCTV sessions`);
+      
       return {
-        success: true,
-        data: sessionsWithHealth,
-        stats,
-        pagination: {
-          total: count,
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-          hasMore: offset + sessions.length < count,
-        },
+        count: sessions.count,
+        rows: sessions.rows
       };
     } catch (error) {
-      console.error('Error fetching CCTV sessions:', error);
+      console.error('🔍 cctvMonitoringService.getSessions error:', error);
       throw error;
     }
   }
@@ -381,22 +359,32 @@ class CCTVMonitoringService {
   async processScreenshotOcr(screenshotId) {
     try {
       const screenshot = await CCTVScreenshot.findByPk(screenshotId);
-      if (!screenshot) {
-        throw new Error(`Screenshot ${screenshotId} not found`);
-      }
+      if (!screenshot) throw new Error(`Screenshot ${screenshotId} not found`);
 
-      // Update status to processing
       await screenshot.update({ ocr_status: 'processing' });
+      console.log(`Processing OCR for screenshot ${screenshotId}...`);
 
-      console.log(`🔍 Processing OCR for screenshot ${screenshotId}...`);
+      // Get meter_type directly from session
+      const session = await CCTVSession.findOne({
+        where: { id: screenshot.session_id },
+        attributes: ['meter_type']
+      });
 
-      // Call meter OCR service
+      if (!session) throw new Error(`Session not found for screenshot ${screenshotId}`);
+      if (!session.meter_type) throw new Error(`meter_type missing for session ${session.id}`);
+
+      console.log(`OCR for ${session.meter_type} meter...`);
+
+      // ✅ LAZY LOAD to avoid circular dependency
+      const meterOcrService = require('./meterOcrService');
+      
+      // Call OCR with meter_type
       const ocrResult = await meterOcrService.processMeterReading(
-        screenshot.screenshot_url
+        screenshot.screenshot_url,
+        session.meter_type
       );
 
       if (ocrResult.success) {
-        // Update screenshot with OCR results
         await screenshot.update({
           ocr_status: 'success',
           ocr_result: ocrResult.data,
@@ -405,36 +393,24 @@ class CCTVMonitoringService {
           ocr_processed_at: new Date(),
           ocr_error_message: null,
         });
-
-        console.log(`✓ OCR completed for screenshot ${screenshotId}`);
-
-        return {
-          success: true,
-          data: ocrResult.data,
-        };
+        console.log(`OCR SUCCESS (${session.meter_type}):`, ocrResult.data);
       } else {
-        // OCR failed
-        await screenshot.update({
-          ocr_status: 'failed',
-          ocr_error_message: ocrResult.error || 'OCR processing failed',
-          ocr_processed_at: new Date(),
-        });
-
-        throw new Error(ocrResult.error || 'OCR processing failed');
+        throw new Error(ocrResult.error || 'OCR failed');
       }
     } catch (error) {
-      console.error('Error processing OCR:', error);
-      
-      // Update screenshot status to failed
-      const screenshot = await CCTVScreenshot.findByPk(screenshotId);
-      if (screenshot) {
-        await screenshot.update({
-          ocr_status: 'failed',
-          ocr_error_message: error.message,
-          ocr_processed_at: new Date(),
-        });
+      console.error('OCR processing failed:', error.message);
+      try {
+        const screenshot = await CCTVScreenshot.findByPk(screenshotId);
+        if (screenshot) {
+          await screenshot.update({
+            ocr_status: 'failed',
+            ocr_error_message: error.message,
+            ocr_processed_at: new Date(),
+          });
+        }
+      } catch (updateError) {
+        console.error('Failed to mark screenshot as failed:', updateError);
       }
-
       throw error;
     }
   }
@@ -656,6 +632,7 @@ class CCTVMonitoringService {
    * @param {number} sessionId - Session ID
    * @returns {Promise<Object>} Recalibration results
    */
+  // In cctvMonitoringService.js, update the recalibrateNotaKecil function
   async recalibrateNotaKecil(sessionId) {
     try {
       const session = await CCTVSession.findByPk(sessionId, {
@@ -682,75 +659,24 @@ class CCTVMonitoringService {
       }
 
       const CAPTURES_PER_BATCH = 24;
-      // Calculate total batches including the last partial batch
       const totalBatches = Math.ceil(allScreenshots.length / CAPTURES_PER_BATCH);
 
-      if (totalBatches === 0) {
-        return {
-          success: true,
-          message: 'No screenshots found to process',
-          batchesProcessed: 0,
-          notasCreated: 0,
-          notasDeleted: 0
-        };
-      }
-
-      console.log(`📊 Found ${allScreenshots.length} screenshots, processing ${totalBatches} batch(es) (including partial batches)`);
+      console.log(`📊 Found ${allScreenshots.length} screenshots, processing ${totalBatches} batch(es)`);
 
       let notasCreated = 0;
-      let notasDeleted = 0;
       const processedBatches = [];
       const skippedBatches = [];
 
-      // Process each batch (including partial ones)
+      // Lazy load scheduler to avoid circular dependency
+      const cctvScheduler = require('./cctvScheduler');
+
       for (let batchNumber = 1; batchNumber <= totalBatches; batchNumber++) {
         const startSequence = (batchNumber - 1) * CAPTURES_PER_BATCH + 1;
-        const endSequence = batchNumber * CAPTURES_PER_BATCH;
+        const endSequence = Math.min(batchNumber * CAPTURES_PER_BATCH, allScreenshots.length);
 
         console.log(`\n📦 Processing batch ${batchNumber} (sequences ${startSequence}-${endSequence})...`);
 
-        // Get batch screenshots
-        const batchScreenshots = allScreenshots.filter(
-          s => s.sequence_number >= startSequence && s.sequence_number <= endSequence
-        );
-
-        if (batchScreenshots.length === 0) {
-          console.log(`   ⚠️  Batch ${batchNumber} has no screenshots, skipping`);
-          skippedBatches.push(batchNumber);
-          continue;
-        }
-
-        console.log(`   📸 Batch ${batchNumber} has ${batchScreenshots.length} screenshot(s) (${batchScreenshots.length}/${CAPTURES_PER_BATCH})`);
-
-        // Find and delete existing nota kecils for this batch
-        // We identify them by checking if they were created during the batch time range
-        const batchStartAt = batchScreenshots[0]?.captured_at;
-        const batchEndAt = batchScreenshots[batchScreenshots.length - 1]?.captured_at;
-
-        if (batchStartAt && batchEndAt) {
-          const existingNotas = await NotaKecil.findAll({
-            where: {
-              delivery_order_id: session.delivery_order_id,
-              customer_location_index: session.customer_location_index,
-              created_at: {
-                [Op.between]: [batchStartAt, new Date(batchEndAt.getTime() + 60000)] // Add 1 minute buffer
-              }
-            }
-          });
-
-          if (existingNotas.length > 0) {
-            console.log(`   🗑️  Deleting ${existingNotas.length} existing nota kecil(s) for batch ${batchNumber}...`);
-            for (const nota of existingNotas) {
-              await nota.destroy();
-              notasDeleted++;
-            }
-          }
-        }
-
-        // Create new nota kecil for this batch (even if partial)
-        // The createNotaKecilFromBatch function will handle validation based on meter_type
-        // Lazy load cctvScheduler to avoid circular dependency
-        const cctvScheduler = require('./cctvScheduler');
+        // Create nota kecil for this batch
         const created = await cctvScheduler.createNotaKecilFromBatch(session, {
           startSequence,
           endSequence,
@@ -759,23 +685,22 @@ class CCTVMonitoringService {
 
         if (created) {
           notasCreated++;
-          processedBatches.push({ batchNumber, screenshotCount: batchScreenshots.length });
-          console.log(`   ✅ Batch ${batchNumber} processed successfully (${batchScreenshots.length}/${CAPTURES_PER_BATCH} captures)`);
+          processedBatches.push({ batchNumber, startSequence, endSequence });
+          console.log(`   ✅ Batch ${batchNumber} nota kecil CREATED`);
         } else {
-          console.log(`   ⚠️  Failed to create nota kecil for batch ${batchNumber} (insufficient data or validation failed)`);
+          console.log(`   ⚠️  Failed to create nota kecil for batch ${batchNumber}`);
           skippedBatches.push(batchNumber);
         }
       }
 
-      console.log(`\n✅ Recalibration complete: ${notasCreated} nota kecil(s) created, ${notasDeleted} deleted`);
+      console.log(`\n✅ Recalibration complete: ${notasCreated} nota kecil(s) created`);
 
       return {
         success: true,
-        message: `Recalibrated ${notasCreated} nota kecil(s) from ${totalBatches} batch(es)`,
+        message: `Created ${notasCreated} nota kecil(s) from ${totalBatches} batch(es)`,
         batchesProcessed: processedBatches.length,
         totalBatches,
         notasCreated,
-        notasDeleted,
         processedBatches,
         skippedBatches: skippedBatches.length > 0 ? skippedBatches : undefined
       };

@@ -10,6 +10,11 @@ module.exports = (sequelize) => {
         primaryKey: true,
         autoIncrement: true,
       },
+      spbg_name: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        comment: "Display name for SPBG (optional)",
+      },
       spbg_location: {
         type: DataTypes.STRING(255),
         allowNull: false,
@@ -67,6 +72,16 @@ module.exports = (sequelize) => {
       selisih_status: {
         type: DataTypes.STRING,
         defaultValue: 'none', // e.g., 'none', 'pending', 'paid'
+      },
+      latitude: {
+        type: DataTypes.DECIMAL(10, 7),
+        allowNull: true,
+        comment: "Latitude coordinate for SPBG location",
+      },
+      longitude: {
+        type: DataTypes.DECIMAL(10, 7),
+        allowNull: true,
+        comment: "Longitude coordinate for SPBG location",
       },
         created_at: {
         type: DataTypes.DATE,

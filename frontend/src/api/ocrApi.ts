@@ -41,10 +41,14 @@ export interface OCRResult {
 export interface ExtractedData {
   tanggal_mulai: string | null;
   tanggal_selesai: string | null;
+  
+  // ✅ NEW SCHEMA FIELDS ONLY
   stan_awal: number | null;
-  stan_akhir: number | null;
-  tekanan_operasi: number | null;
-  temperatur_operasi: number | null;
+  current_stan: number | null;
+  pressure_inlet: number | null;
+  pressure_outlet: number | null;
+  temperature: number | null;
+  
   harga_satuan: number | null;
   total_harga: number | null;
   confidence: number;
@@ -55,41 +59,28 @@ export interface ExtractedData {
 
 export interface ConfidenceScores {
   overall: number;
-  tanggal_mulai: number;
+  
+  // ✅ NEW SCHEMA FIELDS ONLY
   stan_awal: number;
-  stan_akhir: number;
-  tekanan_operasi: number;
-  temperatur_operasi: number;
+  current_stan: number;
+  pressure_inlet: number;
+  pressure_outlet: number;
+  temperature: number;
 }
 
 export interface BillingCalculation {
   success: boolean;
-  volume_calculation?: {
-    result: {
-      calculated_volume_m3: number;
-      meter_difference: number;
-      pressure_bar: number;
-      temperature_celsius: number;
-      compressibility_factor: number;
-      calculation_method: string;
-      calculated_at: string;
-    };
+  volume: number;
+  details?: {
+    Vt: number;
+    pressure_inlet: number;
+    temperature: number;
+    pressureFactor: number;
+    temperatureFactor: number;
+    superCompressibilityFactor: number;
+    formula: string;
   };
-  billing_calculation?: {
-    result: {
-      volume_m3: number;
-      unit_price: number;
-      total_amount: number;
-      calculated_at: string;
-    };
-  };
-  summary?: {
-    final_volume_m3: number;
-    unit_price: number;
-    total_amount: number;
-    calculation_method: string;
-    processed_at: string;
-  };
+  ocr_source?: boolean;
   error?: string;
 }
 
@@ -202,4 +193,3 @@ export const ocrApi = {
 };
 
 export default ocrApi;
-

@@ -52,6 +52,13 @@ module.exports = {
         defaultValue: 'draft',
         comment: 'Status of the nota besar'
       },
+      // Add to nota_besars migration
+      screenshots: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        defaultValue: [],
+        comment: 'Array of 6 screenshot URLs for this nota besar (1 hour)'
+      },
       notes: {
         type: DataTypes.TEXT,
         allowNull: true,

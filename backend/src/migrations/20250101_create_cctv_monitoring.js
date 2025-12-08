@@ -2,20 +2,11 @@
 
 const { Sequelize, QueryInterface } = require('sequelize');
 
-/**
- * Migration: Create CCTV Monitoring Tables
- * Creates tables for cctv_sessions and cctv_screenshots
- */
 module.exports = {
-  /**
-   * Run the migration
-   * @param {QueryInterface} queryInterface
-   * @param {Sequelize} Sequelize
-   */
   up: async (queryInterface, Sequelize) => {
-    console.log('Creating CCTV monitoring tables...');
+    console.log('🚀 Creating CCTV monitoring tables...');
 
-    // Create cctv_sessions table
+    // 1. Create cctv_sessions table WITH meter_type
     await queryInterface.createTable('cctv_sessions', {
       id: {
         type: Sequelize.INTEGER,
@@ -30,90 +21,78 @@ module.exports = {
           key: 'id'
         },
         onUpdate: 'CASCADE',
-        onDelete: 'RESTRICT',
-        comment: 'Foreign key to delivery_orders table'
+        onDelete: 'RESTRICT'
       },
       customer_location_index: {
         type: Sequelize.INTEGER,
         allowNull: false,
-        defaultValue: 0,
-        comment: 'Index of customer location in delivery order locations array'
+        defaultValue: 0
       },
       customer_name: {
         type: Sequelize.STRING,
-        allowNull: false,
-        comment: 'Name of the customer location being monitored'
+        allowNull: false
       },
       device_id: {
         type: Sequelize.STRING,
-        allowNull: true,
-        comment: 'BARDI device ID used for monitoring'
+        allowNull: true
       },
       bardi_session_token: {
         type: Sequelize.TEXT,
-        allowNull: true,
-        comment: 'Encrypted BARDI session token for API access'
+        allowNull: true
       },
       start_time: {
         type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP'),
-        comment: 'When the monitoring session started'
+        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
       },
       end_time: {
         type: Sequelize.DATE,
-        allowNull: true,
-        comment: 'When the monitoring session ended'
+        allowNull: true
       },
       status: {
         type: Sequelize.ENUM('active', 'completed', 'dead', 'stopped'),
         allowNull: false,
-        defaultValue: 'active',
-        comment: 'Current status of the monitoring session'
+        defaultValue: 'active'
       },
       total_screenshots_captured: {
         type: Sequelize.INTEGER,
         allowNull: false,
-        defaultValue: 0,
-        comment: 'Total number of screenshots captured in this session'
+        defaultValue: 0
       },
       last_screenshot_at: {
         type: Sequelize.DATE,
-        allowNull: true,
-        comment: 'Timestamp of the last captured screenshot'
+        allowNull: true
       },
       session_notes: {
         type: Sequelize.TEXT,
-        allowNull: true,
-        comment: 'Additional notes about the session'
+        allowNull: true
       },
       created_nota_kecil_id: {
         type: Sequelize.INTEGER,
-        allowNull: true,
-        // Foreign key constraint will be added in a later migration after nota_kecils table exists
-        comment: 'Nota Kecil created from this monitoring session'
+        allowNull: true
       },
       panel_row: {
         type: Sequelize.INTEGER,
-        allowNull: true,
-        comment: 'Panel row location in BARDI interface'
+        allowNull: true
       },
       panel_column: {
         type: Sequelize.INTEGER,
-        allowNull: true,
-        comment: 'Panel column location in BARDI interface'
+        allowNull: true
+      },
+      // ✅ MISSING FIELD - THIS WAS THE PROBLEM!
+      meter_type: {
+        type: Sequelize.ENUM('stan', 'pressure_inlet', 'pressure_outlet', 'temperature'),
+        allowNull: false  // ✅ Required now
       },
       screenshot_interval_minutes: {
         type: Sequelize.INTEGER,
         allowNull: false,
-        defaultValue: 10,
-        comment: 'Interval between automatic screenshots in minutes'
+        defaultValue: 10
       },
       health_check_interval_minutes: {
         type: Sequelize.INTEGER,
         allowNull: false,
-        defaultValue: 15,
-        comment: 'Interval for health status checks in minutes'
+        defaultValue: 15
       },
       created_by: {
         type: Sequelize.INTEGER,
@@ -123,8 +102,29 @@ module.exports = {
           key: 'id'
         },
         onUpdate: 'CASCADE',
-        onDelete: 'SET NULL',
-        comment: 'User who created this monitoring session'
+        onDelete: 'SET NULL'
+      },
+      // ✅ NOTA BATCH FIELDS (from your model)
+      nota_batch_start_at: {
+        type: Sequelize.DATE,
+        allowNull: true
+      },
+      nota_batch_start_sequence: {
+        type: Sequelize.INTEGER,
+        allowNull: true
+      },
+      nota_batch_capture_count: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        defaultValue: 0
+      },
+      nota_batch_end_at: {
+        type: Sequelize.DATE,
+        allowNull: true
+      },
+      nota_batch_end_sequence: {
+        type: Sequelize.INTEGER,
+        allowNull: true
       },
       created_at: {
         type: Sequelize.DATE,
@@ -138,9 +138,18 @@ module.exports = {
       }
     });
 
-    console.log('✓ cctv_sessions table created');
+    console.log('✅ cctv_sessions table created');
 
-    // Create cctv_screenshots table
+    // 2. ✅ NOW ADD THE UNIQUE CONSTRAINT
+    await queryInterface.addConstraint('cctv_sessions', {
+      fields: ['delivery_order_id', 'customer_location_index', 'customer_name', 'meter_type'],
+      type: 'unique',
+      name: 'unique_session_per_sensor_per_customer_per_order'
+    });
+
+    console.log('✅ Unique constraint added: 1 session per sensor per customer per order');
+
+    // 3. Create cctv_screenshots table (unchanged)
     await queryInterface.createTable('cctv_screenshots', {
       id: {
         type: Sequelize.INTEGER,
@@ -155,77 +164,63 @@ module.exports = {
           key: 'id'
         },
         onUpdate: 'CASCADE',
-        onDelete: 'CASCADE',
-        comment: 'Foreign key to cctv_sessions table'
+        onDelete: 'CASCADE'
       },
       screenshot_url: {
         type: Sequelize.STRING(500),
-        allowNull: false,
-        comment: 'URL to screenshot image (Cloudinary or local storage)'
+        allowNull: false
       },
       cloudinary_public_id: {
         type: Sequelize.STRING,
-        allowNull: true,
-        comment: 'Cloudinary public ID for image management'
+        allowNull: true
       },
       captured_at: {
         type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP'),
-        comment: 'Timestamp when the screenshot was captured'
+        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
       },
       sequence_number: {
         type: Sequelize.INTEGER,
-        allowNull: false,
-        comment: 'Sequential number within the session (1, 2, 3, ...)'
+        allowNull: false
       },
       ocr_status: {
         type: Sequelize.ENUM('pending', 'processing', 'success', 'failed'),
         allowNull: false,
-        defaultValue: 'pending',
-        comment: 'Status of OCR processing'
+        defaultValue: 'pending'
       },
       ocr_result: {
         type: Sequelize.JSONB,
-        allowNull: true,
-        comment: 'OCR extracted data: meter_reading, pressure, temperature, flow_rate, etc.'
+        allowNull: true
       },
       ocr_raw_response: {
         type: Sequelize.JSONB,
-        allowNull: true,
-        comment: 'Full raw OCR API response for debugging'
+        allowNull: true
       },
       ocr_confidence_score: {
         type: Sequelize.FLOAT,
-        allowNull: true,
-        comment: 'OCR confidence score (0-1), higher is better'
+        allowNull: true
       },
       ocr_processed_at: {
         type: Sequelize.DATE,
-        allowNull: true,
-        comment: 'Timestamp when OCR processing completed'
+        allowNull: true
       },
       ocr_error_message: {
         type: Sequelize.TEXT,
-        allowNull: true,
-        comment: 'Error message if OCR processing failed'
+        allowNull: true
       },
       retry_count: {
         type: Sequelize.INTEGER,
         allowNull: false,
-        defaultValue: 0,
-        comment: 'Number of OCR retry attempts'
+        defaultValue: 0
       },
       is_deleted: {
         type: Sequelize.BOOLEAN,
         allowNull: false,
-        defaultValue: false,
-        comment: 'Soft delete flag'
+        defaultValue: false
       },
       notes: {
         type: Sequelize.TEXT,
-        allowNull: true,
-        comment: 'Additional notes about this screenshot'
+        allowNull: true
       },
       created_at: {
         type: Sequelize.DATE,
@@ -239,70 +234,54 @@ module.exports = {
       }
     });
 
-    console.log('✓ cctv_screenshots table created');
+    console.log('✅ cctv_screenshots table created');
 
-    // Helper to create indexes only if they don't already exist
-    const ensureIndex = async (tableName, fields, options) => {
-      const existingIndexes = await queryInterface.showIndex(tableName);
-      const exists = existingIndexes.some(index => index.name === options.name);
-      if (!exists) {
-        await queryInterface.addIndex(tableName, fields, options);
-        console.log(`✓ Created index ${options.name} on ${tableName}`);
-      } else {
-        console.log(`⏭️  Skipping index ${options.name} on ${tableName} (already exists)`);
+    // 4. Safe index creation
+    const createIndexSafely = async (tableName, fields, indexName) => {
+      try {
+        await queryInterface.addIndex(tableName, fields, { name: indexName });
+        console.log(`✅ Created index: ${indexName}`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`⏭️  Index ${indexName} already exists - SKIPPED`);
+        } else {
+          throw error;
+        }
       }
     };
 
-    // Create indexes for cctv_sessions (idempotent)
-    await ensureIndex('cctv_sessions', ['delivery_order_id'], {
-      name: 'idx_cctv_sessions_delivery_order'
-    });
-    await ensureIndex('cctv_sessions', ['status'], {
-      name: 'idx_cctv_sessions_status'
-    });
-    await ensureIndex('cctv_sessions', ['start_time'], {
-      name: 'idx_cctv_sessions_start_time'
-    });
-    await ensureIndex('cctv_sessions', ['created_by'], {
-      name: 'idx_cctv_sessions_created_by'
-    });
+    // Sessions indexes
+    await createIndexSafely('cctv_sessions', ['delivery_order_id', 'customer_location_index', 'meter_type'], 'idx_cctv_sessions_delivery_customer_sensor');
+    await createIndexSafely('cctv_sessions', ['delivery_order_id', 'customer_location_index'], 'idx_cctv_sessions_delivery_customer');
+    await createIndexSafely('cctv_sessions', ['status'], 'idx_cctv_sessions_status');
+    await createIndexSafely('cctv_sessions', ['start_time'], 'idx_cctv_sessions_start_time');
+    await createIndexSafely('cctv_sessions', ['created_by'], 'idx_cctv_sessions_created_by');
+    await createIndexSafely('cctv_sessions', ['meter_type'], 'idx_cctv_sessions_sensor');
 
-    console.log('✓ cctv_sessions indexes created');
+    // Screenshots indexes
+    await createIndexSafely('cctv_screenshots', ['session_id', 'sequence_number'], 'idx_cctv_screenshots_session_sequence');
+    await createIndexSafely('cctv_screenshots', ['captured_at'], 'idx_cctv_screenshots_captured_at');
+    await createIndexSafely('cctv_screenshots', ['ocr_status'], 'idx_cctv_screenshots_ocr_status');
+    await createIndexSafely('cctv_screenshots', ['session_id'], 'idx_cctv_screenshots_session_id');
 
-    // Create indexes for cctv_screenshots
-    await ensureIndex('cctv_screenshots', ['session_id', 'sequence_number'], {
-      name: 'idx_cctv_screenshots_session_sequence'
-    });
-    await ensureIndex('cctv_screenshots', ['captured_at'], {
-      name: 'idx_cctv_screenshots_captured_at'
-    });
-    await ensureIndex('cctv_screenshots', ['ocr_status'], {
-      name: 'idx_cctv_screenshots_ocr_status'
-    });
-    await ensureIndex('cctv_screenshots', ['session_id'], {
-      name: 'idx_cctv_screenshots_session_id'
-    });
-
-    console.log('✓ cctv_screenshots indexes created');
-    console.log('✅ CCTV monitoring migration completed successfully!');
+    console.log('🎉 CCTV monitoring migration COMPLETED SUCCESSFULLY!');
   },
 
-  /**
-   * Revert the migration
-   * @param {QueryInterface} queryInterface
-   * @param {Sequelize} Sequelize
-   */
   down: async (queryInterface, Sequelize) => {
-    console.log('Dropping CCTV monitoring tables...');
+    console.log('🔄 Rolling back CCTV monitoring...');
 
-    // Drop tables in reverse order (due to foreign key constraints)
+    // Remove constraint FIRST
+    try {
+      await queryInterface.removeConstraint('cctv_sessions', 'unique_session_per_sensor_per_customer_per_order');
+      console.log('✅ Unique constraint removed');
+    } catch (e) {
+      console.log('⚠️  Constraint didn\'t exist');
+    }
+
+    // Drop tables
     await queryInterface.dropTable('cctv_screenshots');
-    console.log('✓ cctv_screenshots table dropped');
-
     await queryInterface.dropTable('cctv_sessions');
-    console.log('✓ cctv_sessions table dropped');
-
-    console.log('✅ CCTV monitoring migration reverted successfully!');
+    
+    console.log('🎉 Rollback COMPLETED!');
   }
 };
-

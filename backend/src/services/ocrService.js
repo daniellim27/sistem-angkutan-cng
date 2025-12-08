@@ -33,7 +33,7 @@ class OCRService {
   }
 
   /**
-   * Process nota image using OpenAI GPT-4 Vision
+   * Process nota image using OpenAI GPT-4 Vision - NEW SCHEMA
    * @param {Buffer} imageBuffer - Image buffer
    * @param {Object} options - Processing options
    * @returns {Object} Extracted data and confidence scores
@@ -47,7 +47,7 @@ class OCRService {
     }
 
     try {
-      const prompt = this.buildPrompt(options);
+      const prompt = this.buildNotaPrompt(options);
       
       const response = await this.openai.chat.completions.create({
         model: "gpt-4o",
@@ -83,7 +83,7 @@ class OCRService {
       const extractedData = JSON.parse(responseContent);
       
       // Validate and clean the extracted data
-      return this.validateAndCleanData(extractedData);
+      return this.validateAndCleanNotaData(extractedData);
       
     } catch (error) {
       console.error('OCR Processing Error:', error);
@@ -92,11 +92,11 @@ class OCRService {
   }
 
   /**
-   * Build the prompt for OCR processing
+   * Build the prompt for nota OCR processing - NEW SCHEMA
    * @param {Object} options - Processing options
    * @returns {String} Formatted prompt
    */
-  buildPrompt(options = {}) {
+  buildNotaPrompt(options = {}) {
     return `
 Analyze this gas station receipt (nota) image and extract the following information in JSON format.
 
@@ -106,9 +106,10 @@ CRITICAL: Return ONLY valid JSON without any markdown formatting, code blocks, o
   "tanggal_mulai": "YYYY-MM-DD HH:mm:ss",
   "tanggal_selesai": "YYYY-MM-DD HH:mm:ss", 
   "stan_awal": number,
-  "stan_akhir": number,
-  "tekanan_operasi": number,
-  "temperatur_operasi": number,
+  "current_stan": number,
+  "pressure_inlet": number,
+  "pressure_outlet": number,
+  "temperature": number,
   "harga_satuan": number,
   "total_harga": number,
   "confidence": number
@@ -116,13 +117,16 @@ CRITICAL: Return ONLY valid JSON without any markdown formatting, code blocks, o
 
 Look for these specific fields:
 - Date/time stamps (TANGGAL/JAM) - convert to YYYY-MM-DD HH:mm:ss format
-- Meter readings (Stand Meter Awal/Akhir) - extract as numbers
-- Pressure readings (Tekanan in Bar) - extract as decimal number
-- Temperature readings (Suhu in Celsius) - extract as decimal number  
+- Initial meter reading (STAN AWAL / Meter Awal) - extract as number
+- Current/final meter reading (STAN AKHIR / Meter Akhir / Current Stan) - extract as number
+- Inlet pressure (Tekanan Masuk / Pressure Inlet) - extract as decimal number in Bar
+- Outlet pressure (Tekanan Keluar / Pressure Outlet) - extract as decimal number in Bar  
+- Temperature (Suhu / Temperature) - extract as decimal number in °C
 - Unit price and total price - extract as decimal numbers
 
 Rules:
 - If any field cannot be found, use null
+- "current_stan" is the final meter reading (STAN AKHIR)
 - Confidence should be 0-100 based on image clarity and text readability
 - For dates, use current year if only day/month is visible
 - For numbers, remove any thousand separators and convert to decimal
@@ -133,18 +137,19 @@ Return ONLY the JSON object starting with { and ending with }. No markdown, no c
   }
 
   /**
-   * Validate and clean extracted data
+   * Validate and clean nota extracted data - NEW SCHEMA
    * @param {Object} data - Raw extracted data
    * @returns {Object} Cleaned and validated data
    */
-  validateAndCleanData(data) {
+  validateAndCleanNotaData(data) {
     const cleaned = {
       tanggal_mulai: this.parseDateTime(data.tanggal_mulai),
       tanggal_selesai: this.parseDateTime(data.tanggal_selesai),
       stan_awal: this.parseNumber(data.stan_awal),
-      stan_akhir: this.parseNumber(data.stan_akhir),
-      tekanan_operasi: this.parseNumber(data.tekanan_operasi),
-      temperatur_operasi: this.parseNumber(data.temperatur_operasi),
+      current_stan: this.parseNumber(data.current_stan),
+      pressure_inlet: this.parseNumber(data.pressure_inlet),
+      pressure_outlet: this.parseNumber(data.pressure_outlet),
+      temperature: this.parseNumber(data.temperatur_operasi || data.temperature),
       harga_satuan: this.parseNumber(data.harga_satuan),
       total_harga: this.parseNumber(data.total_harga),
       confidence: this.parseNumber(data.confidence) || 0,
@@ -152,8 +157,8 @@ Return ONLY the JSON object starting with { and ending with }. No markdown, no c
       raw_data: data
     };
 
-    // Calculate overall confidence based on field completeness
-    const fields = ['stan_awal', 'stan_akhir', 'tekanan_operasi', 'temperatur_operasi'];
+    // Calculate overall confidence based on field completeness - NEW SCHEMA
+    const fields = ['stan_awal', 'current_stan', 'pressure_inlet', 'temperature'];
     const filledFields = fields.filter(field => cleaned[field] !== null).length;
     const completenessScore = (filledFields / fields.length) * 100;
     

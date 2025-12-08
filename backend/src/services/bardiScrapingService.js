@@ -81,6 +81,210 @@ class BardiScrapingService {
     }
   }
 
+  async clickFullscreen(panelRow = 1) {
+    let browser = null;
+    try {
+      const row = parseInt(panelRow);
+      console.log(`Clicking fullscreen on camera row ${row}`);
+
+      browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'],
+      });
+
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1920, height: 1080 });
+
+      const session = await this.loadSession();
+      const cookies = Object.entries(session.cookies).map(([name, value]) => ({
+        name, value, domain: 'ipc.bardi.co.id', path: '/', secure: true, sameSite: 'None'
+      }));
+      await page.setCookie(...cookies);
+
+      await page.goto('https://ipc.bardi.co.id/playback', { waitUntil: 'networkidle2', timeout: 30000 });
+
+      if (page.url().includes('/login')) {
+        throw new Error('Session expired');
+      }
+
+      // Expand All Devices
+      await this.expandAllDevices(page);
+      await page.waitForTimeout(2000);
+
+      // Click the camera by row
+      const clicked = await this.clickCameraByRow(page, row);
+      if (!clicked) throw new Error(`Camera row ${row} not found`);
+
+      await page.waitForTimeout(4000); // Wait for video to load
+
+      // Click the fullscreen button (8th icon from the left)
+      const fullscreenClicked = await page.evaluate(() => {
+        const panels = document.querySelectorAll('.gridShow_item__cpdxP');
+        if (panels.length === 0) return false;
+
+        // Find the active/single view panel or first one
+        let targetPanel = document.querySelector('.gridShow_item__cpdxP');
+        if (panels.length > 1) {
+          targetPanel = Array.from(panels).find(p => 
+            p.querySelector('video') && p.querySelector('video').src
+          ) || panels[0];
+        }
+
+        const fullscreenBtn = targetPanel.querySelector(
+          '.videoTool_control__ybx2m span:nth-last-child(2) .SVG_cs-wrapper__3Cu4D'
+        );
+
+        if (fullscreenBtn) {
+          fullscreenBtn.click();
+          return true;
+        }
+        return false;
+      });
+
+      await browser.close();
+      return {
+        success: true,
+        action: 'fullscreen_clicked',
+        cameraRow: row,
+        fullscreenClicked
+      };
+
+    } catch (error) {
+      if (browser) await browser.close().catch(() => {});
+      return { success: false, error: error.message };
+    }
+  }
+
+  // ————————————————————————
+  // Click Fullscreen by Camera Name
+  // ————————————————————————
+  async clickFullscreenByName(cameraName) {
+    let browser = null;
+    try {
+      console.log(`Clicking fullscreen on camera: "${cameraName}"`);
+
+      browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1920, height: 1080 });
+
+      await this.loadSession();
+      await page.setCookie(...Object.entries(this.session.cookies).map(([n, v]) => ({
+        name: n, value: v, domain: 'ipc.bardi.co.id', path: '/', secure: true
+      })));
+
+      await page.goto('https://ipc.bardi.co.id/playback', { waitUntil: 'networkidle2' });
+
+      await this.expandAllDevices(page);
+      await page.waitForTimeout(2000);
+
+      const clicked = await page.evaluate((name) => {
+        const deviceNames = document.querySelectorAll('.commonTool_device-name__3tXY0');
+        for (const el of deviceNames) {
+          if (el.textContent.trim() === name) {
+            el.closest('.gridShow_item__cpdxP')
+              .querySelector('.videoTool_control__ybx2m span:nth-last-child(2) .SVG_cs-wrapper__3Cu4D')
+              ?.click();
+            return true;
+          }
+        }
+        return false;
+      }, cameraName);
+
+      await browser.close();
+      return { success: clicked, camera: cameraName, action: 'fullscreen' };
+
+    } catch (error) {
+      if (browser) await browser.close().catch(() => {});
+      return { success: false, error: error.message };
+    }
+  }
+
+  // ————————————————————————
+  // PTZ Control (up/down/left/right/zoom)
+  // ————————————————————————
+  async controlPTZ(panelRow = 1, direction = 'up', durationMs = 800) {
+    let browser = null;
+    try {
+      browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+      const page = await browser.newPage();
+
+      await this.loadSession();
+      await page.setCookie(...Object.entries(this.session.cookies).map(([n, v]) => ({
+        name: n, value: v, domain: 'ipc.bardi.co.id', path: '/', secure: true
+      })));
+
+      await page.goto('https://ipc.bardi.co.id/playback', { waitUntil: 'networkidle2' });
+      await this.expandAllDevices(page);
+      await this.clickCameraByRow(page, panelRow);
+      await page.waitForTimeout(4000);
+
+      const result = await page.evaluate((dir, duration) => {
+        const panel = document.querySelector('.gridShow_item__cpdxP') ||
+                      document.querySelector('.rtcVideo_rtc-wrapper__12Rdu').closest('.gridShow_item__cpdxP');
+
+        if (!panel) return false;
+
+        const ptz = panel.querySelector('.ptzPanel_panel__1ApBZ');
+        if (!ptz) return false;
+
+        const buttons = {
+          up: ptz.querySelector('svg:nth-child(1)'),
+          right: ptz.querySelector('svg:nth-child(2)'),
+          down: ptz.querySelector('svg:nth-child(3)'),
+          left: ptz.querySelector('svg:nth-child(4)'),
+          zoomIn: ptz.querySelector('.ptzPanel_inc__jUlSj'),
+          zoomOut: ptz.querySelector('.ptzPanel_dec__29KQ9'),
+        };
+
+        const btn = buttons[dir];
+        if (!btn) return false;
+
+        // Mouse down → hold → mouse up
+        const down = new MouseEvent('mousedown', { bubbles: true });
+        const up = new MouseEvent('mouseup', { bubbles: true });
+        btn.dispatchEvent(down);
+        setTimeout(() => btn.dispatchEvent(up), duration);
+
+        return true;
+      }, direction.toLowerCase(), durationMs);
+
+      await page.waitForTimeout(durationMs + 500);
+      await browser.close();
+
+      return { success: result, direction, durationMs };
+    } catch (error) {
+      if (browser) await browser.close().catch(() => {});
+      return { success: false, error: error.message };
+    }
+  }
+
+  // ————————————————————————
+  // Improved: Click Camera by Row (uses real sidebar order)
+  // ————————————————————————
+  async clickCameraByRow(page, row) {
+    try {
+      const cameraNodes = await page.$$('.ant-tree-treenode .deviceItem_box__3ZdcA');
+      if (cameraNodes.length === 0) return false;
+
+      const index = Math.min(row - 1, cameraNodes.length - 1);
+      const target = cameraNodes[index];
+      const name = await target.evaluate(el => el.textContent.trim());
+      console.log(`Clicking camera row ${row}: "${name}"`);
+      await target.click({ delay: 100 });
+      return true;
+    } catch (err) {
+      console.error('clickCameraByRow failed:', err);
+      return false;
+    }
+  }
+
+  async expandAllDevices(page) {
+    try {
+      await page.click('.ant-tree-switcher, [class*="ant-tree-switcher"]', { delay: 100 });
+      await page.waitForTimeout(1000);
+    } catch (e) { /* ignore if already open */ }
+  }
+
   /**
    * Get user profile/info
    */
@@ -240,379 +444,178 @@ class BardiScrapingService {
     }
   }
 
-  /**
-   * Capture screenshot from specific panel using Puppeteer
-   * BARDI camera interface uses a 2x2 grid layout
-   * @param {number} panelRow - Panel row (1-2)
-   * @param {number} panelColumn - Panel column (1-2)
-   * @param {string} deviceId - Optional device ID
-   * @returns {Promise<Object>} Screenshot result with image buffer
+    /**
+   * Capture screenshot from specific panel using the real BARDI sidebar order
+   * @param {number} panelRow - 1-based row/order of the camera in the "All Devices" list
+   * @param {number} panelColumn - IGNORED (kept for backward compatibility)
+   * @param {string} deviceId - Optional device ID (still works if you have it)
+   * @returns {Promise<Object>}>} Screenshot result with image buffer
    */
   async capturePanelScreenshot(panelRow, panelColumn, deviceId = null) {
     const puppeteer = require('puppeteer');
     let browser = null;
-    
+
     try {
-      // Handle null/undefined panel coordinates - default to [1,1]
-      const finalPanelRow = (panelRow !== null && panelRow !== undefined && !isNaN(panelRow)) ? panelRow : 1;
-      const finalPanelColumn = (panelColumn !== null && panelColumn !== undefined && !isNaN(panelColumn)) ? panelColumn : 1;
-      
-      console.log(`📸 Capturing panel screenshot [Row ${finalPanelRow}, Col ${finalPanelColumn}]`);
-      if (panelRow !== finalPanelRow || panelColumn !== finalPanelColumn) {
-        console.log(`⚠️  Panel values were null/undefined/NaN, defaulted to [1,1]. Original values: [${panelRow}, ${panelColumn}]`);
-      }
-      
-      // Validate panel coordinates (2x2 grid)
-      if (finalPanelRow < 1 || finalPanelRow > 2 || finalPanelColumn < 1 || finalPanelColumn > 2) {
-        throw new Error(`Invalid panel coordinates [${finalPanelRow}, ${finalPanelColumn}]. Must be 1-2 for both row and column.`);
-      }
-      
-      // Calculate panel index in 2x2 grid
-      // [1,1]=0, [1,2]=1, [2,1]=2, [2,2]=3
-      const panelIndex = (finalPanelRow - 1) * 2 + (finalPanelColumn - 1);
-      console.log(`   Panel index in grid: ${panelIndex}`);
-      
-      // 1. Launch browser (headless for production)
-      console.log('🚀 Launching browser...');
+      // --------------------------------------------------------------
+      // 1. Normalize row – user gives the order in the sidebar list
+      // --------------------------------------------------------------
+      const targetRow = (panelRow && !isNaN(panelRow) && panelRow > 0) ? parseInt(panelRow, 10) : 1;
+      console.log(`[BARDI] Capturing camera at ROW ${targetRow} (sidebar position)`);
+
+      // --------------------------------------------------------------
+      // 2. Launch browser
+      // --------------------------------------------------------------
+      console.log('[BARDI] Launching headless browser...');
       browser = await puppeteer.launch({
-        headless: true, // Run in background
+        headless: true,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-accelerated-2d-canvas',
-          '--disable-gpu'
-        ]
+          '--disable-gpu',
+          '--window-size=1920,1080',
+        ],
+        defaultViewport: null,
       });
-      
+
       const page = await browser.newPage();
       await page.setViewport({ width: 1920, height: 1080 });
-      
-      // 2. Load session and set cookies BEFORE navigation (like working script)
-      console.log('🔐 Loading session...');
+
+      // --------------------------------------------------------------
+      // 3. Load session cookies
+      // --------------------------------------------------------------
       const session = await this.loadSession();
-      
-      // 3. Set cookies BEFORE navigating (critical!)
-      console.log('💉 Setting session cookies...');
-      const cookies = Object.entries(session.cookies).map(([name, value]) => ({
+      const cookies = Object.entries(session.cookies || {}).map(([name, value]) => ({
         name,
-        value,
+        value: String(value),
         domain: 'ipc.bardi.co.id',
         path: '/',
-        httpOnly: false,
         secure: true,
-        sameSite: 'None' // Must be 'None' for cross-site cookies
+        sameSite: 'None',
       }));
+
       await page.setCookie(...cookies);
-      console.log(`✅ Set ${cookies.length} cookies (including s-sid: ${session.cookies['s-sid'] ? session.cookies['s-sid'].substring(0, 20) + '...' : 'MISSING!'})`);
-      
-      // 4. Navigate to playback page WITH cookies already set
-      console.log('🌐 Navigating to BARDI playback...');
-      await page.goto('https://ipc.bardi.co.id/playback', { 
+      console.log(`[BARDI] Set ${cookies.length} cookies`);
+
+      // --------------------------------------------------------------
+      // 4. Go to playback page
+      // --------------------------------------------------------------
+      await page.goto('https://ipc.bardi.co.id/playback', {
         waitUntil: 'networkidle2',
-        timeout: 30000 
+        timeout: 30000,
       });
-      
-      // Wait for page to load
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      // Check if we're still on login page
-      const currentUrl = page.url();
-      console.log(`📍 Current URL: ${currentUrl}`);
-      if (currentUrl.includes('/login')) {
-        throw new Error('Still on login page - BARDI session (s-sid) has expired. Please update the session token using "Update Token" button in the frontend.');
+
+      if (page.url().includes('/login')) {
+        throw new Error('BARDI session expired – redirect to login');
       }
-      
-      console.log('✅ Successfully logged in with session');
-      
-      // 5. Wait for playback page to fully load
-      console.log('⏳ Waiting for playback page to load...');
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      // 6. Save debug screenshot of playback page (before clicking)
-      const fs = require('fs').promises;
-      const debugPath = path.join(__dirname, '../../screenshots/debug_before_click.png');
-      await page.screenshot({ path: debugPath, fullPage: false });
-      console.log(`🐛 Debug screenshot saved: ${debugPath}`);
-      
-      // 7. Expand "All Devices" toggle (like working script does)
-      console.log('🔍 Looking for "All Devices" toggle...');
-      const allDevicesExpanded = await this.expandAllDevices(page);
-      if (allDevicesExpanded) {
-        console.log('⏳ Waiting after expanding devices...');
-        await new Promise(resolve => setTimeout(resolve, 3000)); // Give time for grid to appear
-      }
-      
-      // 8. Check for video elements BEFORE clicking anything (grid should be visible)
-      console.log('🔍 Checking for existing video grid...');
-      let allVideos = [];
-      let retryCount = 0;
-      const maxRetries = 10;
-      
-      // Try to find videos without clicking camera first
-      while (allVideos.length < 4 && retryCount < maxRetries) {
-        allVideos = await page.$$('video');
-        console.log(`   Attempt ${retryCount + 1}/${maxRetries}: Found ${allVideos.length} video element(s)`);
-        
-        // If we found 4+ videos, we have the grid view!
-        if (allVideos.length >= 4) {
-          console.log('✅ Grid view detected! No need to click camera.');
+
+      // --------------------------------------------------------------
+      // 5. Expand "All Devices"
+      // --------------------------------------------------------------
+      console.log('[BARDI] Expanding All Devices and waiting for camera list...');
+
+      await this.expandAllDevices(page);
+
+      // NEW: Smart wait — keep checking until we see real camera entries
+      const maxWaitMs = 30_000; // max 30 seconds
+      const checkIntervalMs = 1000;
+      let attempts = 0;
+
+      while (attempts < maxWaitMs / checkIntervalMs) {
+        const cameraCount = await page.evaluate(() => {
+          // Look for actual camera items in the sidebar (these have device name + thumbnail)
+          return document.querySelectorAll('div[class*="deviceItem"], div[class*="device-item"], [data-testid="device-item"]').length;
+        });
+
+        if (cameraCount > 0) {
+          console.log(`[BARDI] Found ${cameraCount} camera(s) in sidebar – ready!`);
           break;
         }
-        
-        // If after 5 attempts we still don't have grid, try clicking camera
-        if (retryCount === 4 && allVideos.length < 4) {
-          console.log('⚠️ Grid not visible, trying to click camera device...');
-          const cameraClicked = await this.clickCameraFromSidebar(page, panelIndex, deviceId);
-          if (cameraClicked) {
-            console.log('✅ Camera clicked, waiting for view to load...');
-            await new Promise(resolve => setTimeout(resolve, 3000));
-          }
-        }
-        
-        if (allVideos.length < 4 && retryCount < maxRetries - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        retryCount++;
+
+        attempts++;
+        await new Promise(r => setTimeout(r, checkIntervalMs));
       }
-      
-      if (allVideos.length === 0) {
-        console.log('⚠️ No video elements found after waiting.');
-        
-        // Debug: Check what elements are on the page
-        console.log('🔍 Debugging - checking for other media elements...');
-        const canvasElements = await page.$$('canvas');
-        const imgElements = await page.$$('img');
-        const iframes = await page.$$('iframe');
-        console.log(`   Found ${canvasElements.length} canvas element(s)`);
-        console.log(`   Found ${imgElements.length} img element(s)`);
-        console.log(`   Found ${iframes.length} iframe(s)`);
-        
-        // Try to find any element that might contain video
-        const videoContainers = await page.$$('[class*="video"], [class*="player"], [class*="stream"], [class*="camera"]');
-        console.log(`   Found ${videoContainers.length} potential video container(s)`);
-        
-        // Check if videos are in an iframe
-        if (iframes.length > 0) {
-          console.log('⚠️ Videos might be inside an iframe. Checking first iframe...');
-          try {
-            const frame = await iframes[0].contentFrame();
-            if (frame) {
-              const iframeVideos = await frame.$$('video');
-              console.log(`   Found ${iframeVideos.length} video(s) inside iframe`);
-              if (iframeVideos.length > 0) {
-                allVideos = iframeVideos;
-              }
-            }
-          } catch (e) {
-            console.log(`   Error accessing iframe: ${e.message}`);
-          }
-        }
+
+      if (attempts >= maxWaitMs / checkIntervalMs) {
+        console.warn('[BARDI] Timeout: No cameras loaded after 30s – proceeding anyway (might get black screen)');
       } else {
-        console.log(`✅ Found ${allVideos.length} video element(s) after ${retryCount} attempt(s)`);
+        // Extra 3 seconds for streams to start rendering
+        await new Promise(r => setTimeout(r, 3000));
       }
-      
-      // Save debug screenshot of initial state
-      const debugPath2 = path.join(__dirname, '../../screenshots/debug_grid_view.png');
-      await page.screenshot({ path: debugPath2, fullPage: false });
-      console.log(`🐛 Debug screenshot saved: ${debugPath2}`);
-      
-      // 10. Capture the target panel by screen position (works even if panel is empty)
-      console.log('📷 Attempting to capture target panel...');
-      let imageBuffer;
-      
-      // Strategy 1: If we're in grid view (4+ videos), capture by video element
-      if (allVideos.length >= 4) {
-        console.log(`✅ Grid view detected with ${allVideos.length} video elements`);
-        console.log(`🎯 Target panel [${finalPanelRow}, ${finalPanelColumn}] = video index ${panelIndex}`);
-        
-        // Log all video elements for debugging
-        for (let i = 0; i < allVideos.length; i++) {
-          const box = await allVideos[i].boundingBox();
-          if (box) {
-            console.log(`   Video[${i}]: ${Math.round(box.width)}x${Math.round(box.height)}px at [${Math.round(box.x)}, ${Math.round(box.y)}]`);
-          }
-        }
-        
-        // Capture the target panel
-        if (panelIndex < allVideos.length) {
-          const targetVideo = allVideos[panelIndex];
-          const box = await targetVideo.boundingBox();
-          
-          if (box) {
-            console.log(`✅ Capturing panel [${finalPanelRow}, ${finalPanelColumn}] at video[${panelIndex}]`);
-            console.log(`   Size: ${Math.round(box.width)}x${Math.round(box.height)}px`);
-            console.log(`   Position: [${Math.round(box.x)}, ${Math.round(box.y)}]`);
-            
-            imageBuffer = await targetVideo.screenshot({ 
-              type: 'jpeg',
-              quality: 90,
-              encoding: 'binary'
-            });
-            
-            console.log(`✅ Successfully captured panel [${finalPanelRow}, ${finalPanelColumn}]: ${imageBuffer.length} bytes`);
-          } else {
-            console.log(`⚠️ No bounding box for video[${panelIndex}]`);
-          }
+
+      // --------------------------------------------------------------
+      // 6. Click the correct camera by row index
+      // --------------------------------------------------------------
+      const clicked = await this.clickCameraByRow(page, targetRow, deviceId);
+      if (!clicked) {
+        console.warn(`[BARDI] Could not click camera at row ${targetRow} – capturing current view`);
+      }
+
+      await new Promise(r => setTimeout(r, 5000)); // Wait for stream to load
+
+      // --------------------------------------------------------------
+      // 7. GO TRUE FULLSCREEN (8th button) — THIS IS THE MAGIC
+      // --------------------------------------------------------------
+      console.log('[BARDI] Entering true fullscreen mode...');
+      await page.evaluate(() => {
+        const fullscreenBtn =
+          document.querySelector('.videoTool_control__ybx2m > span:nth-child(8) .SVG_cs-wrapper__3Cu4D') ||
+          document.querySelector('.videoTool_control__ybx2m span:nth-of-type(8) svg') ||
+          document.querySelectorAll('.videoTool_control__ybx2m span')[7];
+
+        if (fullscreenBtn && typeof fullscreenBtn.click === 'function') {
+          fullscreenBtn.click();
         } else {
-          console.log(`⚠️ Panel index ${panelIndex} out of range (only ${allVideos.length} videos available)`);
+          // Fallback: press 'f' key (BARDI supports it)
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }));
         }
-      } 
-      
-      // Strategy 2: Capture by screen position (works for grid with empty panels)
-      if (!imageBuffer && allVideos.length > 0 && allVideos.length < 4) {
-        console.log(`⚠️ Found ${allVideos.length} video(s) - grid may have empty panels`);
-        console.log('🎯 Attempting to capture by screen position...');
-        
-        // Get the position of the first video to determine grid layout
-        const firstVideoBox = await allVideos[0].boundingBox();
-        
-        if (firstVideoBox) {
-          console.log(`   First video at [${Math.round(firstVideoBox.x)}, ${Math.round(firstVideoBox.y)}], size ${Math.round(firstVideoBox.width)}x${Math.round(firstVideoBox.height)}`);
-          
-          // Calculate panel position based on first video
-          // Assume 2x2 grid where each panel has similar size
-          const panelWidth = firstVideoBox.width;
-          const panelHeight = firstVideoBox.height;
-          const gridStartX = firstVideoBox.x;
-          const gridStartY = firstVideoBox.y;
-          
-          // Calculate target panel position
-          const targetX = gridStartX + (finalPanelColumn - 1) * panelWidth;
-          const targetY = gridStartY + (finalPanelRow - 1) * panelHeight;
-          
-          console.log(`   Target panel [${finalPanelRow}, ${finalPanelColumn}] position: [${Math.round(targetX)}, ${Math.round(targetY)}]`);
-          console.log(`   Capturing region: ${Math.round(panelWidth)}x${Math.round(panelHeight)}px`);
-          
-          // Capture that specific region
-          const viewport = page.viewport();
-          imageBuffer = await page.screenshot({
-            type: 'jpeg',
-            quality: 90,
-            clip: {
-              x: Math.max(0, targetX),
-              y: Math.max(0, targetY),
-              width: Math.min(panelWidth, viewport.width - targetX),
-              height: Math.min(panelHeight, viewport.height - targetY)
-            },
-            encoding: 'binary'
-          });
-          
-          console.log(`✅ Captured panel by position: ${imageBuffer.length} bytes`);
-        }
-      } else if (!imageBuffer && allVideos.length === 0) {
-        console.log(`⚠️ No videos found - cannot determine grid layout`);
-      }
-      
-      // If we didn't capture from grid view, try to find the best video element
-      if (!imageBuffer) {
-        console.log('🔍 Grid capture failed or not applicable, finding best video element...');
-        
-        let bestVideo = null;
-        let largestSize = 0;
-        
-        for (let i = 0; i < allVideos.length; i++) {
-          const box = await allVideos[i].boundingBox();
-          if (box) {
-            const size = box.width * box.height;
-            console.log(`   Video[${i}]: ${Math.round(box.width)}x${Math.round(box.height)}px (${Math.round(size)} px²)`);
-            
-            // Prefer larger videos (single camera view should be largest)
-            if (size > largestSize && box.width > 300 && box.height > 200) {
-              bestVideo = allVideos[i];
-              largestSize = size;
-            }
+      });
+
+      await new Promise(r => setTimeout(r, 1500));
+
+      // --------------------------------------------------------------
+      // 8. Hide cursor + toolbar completely
+      // --------------------------------------------------------------
+      await page.addStyleTag({
+        content: `
+          * { cursor: none !important; }
+          .videoTool_control__ybx2m { 
+            opacity: 0 !important; 
+            transition: opacity 0.3s !important; 
           }
-        }
-        
-        if (bestVideo) {
-          const box = await bestVideo.boundingBox();
-          console.log(`✅ Capturing best video element: ${Math.round(box.width)}x${Math.round(box.height)}px`);
-          imageBuffer = await bestVideo.screenshot({ 
-            type: 'jpeg',
-            quality: 90,
-            encoding: 'binary'
-          });
-        }
-      }
-      
-      // Final fallback if still no image
-      if (!imageBuffer) {
-        // Fallback: Try other selectors
-        const videoSelectors = [
-          'video',
-          'canvas',
-          '.camera-feed video',
-          '[class*="video"] video',
-          '[class*="player"] video',
-        ];
-        
-        for (const selector of videoSelectors) {
-          try {
-            const element = await page.$(selector);
-            if (element) {
-              const box = await element.boundingBox();
-              if (box && box.width > 300 && box.height > 200) {
-                console.log(`✅ Found camera feed with selector: ${selector}`);
-                console.log(`   Size: ${Math.round(box.width)}x${Math.round(box.height)}px`);
-                imageBuffer = await element.screenshot({ 
-                  type: 'jpeg',
-                  quality: 90,
-                  encoding: 'binary'
-                });
-                break;
-              }
-            }
-          } catch (e) {
-            // Continue
-          }
-        }
-        
-        // Last resort: capture main content area (excluding sidebar)
-        if (!imageBuffer) {
-          console.log('⚠️ No suitable video element found, capturing main content area...');
-          const viewport = page.viewport();
-          imageBuffer = await page.screenshot({ 
-            type: 'jpeg',
-            quality: 90,
-            clip: {
-              x: 250,      // Skip sidebar
-              y: 50,       // Skip header
-              width: viewport.width - 300,  // Main content width
-              height: viewport.height - 100  // Main content height
-            },
-            encoding: 'binary'
-          });
-          console.log(`   Captured main content area`);
-        }
-      }
-      
-      // 11. Cleanup
+          .videoTool_control__ybx2m:hover { opacity: 0.8 !important; }
+        `
+      });
+
+      await new Promise(r => setTimeout(r, 500));
+
+      // --------------------------------------------------------------
+      // 9. TAKE PERFECT FULLSCREEN SCREENSHOT
+      // --------------------------------------------------------------
+      const screenshotBuffer = await page.screenshot({
+        type: 'jpeg',
+        quality: 95,
+        clip: { x: 0, y: 0, width: 1920, height: 1080 },
+        omitBackground: true,
+      });
+
+      console.log(`[BARDI] Screenshot captured: ${screenshotBuffer.length} bytes – PERFECT fullscreen`);
+
       await browser.close();
       browser = null;
-      
-      console.log(`✅ Panel screenshot captured: ${imageBuffer.length} bytes`);
-      
+
       return {
         success: true,
-        imageBuffer: Buffer.from(imageBuffer),
+        imageBuffer: Buffer.from(screenshotBuffer),
         contentType: 'image/jpeg',
-        size: imageBuffer.length,
-        panel: { row: finalPanelRow, column: finalPanelColumn, index: panelIndex }
+        size: screenshotBuffer.length,
+        panel: { row: targetRow, column: panelColumn || 1 },
       };
 
     } catch (error) {
-      console.error('Panel screenshot capture error:', error);
-      
-      // Cleanup browser if still open
-      if (browser) {
-        try {
-          await browser.close();
-        } catch (closeError) {
-          console.error('Error closing browser:', closeError);
-        }
-      }
-      
+      console.error('[BARDI] capturePanelScreenshot FAILED:', error.message);
+      if (browser) await browser.close().catch(() => {});
       return {
         success: false,
         error: error.message,
@@ -626,52 +629,52 @@ class BardiScrapingService {
    * @param {Page} page - Puppeteer page object
    * @returns {Promise<boolean>} Success status
    */
-  async expandAllDevices(page) {
-    try {
-      const allDevicesSelectors = [
-        '.ant-tree-switcher',
-        '.ant-tree-switcher_open',
-        '.anticon-caret-down',
-        'span[aria-label="caret-down"]',
-        '[class*="ant-tree-switcher"]',
-        '[class*="caret-down"]'
-      ];
+  // async expandAllDevices(page) {
+  //   try {
+  //     const allDevicesSelectors = [
+  //       '.ant-tree-switcher',
+  //       '.ant-tree-switcher_open',
+  //       '.anticon-caret-down',
+  //       'span[aria-label="caret-down"]',
+  //       '[class*="ant-tree-switcher"]',
+  //       '[class*="caret-down"]'
+  //     ];
 
-      for (const selector of allDevicesSelectors) {
-        try {
-          const elements = await page.$$(selector);
+  //     for (const selector of allDevicesSelectors) {
+  //       try {
+  //         const elements = await page.$$(selector);
           
-          for (let i = 0; i < elements.length; i++) {
-            const element = elements[i];
-            const classes = await element.evaluate(el => el.className || '');
+  //         for (let i = 0; i < elements.length; i++) {
+  //           const element = elements[i];
+  //           const classes = await element.evaluate(el => el.className || '');
             
-            const isAlreadyOpen = classes.includes('ant-tree-switcher_open');
-            if (isAlreadyOpen) {
-              console.log('✅ "All Devices" is already open');
-              return true;
-            }
+  //           const isAlreadyOpen = classes.includes('ant-tree-switcher_open');
+  //           if (isAlreadyOpen) {
+  //             console.log('✅ "All Devices" is already open');
+  //             return true;
+  //           }
             
-            // Try to click to expand
-            const needsClick = classes.includes('ant-tree-switcher') && !isAlreadyOpen;
-            if (needsClick) {
-              console.log(`✅ Clicking "All Devices" toggle: ${selector}[${i}]`);
-              await element.click();
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              return true;
-            }
-          }
-        } catch (e) {
-          // Continue
-        }
-      }
+  //           // Try to click to expand
+  //           const needsClick = classes.includes('ant-tree-switcher') && !isAlreadyOpen;
+  //           if (needsClick) {
+  //             console.log(`✅ Clicking "All Devices" toggle: ${selector}[${i}]`);
+  //             await element.click();
+  //             await new Promise(resolve => setTimeout(resolve, 1000));
+  //             return true;
+  //           }
+  //         }
+  //       } catch (e) {
+  //         // Continue
+  //       }
+  //     }
       
-      console.log('⚠️ Could not find "All Devices" toggle');
-      return false;
-    } catch (error) {
-      console.error('Error expanding All Devices:', error);
-      return false;
-    }
-  }
+  //     console.log('⚠️ Could not find "All Devices" toggle');
+  //     return false;
+  //   } catch (error) {
+  //     console.error('Error expanding All Devices:', error);
+  //     return false;
+  //   }
+  // }
 
   /**
    * Click camera device from sidebar (matches working script approach)
@@ -775,6 +778,49 @@ class BardiScrapingService {
       
     } catch (error) {
       console.error('Error clicking camera from sidebar:', error);
+      return false;
+    }
+  }
+
+    /**
+   * Click camera by its position (row) in the device list under "All Devices"
+   * @param {Page} page 
+   * @param {number} row 1-based row in the list
+   * @param {string|null} deviceId optional exact device id
+   * @returns {Promise<boolean>}
+   */
+  async clickCameraByRow(page, row, deviceId = null) {
+    try {
+      // Prefer exact deviceId if supplied
+      if (deviceId) {
+        const sel = `[data-device-id="${deviceId}"], [device-id="${deviceId}"], .device-${deviceId}`;
+        const el = await page.$(sel);
+        if (el) {
+          console.log(`Clicking camera by deviceId ${deviceId}`);
+          await el.click({ delay: 100 });
+          return true;
+        }
+      }
+
+      // Otherwise click by row order inside the tree
+      const cameraNodes = await page.$$(
+        '.ant-tree-treenode .deviceItem_box__3ZdcA' // the actual camera rows
+      );
+
+      console.log(`Found ${cameraNodes.length} camera entries in sidebar`);
+
+      if (cameraNodes.length === 0) return false;
+
+      const indexToClick = Math.min(row - 1, cameraNodes.length - 1); // 0-based, safe fallback
+      const target = cameraNodes[indexToClick];
+
+      const text = await target.evaluate(el => el.textContent.trim());
+      console.log(`Clicking row ${row} (index ${indexToClick}): "${text}"`);
+
+      await target.click({ delay: 150 });
+      return true;
+    } catch (err) {
+      console.error('clickCameraByRow error:', err);
       return false;
     }
   }
