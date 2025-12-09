@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import LiveTrackingMap from '../components/LiveTrackingMap';
-import TrackingDeliveryList from '../components/TrackingDeliveryList';
 import RouteHistory from '../components/RouteHistory';
 
 // Interface for active vehicle info
@@ -69,7 +68,7 @@ const getVehicleTrailColor = (index: number): string => {
 };
 
 const LiveTracking: React.FC = () => {
-  const [selectedTab, setSelectedTab] = useState<'all' | 'delivery' | 'history'>('all');
+  const [selectedTab, setSelectedTab] = useState<'all' | 'history'>('all');
   const [activeVehicles, setActiveVehicles] = useState<ActiveVehicle[]>([]);
   const [vehicleTrails, setVehicleTrails] = useState<VehicleTrail[]>([]);
 
@@ -111,16 +110,6 @@ const LiveTracking: React.FC = () => {
                 All Vehicles
               </button>
               <button
-                onClick={() => setSelectedTab('delivery')}
-                className={`py-4 px-6 border-b-2 font-medium text-sm ${
-                  selectedTab === 'delivery'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Track Delivery
-              </button>
-              <button
                 onClick={() => setSelectedTab('history')}
                 className={`py-4 px-6 border-b-2 font-medium text-sm ${
                   selectedTab === 'history'
@@ -159,10 +148,6 @@ const LiveTracking: React.FC = () => {
               onTrailsUpdate={handleTrailsUpdate}
             />
           </div>
-        )}
-
-        {selectedTab === 'delivery' && (
-          <TrackingDeliveryList className="space-y-6" />
         )}
 
         {selectedTab === 'history' && (

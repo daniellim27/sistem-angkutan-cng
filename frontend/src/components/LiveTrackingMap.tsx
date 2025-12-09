@@ -1116,27 +1116,6 @@ const LiveTrackingMap: React.FC<LiveTrackingMapProps> = ({
             <span className="text-green-600 text-xs">✓ {gasStations.length} SPBG location{gasStations.length !== 1 ? 's' : ''} loaded</span>
           )}
 
-          {/* Update coordinates buttons */}
-          {showCustomerLocations && (
-            <button
-              onClick={() => handleUpdateCustomerCoordinates()}
-              disabled={updatingCustomerCoordinates}
-              className="mt-2 px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-              {updatingCustomerCoordinates ? 'Updating...' : 'Update Customer Coordinates'}
-            </button>
-          )}
-
-          {showSPBGLocations && (
-            <button
-              onClick={() => handleUpdateSPBGCoordinates()}
-              disabled={updatingSPBGCoordinates}
-              className="mt-2 px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-              {updatingSPBGCoordinates ? 'Updating...' : 'Update SPBG Coordinates'}
-            </button>
-          )}
-
           {loadingGasStations && (
             <span className="text-gray-500">Loading gas stations...</span>
           )}

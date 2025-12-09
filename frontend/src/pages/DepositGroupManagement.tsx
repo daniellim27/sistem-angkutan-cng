@@ -85,8 +85,7 @@ const DepositGroupManagement = () => {
   const [formData, setFormData] = useState({
     spbg_name: '', // New: SPBG name field
     spbg_location: '',
-    latitude: '',
-    longitude: '',
+    coordinateInput: '', // Single input: "lat, lng"
     deposited_amount: '',
     unit: 'kubik' // Fixed to kubik (m³)
   });
@@ -204,29 +203,39 @@ const DepositGroupManagement = () => {
     e.preventDefault();
     
     try {
-      // Parse coordinates
-      const latitude = formData.latitude ? parseFloat(formData.latitude) : null;
-      const longitude = formData.longitude ? parseFloat(formData.longitude) : null;
+      // Parse coordinates from single input (lat, lng)
+      let latitude: number | null = null;
+      let longitude: number | null = null;
+      const coordinateText = formData.coordinateInput.trim();
+
+      if (coordinateText) {
+        const parts = coordinateText.split(',').map(p => p.trim());
+        if (parts.length !== 2 || parts.some(p => p === '')) {
+          alert('Invalid coordinates. Use format: "-6.2, 106.8".');
+          return;
+        }
+
+        latitude = parseFloat(parts[0]);
+        longitude = parseFloat(parts[1]);
+
+        if (isNaN(latitude) || latitude < -90 || latitude > 90) {
+          alert('Invalid latitude. Must be between -90 and 90.');
+          return;
+        }
+        if (isNaN(longitude) || longitude < -180 || longitude > 180) {
+          alert('Invalid longitude. Must be between -180 and 180.');
+          return;
+        }
+      }
       
-      // Validate coordinates if provided
-      if (latitude !== null && (isNaN(latitude) || latitude < -90 || latitude > 90)) {
-        alert('Invalid latitude. Must be between -90 and 90.');
-        return;
-      }
-      if (longitude !== null && (isNaN(longitude) || longitude < -180 || longitude > 180)) {
-        alert('Invalid longitude. Must be between -180 and 180.');
-        return;
-      }
-      if ((latitude !== null && longitude === null) || (latitude === null && longitude !== null)) {
-        alert('Both latitude and longitude must be provided together, or leave both empty.');
-        return;
-      }
-      
+      const coordsProvided = latitude !== null && longitude !== null;
       const payload = {
         spbg_name: formData.spbg_name || undefined, // Optional SPBG name
-        spbg_location: formData.spbg_location,
-        latitude: latitude,
-        longitude: longitude,
+        spbg_location: coordsProvided
+          ? `${latitude}, ${longitude}` // Coordinates override address when both are provided
+          : formData.spbg_location,
+        latitude,
+        longitude,
         deposited_amount: formData.deposited_amount ? parseFloat(formData.deposited_amount) : 0,
         status: 'active'
       };
@@ -260,8 +269,7 @@ const DepositGroupManagement = () => {
     setFormData({
       spbg_name: '',
       spbg_location: '',
-      latitude: '',
-      longitude: '',
+      coordinateInput: '',
       deposited_amount: '',
       unit: 'kubik' // Always kubik (m³)
     });
@@ -811,44 +819,22 @@ const DepositGroupManagement = () => {
                   </p>
                 </div>
 
-                {/* Coordinates */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Latitude
-                    </label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={formData.latitude}
-                      onChange={(e) => setFormData(prev => ({ ...prev, latitude: e.target.value }))}
-                      placeholder="-6.200000"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      -90 to 90
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Longitude
-                    </label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={formData.longitude}
-                      onChange={(e) => setFormData(prev => ({ ...prev, longitude: e.target.value }))}
-                      placeholder="106.816666"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      -180 to 180
-                    </p>
-                  </div>
+                {/* Coordinates (single input) */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Coordinates (lat, lng)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.coordinateInput}
+                    onChange={(e) => setFormData(prev => ({ ...prev, coordinateInput: e.target.value }))}
+                    placeholder="-6.200000, 106.816666"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Optional: enter as "lat, lng" or leave empty to auto-geocode from address
+                  </p>
                 </div>
-                <p className="text-xs text-gray-500 -mt-2">
-                  Optional: Enter coordinates manually, or leave empty to auto-geocode from location address
-                </p>
 
 
                 {/* Unit (Fixed to m³) */}

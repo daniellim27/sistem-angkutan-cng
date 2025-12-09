@@ -85,6 +85,12 @@ module.exports = {
       
       let finalLatitude = normalizeCoordinateValue(latitude);
       let finalLongitude = normalizeCoordinateValue(longitude);
+      let finalSpbgLocation = spbg_location;
+      
+      // If both address and coordinates are provided, prioritize coordinates
+      if (finalLatitude !== null && finalLongitude !== null) {
+        finalSpbgLocation = `${finalLatitude}, ${finalLongitude}`;
+      }
       
       // Auto-geocode if coordinates not provided
       if ((finalLatitude === null || finalLongitude === null) && spbg_location) {
@@ -115,7 +121,7 @@ module.exports = {
       
       const group = await DepositGroup.create({
         spbg_name: spbg_name || null, // Optional SPBG name
-        spbg_location, 
+        spbg_location: finalSpbgLocation, 
         balance, // Use the deposited amount as the starting balance
         deposited_amount: finalDepositedAmount, 
         remaining_quantity, 
