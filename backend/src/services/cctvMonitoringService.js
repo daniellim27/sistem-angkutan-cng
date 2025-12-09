@@ -42,25 +42,28 @@ class CCTVMonitoringService {
         created_by = null,
       } = sessionData;
 
-      // Validate delivery order exists
-      const deliveryOrder = await DeliveryOrder.findByPk(delivery_order_id);
-      if (!deliveryOrder) {
-        throw new Error(`Delivery order ${delivery_order_id} not found`);
+      // Validate delivery order exists only if provided (now optional)
+      if (delivery_order_id) {
+        const deliveryOrder = await DeliveryOrder.findByPk(delivery_order_id);
+        if (!deliveryOrder) {
+          throw new Error(`Delivery order ${delivery_order_id} not found`);
+        }
       }
 
-      // Check if there's already an active session for this delivery order + location
+      // Check if there's already an active session for this customer + location + meter type
+      // No longer requires delivery_order_id
       const existingSession = await CCTVSession.findOne({
         where: {
-          delivery_order_id,
+          customer_name,
           customer_location_index,
-          meter_type,        // ✅ NOW CHECKS METER TYPE
+          meter_type,
           status: 'active'
         }
       });
 
       if (existingSession) {
         throw new Error(
-          `An active monitoring session already exists for this delivery order, location, and meter type (Session ID: ${existingSession.id})`
+          `An active monitoring session already exists for customer "${customer_name}", location index ${customer_location_index}, and meter type "${meter_type}" (Session ID: ${existingSession.id})`
         );
       }
 
@@ -79,8 +82,8 @@ class CCTVMonitoringService {
       });
 
       // Create the session - always include meter_type explicitly
+      // Only include delivery_order_id if it's provided (not null/undefined)
       const sessionDataToCreate = {
-        delivery_order_id,
         customer_name,
         customer_location_index,
         device_id: finalDeviceId,
@@ -95,6 +98,15 @@ class CCTVMonitoringService {
         status: 'active',
         total_screenshots_captured: 0,
       };
+      
+      // Only add delivery_order_id if it's actually provided (not null/undefined/0)
+      // Check for truthy value and ensure it's a valid positive integer
+      if (delivery_order_id !== null && delivery_order_id !== undefined && delivery_order_id !== 0 && delivery_order_id !== '0') {
+        const parsedDoId = parseInt(delivery_order_id);
+        if (!isNaN(parsedDoId) && parsedDoId > 0) {
+          sessionDataToCreate.delivery_order_id = parsedDoId;
+        }
+      }
 
       console.log('🔍 DEBUG - Session data to create:', JSON.stringify(sessionDataToCreate, null, 2));
 
@@ -108,7 +120,7 @@ class CCTVMonitoringService {
         meter_type: session.meter_type
       });
 
-      console.log(`✓ CCTV session created: ${session.id} for DO ${delivery_order_id}`);
+      console.log(`✓ CCTV session created: ${session.id} for customer "${customer_name}"${delivery_order_id ? ` (DO: ${delivery_order_id})` : ''}`);
 
       // Query session fresh from database to ensure all fields including meter_type are included
       const freshSession = await CCTVSession.findByPk(session.id, {
@@ -145,13 +157,14 @@ class CCTVMonitoringService {
     try {
       console.log('🔍 cctvMonitoringService.getSessions called with filters:', filters);
       
-      const { status, delivery_order_id, limit = 10, offset = 0 } = filters;
+      const { status, customer_name, limit = 10, offset = 0 } = filters;
 
       const whereClause = {};
       if (status) whereClause.status = status;
-      if (delivery_order_id) whereClause.delivery_order_id = delivery_order_id;
+      if (customer_name) whereClause.customer_name = { [Op.iLike]: `%${customer_name}%` }; // Case-insensitive partial match
 
       // 🔥 ULTRA SAFE - NO NOTA KECIL INCLUDE!
+      // DeliveryOrder is now optional (left join) since delivery_order_id can be null
       const sessions = await CCTVSession.findAndCountAll({
         where: whereClause,
         limit: parseInt(limit),
@@ -161,6 +174,7 @@ class CCTVMonitoringService {
           {
             model: DeliveryOrder,
             as: 'delivery_order',
+            required: false, // Left join - optional since DO can be null
             attributes: [
               'id', 
               'do_number', 
@@ -172,6 +186,7 @@ class CCTVMonitoringService {
           {
             model: User,
             as: 'creator',
+            required: false,
             attributes: ['id', 'username']
           }
           // ✅ NO created_nota_kecil = NO MORE ERRORS!
@@ -428,15 +443,22 @@ class CCTVMonitoringService {
       }
 
       // Increment retry count
+      const newRetryCount = (screenshot.retry_count || 0) + 1;
       await screenshot.update({
-        retry_count: screenshot.retry_count + 1,
+        retry_count: newRetryCount,
         ocr_status: 'pending',
       });
 
-      console.log(`🔄 Retrying OCR for screenshot ${screenshotId} (attempt ${screenshot.retry_count})...`);
+      console.log(`🔄 Retrying OCR for screenshot ${screenshotId} (attempt ${newRetryCount})...`);
 
       // Process OCR
-      return await this.processScreenshotOcr(screenshotId);
+      const result = await this.processScreenshotOcr(screenshotId);
+      
+      // Return result with retry_count
+      return {
+        ...result,
+        retry_count: newRetryCount
+      };
     } catch (error) {
       console.error('Error retrying OCR:', error);
       throw error;
@@ -676,11 +698,12 @@ class CCTVMonitoringService {
 
         console.log(`\n📦 Processing batch ${batchNumber} (sequences ${startSequence}-${endSequence})...`);
 
-        // Create nota kecil for this batch
+        // Create nota kecil for this batch (force recreation during recalibrate)
         const created = await cctvScheduler.createNotaKecilFromBatch(session, {
           startSequence,
           endSequence,
-          batchNumber
+          batchNumber,
+          force: true // Force recreation during recalibrate
         });
 
         if (created) {

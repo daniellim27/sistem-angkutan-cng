@@ -316,6 +316,110 @@ module.exports = (sequelize) => {
     }
   );
 
+  // === STATIC HELPERS FOR AUTO-GENERATED DELIVERY ORDERS ===
+
+  /**
+   * Generate a simple auto DO number, e.g. AUTO-20250301-001
+   * This is intended for internal / auto-created DOs so the UI
+   * doesn't need to manage DO numbers directly.
+   */
+  DeliveryOrder.generateAutoDoNumber = async function () {
+    const Op = Sequelize.Op;
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    const datePrefix = `${yyyy}${mm}${dd}`;
+
+    const likePattern = `AUTO-${datePrefix}-%`;
+
+    const count = await DeliveryOrder.count({
+      where: {
+        do_number: {
+          [Op.like]: likePattern,
+        },
+      },
+    });
+
+    const sequence = String(count + 1).padStart(3, "0");
+    return `AUTO-${datePrefix}-${sequence}`;
+  };
+
+  /**
+   * Find an existing active DO for this context, or create a new minimal one.
+   * This lets mobile/web flows work with "gas transactions" + customer
+   * while the backend still keeps a delivery_orders record for all links
+   * (CCTV, nota, OCR, deposit groups, etc).
+   *
+   * @param {object} options
+   * @param {string|null} options.customer_name
+   * @param {string|null} options.customer_location
+   * @param {number|null} options.driver_id
+   * @param {number|null} options.vehicle_id
+   * @param {object|null} options.transaction - optional Sequelize transaction
+   * @returns {Promise<{ deliveryOrder: any, created: boolean }>}
+   */
+  DeliveryOrder.findOrCreateAutoForContext = async function (options = {}) {
+    const {
+      customer_name = null,
+      customer_location = null,
+      driver_id = null,
+      vehicle_id = null,
+      transaction = null,
+    } = options;
+
+    const Op = Sequelize.Op;
+
+    // Active statuses where a DO can still accept related records
+    const activeStatuses = [
+      "assigned",
+      "at_spbu",
+      "otw_to_unload_location",
+      "at_unload_location",
+    ];
+
+    const where = {
+      status: { [Op.in]: activeStatuses },
+    };
+
+    if (driver_id) where.driver_id = driver_id;
+    if (vehicle_id) where.vehicle_id = vehicle_id;
+    if (customer_name) where.customer_name = customer_name;
+
+    // Prefer the most recent active DO that matches this context
+    let existing = await DeliveryOrder.findOne({
+      where,
+      order: [["created_at", "DESC"]],
+      transaction,
+    });
+
+    if (existing) {
+      return { deliveryOrder: existing, created: false };
+    }
+
+    // No suitable DO found -> create a minimal auto-generated DO
+    const doNumber = await DeliveryOrder.generateAutoDoNumber();
+
+    const payload = {
+      do_number: doNumber,
+      do_name: customer_name || "Auto Generated DO",
+      customer_name,
+      customer_location,
+      driver_id,
+      vehicle_id,
+      unit: "kubik",
+      unit_price: 0,
+      total_amount: 0,
+      trip_allowance: 0,
+      gaji: 0,
+      payment_status: "awaiting_confirmation",
+      status: "assigned",
+    };
+
+    const created = await DeliveryOrder.create(payload, { transaction });
+    return { deliveryOrder: created, created: true };
+  };
+
   // ✅ NEW: Payment confirmation methods
   DeliveryOrder.prototype.canConfirmForBilling = function () {
     return (

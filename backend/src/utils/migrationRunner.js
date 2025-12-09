@@ -78,11 +78,14 @@ class MigrationRunner {
       '20250125_add_nota_batch_tracking.js',
       '20250125_add_status_auto_updated_at.js',
       '20250125_add_spbg_name_to_deposit_groups.js',
+      '20250127_create_gas_transactions.js',
       '20250126_create_notifications_table.js',
       '20241223_create_receipt_ocr.js',
       '20241224_add_receipt_admin_confirmation.js',
       '20251105_set_null_on_delete_driver_id_in_delivery_orders.sql',
-    ];
+      '20250128_make_cctv_delivery_order_nullable.js',
+      '20251208_make_nota_kecil_delivery_order_nullable.js',
+      ];
   }
 
   async createMigrationTable() {

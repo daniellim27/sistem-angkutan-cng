@@ -57,7 +57,7 @@ exports.getSessions = async (req, res) => {
     
     const {
       status,
-      delivery_order_id,
+      customer_name,
       limit = 50,
       offset = 0,
     } = req.query;
@@ -65,7 +65,7 @@ exports.getSessions = async (req, res) => {
     console.log('Calling cctvMonitoringService.getSessions...');
     const result = await cctvMonitoringService.getSessions({
       status,
-      delivery_order_id: delivery_order_id ? parseInt(delivery_order_id) : null,
+      customer_name: customer_name || null,
       limit: parseInt(limit),
       offset: parseInt(offset),
     });
@@ -191,12 +191,6 @@ exports.createSession = async (req, res) => {
         message: 'Invalid meter_type. Must be: stan, pressure_inlet, pressure_outlet, temperature',
       });
     }
-    if (!delivery_order_id) {
-      return res.status(400).json({
-        success: false,
-        message: 'delivery_order_id is required',
-      });
-    }
 
     if (!customer_name) {
       return res.status(400).json({
@@ -223,8 +217,8 @@ exports.createSession = async (req, res) => {
       }
     }
 
+    // Build sessionData - only include delivery_order_id if it's actually provided
     const sessionData = {
-      delivery_order_id: parseInt(delivery_order_id),
       customer_name,
       customer_location_index: parseInt(customer_location_index),
       device_id,
@@ -236,6 +230,11 @@ exports.createSession = async (req, res) => {
       session_notes,
       created_by: req.user?.id || null, // From auth middleware
     };
+    
+    // Only include delivery_order_id if it's provided and valid
+    if (delivery_order_id && delivery_order_id !== '0' && delivery_order_id !== 0) {
+      sessionData.delivery_order_id = parseInt(delivery_order_id);
+    }
 
     console.log('🔍 DEBUG - Session Data to Service:', {
       panel_row: sessionData.panel_row,

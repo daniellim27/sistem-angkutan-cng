@@ -686,7 +686,14 @@ exports.confirmReceiptAdmin = async (req, res) => {
 
       // Get the delivery order to find the SPBG (deposit group)
       const doQuery = `
-        SELECT d.id, d.do_number, dgm.group_id, dg.spbg_location, dg.balance
+        SELECT 
+          d.id, 
+          d.do_number, 
+          d.driver_id,
+          d.vehicle_id,
+          dgm.group_id, 
+          dg.spbg_location, 
+          dg.balance
         FROM delivery_orders d
         JOIN deposit_group_members dgm ON d.id = dgm.delivery_order_id
         JOIN deposit_groups dg ON dgm.group_id = dg.id
@@ -729,6 +736,69 @@ exports.confirmReceiptAdmin = async (req, res) => {
         spbgInfo.cost_applied = calculatedCost;
 
         console.log(`✅ Receipt #${id} confirmed: Rp ${calculatedCost.toLocaleString('id-ID')} deducted from ${spbgInfo.spbg_location}`);
+      }
+
+      // === Create gas_transactions row as a flat, ape-friendly record ===
+      // This does not change existing behaviour; it only adds a summarized ledger row.
+      try {
+        const gasTxInsert = `
+          INSERT INTO gas_transactions (
+            deposit_group_id,
+            delivery_order_id,
+            driver_id,
+            vehicle_id,
+            volume_m3,
+            calculation_method,
+            rate_per_m3,
+            jisdor_rate,
+            total_cost,
+            status,
+            nota_ocr_data,
+            created_at,
+            updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          RETURNING id
+        `;
+
+        const depositGroupId = doResult.rows.length > 0 ? doResult.rows[0].group_id : null;
+        const deliveryOrderId = receipt.do_id || null;
+        const driverId = doResult.rows.length > 0 ? doResult.rows[0].driver_id : null;
+        const vehicleId = doResult.rows.length > 0 ? doResult.rows[0].vehicle_id : null;
+
+        const notaOcrSnapshot = {
+          receipt_id: receipt.id,
+          filling_station_name: receipt.filling_station_name,
+          customer_name: receipt.customer_name,
+          filling_date: receipt.filling_date,
+          filling_time_start: receipt.filling_time_start,
+          filling_time_end: receipt.filling_time_end,
+          initial_pressure: receipt.initial_pressure,
+          final_pressure: receipt.final_pressure,
+          total_volume: totalVolume,
+          pricing_method,
+          rate_per_m3: rateValue
+        };
+
+        const gasTxValues = [
+          depositGroupId,
+          deliveryOrderId,
+          driverId,
+          vehicleId,
+          totalVolume,
+          pricing_method,
+          rateValue,
+          pricing_method === 'jisdor' ? rateValue : null,
+          calculatedCost,
+          'approved',
+          notaOcrSnapshot
+        ];
+
+        const gasTxResult = await client.query(gasTxInsert, gasTxValues);
+        const gasTransactionId = gasTxResult.rows[0]?.id;
+        console.log(`🧾 Gas transaction recorded with ID: ${gasTransactionId}`);
+      } catch (gasTxError) {
+        // Log but do not block receipt confirmation if gas_transactions insert fails
+        console.error('⚠️ Failed to record gas transaction:', gasTxError.message);
       }
 
       await client.query('COMMIT');

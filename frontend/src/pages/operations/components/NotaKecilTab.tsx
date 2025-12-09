@@ -8,8 +8,9 @@ import { NotaKecil } from '../../../types/notaKecil';
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000';
 
 interface DeliveryOrderGroup {
-  id: number;
-  do_number: string;
+  id: number | null; // null for notas without DO
+  do_number: string | null; // null for notas without DO
+  key: string; // Unique key for expansion tracking (string representation of id or special key for null)
   customers: CustomerGroup[];
   totalV: number;
   notaCount: number;
@@ -43,7 +44,7 @@ const NotaKecilTab: React.FC = () => {
   const [exporting, setExporting] = useState(false);
   
   // Expand/collapse states
-  const [expandedDOs, setExpandedDOs] = useState<Set<number>>(new Set());
+  const [expandedDOs, setExpandedDOs] = useState<Set<string>>(new Set());
   const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
   
   // Photo modal state
@@ -77,23 +78,26 @@ const NotaKecilTab: React.FC = () => {
   };
 
   const groupNotaKecilsByDOAndCustomer = (notaKecilsData: NotaKecil[]): DeliveryOrderGroup[] => {
-    const doMap = new Map<number, DeliveryOrderGroup>();
+    const doMap = new Map<number | string, DeliveryOrderGroup>();
 
     notaKecilsData.forEach((nota) => {
-      const doId = nota.deliveryOrder.id;
-      const doNumber = nota.deliveryOrder.do_number;
+      // Handle null delivery orders - use a special key for them
+      const doId = nota.deliveryOrder?.id ?? null;
+      const doNumber = nota.deliveryOrder?.do_number ?? null;
+      const mapKey = doId ?? `no-do-${nota.customer_name}-${nota.customer_location_index}`;
       
-      if (!doMap.has(doId)) {
-        doMap.set(doId, {
+      if (!doMap.has(mapKey)) {
+        doMap.set(mapKey, {
           id: doId,
-          do_number: doNumber,
+          do_number: doNumber ?? `No DO - ${nota.customer_name}`,
+          key: mapKey.toString(), // Store the key for expansion tracking
           customers: [],
           totalV: 0,
           notaCount: 0,
         });
       }
 
-      const doGroup = doMap.get(doId)!;
+      const doGroup = doMap.get(mapKey)!;
       
       const customerKey = `${nota.customer_name}_${nota.customer_location_index}`;
       let customerGroup = doGroup.customers.find(
@@ -117,7 +121,12 @@ const NotaKecilTab: React.FC = () => {
       doGroup.notaCount += 1;
     });
 
-    const sortedGroups = Array.from(doMap.values()).sort((a, b) => b.id - a.id);
+    const sortedGroups = Array.from(doMap.values()).sort((a, b) => {
+      // Sort null IDs (no DO) to the end
+      if (a.id === null) return 1;
+      if (b.id === null) return -1;
+      return (b.id ?? 0) - (a.id ?? 0);
+    });
     
     sortedGroups.forEach(doGroup => {
       doGroup.customers.sort((a, b) => a.customer_location_index - b.customer_location_index);
@@ -179,17 +188,17 @@ const NotaKecilTab: React.FC = () => {
     }
   };
 
-  const toggleDO = (doId: number) => {
+  const toggleDO = (doKey: string) => {
     setExpandedDOs(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(doId)) newSet.delete(doId);
-      else newSet.add(doId);
+      if (newSet.has(doKey)) newSet.delete(doKey);
+      else newSet.add(doKey);
       return newSet;
     });
   };
 
-  const toggleCustomer = (doId: number, customerKey: string) => {
-    const key = `${doId}_${customerKey}`;
+  const toggleCustomer = (doKey: string, customerKey: string) => {
+    const key = `${doKey}_${customerKey}`;
     setExpandedCustomers(prev => {
       const newSet = new Set(prev);
       if (newSet.has(key)) newSet.delete(key);
@@ -324,10 +333,10 @@ const NotaKecilTab: React.FC = () => {
     });
   };
 
-  const handleStartSelection = (doId: number) => {
+  const handleStartSelection = (doKey: string) => {
     setIsSelectionMode(true);
     setSelectedNotaKecils(new Set());
-    setExpandedDOs(prev => new Set(prev).add(doId));
+    setExpandedDOs(prev => new Set(prev).add(doKey));
   };
 
   const handleCancelSelection = () => {
@@ -335,9 +344,14 @@ const NotaKecilTab: React.FC = () => {
     setSelectedNotaKecils(new Set());
   };
 
-  const handleCreateNotaBesar = async (doId: number) => {
+  const handleCreateNotaBesar = async (doId: number | null) => {
     if (selectedNotaKecils.size === 0) {
       alert('Please select at least one nota kecil');
+      return;
+    }
+
+    if (!doId) {
+      alert('Cannot create nota besar for notas without a delivery order');
       return;
     }
 
@@ -535,16 +549,16 @@ const NotaKecilTab: React.FC = () => {
       {/* Delivery Order Groups */}
       <div className="space-y-6">
         {deliveryOrderGroups.map((doGroup) => {
-          const isExpanded = expandedDOs.has(doGroup.id);
+          const isExpanded = expandedDOs.has(doGroup.key);
           
           return (
-            <div key={doGroup.id} className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden border border-white/50">
+            <div key={doGroup.key} className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden border border-white/50">
               {/* DO Header */}
               <div className="bg-gradient-to-r from-indigo-600 via-blue-700 to-cyan-800 text-white p-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4 flex-1">
                     <button
-                      onClick={() => toggleDO(doGroup.id)}
+                      onClick={() => toggleDO(doGroup.key)}
                       className="group/chevron p-3 bg-white/20 backdrop-blur-sm rounded-xl hover:bg-white/30 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
                     >
                       <svg 
@@ -597,9 +611,9 @@ const NotaKecilTab: React.FC = () => {
                       )}
                       Export DO
                     </button>
-                    {!isSelectionMode && (
+                    {!isSelectionMode && doGroup.id !== null && (
                       <button
-                        onClick={() => handleStartSelection(doGroup.id)}
+                        onClick={() => handleStartSelection(doGroup.key)}
                         className="group flex items-center gap-3 px-6 py-3 bg-white/20 backdrop-blur-sm text-white rounded-xl hover:bg-white/30 transition-all font-semibold border border-white/20 shadow-lg hover:shadow-xl transform hover:scale-105"
                       >
                         <svg className="w-4 h-4 group-hover:rotate-12 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -608,7 +622,7 @@ const NotaKecilTab: React.FC = () => {
                         Create Nota Besar
                       </button>
                     )}
-                    {isSelectionMode && selectedNotaKecils.size > 0 && (
+                    {isSelectionMode && selectedNotaKecils.size > 0 && doGroup.id !== null && (
                       <button
                         onClick={() => handleCreateNotaBesar(doGroup.id)}
                         disabled={calculatingNotaBesar}
@@ -643,7 +657,7 @@ const NotaKecilTab: React.FC = () => {
                 <div className="divide-y divide-gray-100">
                   {doGroup.customers.map((customerGroup) => {
                     const customerKey = `${customerGroup.customer_name}_${customerGroup.customer_location_index}`;
-                    const isCustomerExpanded = expandedCustomers.has(`${doGroup.id}_${customerKey}`);
+                    const isCustomerExpanded = expandedCustomers.has(`${doGroup.key}_${customerKey}`);
                     const customerInfo = getCustomerInfo(customerGroup.notaKecils[0]);
                     
                     return (
@@ -653,7 +667,7 @@ const NotaKecilTab: React.FC = () => {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4 flex-1">
                               <button
-                                onClick={() => toggleCustomer(doGroup.id, customerKey)}
+                                onClick={() => toggleCustomer(doGroup.key, customerKey)}
                                 className="group/chevron p-3 bg-white/30 backdrop-blur-sm rounded-xl hover:bg-white/50 transition-all duration-300 shadow-sm hover:shadow-md transform hover:scale-105"
                               >
                                 <svg 

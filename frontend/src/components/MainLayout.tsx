@@ -115,6 +115,7 @@ const MainLayout = () => {
     fleetManagement: false,
     inventory: false,
     finance: false,
+    others: true,
   });
   
   const toggleDropdown = (section: keyof typeof dropdownStates) => {
@@ -127,27 +128,54 @@ const MainLayout = () => {
   const getPageTitle = () => {
     const path = location.pathname;
     if (path === "/") return "CNG Dashboard";
+
+    // Ape-friendly main modules
+    if (path.startsWith("/pembelian") || path.startsWith("/deposit-groups")) {
+      return "Pembelian - SPBG & Deposit";
+    }
+
+    if (
+      path.startsWith("/penjualan") ||
+      path.startsWith("/operations/nota-management") ||
+      path.startsWith("/operations/cctv-monitoring")
+    ) {
+      return "Penjualan - Nota & CCTV";
+    }
+
+    if (path.startsWith("/ritase")) return "Ritase & Laporan";
+
+    if (
+      path.startsWith("/fleet") ||
+      path.startsWith("/live-tracking") ||
+      path.startsWith("/vehicles")
+    ) {
+      return "Fleet - Peta Armada & Perjalanan";
+    }
+
+    if (
+      path.startsWith("/inventaris") ||
+      path.startsWith("/stock") ||
+      path.startsWith("/infrastructure")
+    ) {
+      return "Inventaris - Stok & Infrastruktur";
+    }
+
+    // Legacy / detailed pages
     if (path.startsWith("/delivery-orders")) return "Delivery Orders";
-    // if (path.startsWith("/ocr-processing")) return "OCR Processing";
-    if (path.startsWith("/operations/cctv-monitoring")) return "CCTV Monitoring";
-    if (path.startsWith("/operations/nota-management")) return "Nota Management";
-    if (path.startsWith("/live-tracking")) return "Live GPS Tracking";
     if (path.startsWith("/vehicles/tires")) return "Tire Management";
-    if (path.startsWith("/vehicles")) return "Fleet Management";
     if (path.startsWith("/drivers")) return "Driver Management";
-    if (path.startsWith("/stock")) return "Inventory Management";
-    if (path.startsWith("/infrastructure")) return "Infrastructure Inventory";
     if (path.startsWith("/cash")) return "Cash Book";
     if (path.startsWith("/cash-coordinator")) return "Cash Coordinator";
-    if (path.startsWith("/ritase")) return "Ritase Dashboard";
     if (path.startsWith("/buku-kas")) return "Cash Book";
     if (path.startsWith("/tempo")) return "Credit Book";
     if (path.startsWith("/vehicle-expense-cash")) return "Kas Pengeluaran Mobil";
-    if (path.startsWith("/deposit-groups")) return "SPBG Management";
     if (path.startsWith("/driver-expenses")) return "Driver Expense Management";
-    if (path.startsWith("/customers") && path.includes("/nota-besar")) return "Nota Besar Management";
-    if (path.startsWith("/customers") && path.includes("/nota-kecil")) return "Nota Kecil Management";
+    if (path.startsWith("/customers") && path.includes("/nota-besar"))
+      return "Nota Besar Management";
+    if (path.startsWith("/customers") && path.includes("/nota-kecil"))
+      return "Nota Kecil Management";
     if (path.startsWith("/customers")) return "Customer Management";
+
     return "CNG Dashboard";
   };
 
@@ -230,131 +258,58 @@ const MainLayout = () => {
               >
                 <span className="text-xl mr-3">📊</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  CNG Dashboard
+                  Dashboard
                 </span>
               </Link>
             </li>
 
-            {/* Reports & Analytics Section */}
-            <li className="mb-2 mt-6">
-              <div className="text-xs uppercase text-gray-400 font-semibold mb-2 px-2">
-                Reports & Analytics
-              </div>
-            </li>
-            <li className="mb-4">
+            {/* Ape-friendly main modules */}
+            <li className="mb-3">
               <Link
-                to="/ritase/comprehensive"
-                className={`block p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/ritase/comprehensive")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-              >
-                📊 Ritase Dashboard
-              </Link>
-            </li>
-
-            <li className="mb-4">
-              <Link
-                to="/payments"
-                className={`block p-2 rounded hover:bg-gray-700 ${
-                  location.pathname.startsWith("/payments")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-              >
-                💰 Payments
-              </Link>
-            </li>
-
-            <li className="mb-4">
-              <Link
-                to="/deposit-groups"
-                className={`block p-2 rounded hover:bg-gray-700 ${
+                to="/pembelian"
+                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
+                  isActiveLink("/pembelian") ||
                   location.pathname.startsWith("/deposit-groups")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
+                    ? "bg-gray-700 border-l-4 border-green-500"
                     : ""
                 }`}
               >
-                🏪 SPBG Management
-              </Link>
-            </li>
-
-            <li className="mb-4">
-              <Link
-                to="/live-tracking"
-                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/live-tracking")
-                    ? "bg-gray-700 border-l-4 border-blue-500"
-                    : ""
-                }`}
-                title="Live GPS Tracking"
-              >
-                <span className="text-xl mr-3">🗺️</span>
+                <span className="text-xl mr-3">🧾</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Live GPS
+                  Pembelian
                 </span>
               </Link>
             </li>
 
-            {/* Customer Management */}
-            <li className="mb-4">
+            <li className="mb-3">
               <Link
-                to="/customers"
+                to="/penjualan"
                 className={`flex items-center p-2 rounded hover:bg-gray-700 ${
-                  isActiveLink("/customers")
+                  isActiveLink("/penjualan") ||
+                  location.pathname.startsWith("/operations/nota-management") ||
+                  location.pathname.startsWith("/operations/cctv-monitoring")
                     ? "bg-gray-700 border-l-4 border-blue-500"
                     : ""
                 }`}
-                title="Customer Management"
               >
-                <span className="text-xl mr-3">👥</span>
+                <span className="text-xl mr-3">📹</span>
                 <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
-                  Customer Management
+                  Penjualan
                 </span>
               </Link>
             </li>
-
-            {/* Operations Section */}
-            <DropdownNavSection
-              title="Operations"
-              icon="⚡"
-              items={[
-                {
-                  to: "/delivery-orders",
-                  title: "Delivery Orders",
-                  icon: "🚚",
-                  label: "Delivery Orders"
-                },
-                // {
-                //   to: "/ocr-processing",
-                //   title: "OCR Processing",
-                //   icon: "🔍",
-                //   label: "OCR Processing"
-                // },
-                {
-                  to: "/operations/nota-management",
-                  title: "Nota Management",
-                  icon: "📋",
-                  label: "Nota Management"
-                },
-                {
-                  to: "/operations/cctv-monitoring",
-                  title: "CCTV Monitoring",
-                  icon: "📹",
-                  label: "CCTV Monitoring"
-                },
-              ]}
-              sidebarMinimized={sidebarMinimized}
-              isOpen={dropdownStates.operations}
-              onToggle={() => toggleDropdown('operations')}
-            />
 
             {/* Fleet Management Section */}
             <DropdownNavSection
               title="Fleet Management"
               icon="🚛"
               items={[
+                {
+                  to: "/fleet",
+                  title: "Live GPS Tracking",
+                  icon: "🗺️",
+                  label: "Live GPS",
+                },
                 {
                   to: "/vehicles",
                   title: "Fleet Management",
@@ -363,16 +318,16 @@ const MainLayout = () => {
                   excludePaths: ["/vehicles/tires"]
                 },
                 {
-                  to: "/vehicles/tires",
-                  title: "Tire Management",
-                  icon: "🛞",
-                  label: "Tire Management"
-                },
-                {
                   to: "/drivers",
                   title: "Driver Management",
                   icon: "👨‍💼",
                   label: "Driver Management"
+                },
+                {
+                  to: "/vehicles/tires",
+                  title: "Tire Management",
+                  icon: "🛞",
+                  label: "Tire Management"
                 },
                 {
                   to: "/driver-expenses",
@@ -386,71 +341,111 @@ const MainLayout = () => {
               onToggle={() => toggleDropdown('fleetManagement')}
             />
 
-            {/* Inventory Management Section */}
+            <li className="mb-3">
+              <Link
+                to="/inventaris"
+                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
+                  isActiveLink("/inventaris") ||
+                  location.pathname.startsWith("/stock") ||
+                  location.pathname.startsWith("/infrastructure")
+                    ? "bg-gray-700 border-l-4 border-purple-500"
+                    : ""
+                }`}
+              >
+                <span className="text-xl mr-3">📦</span>
+                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
+                  Inventaris
+                </span>
+              </Link>
+            </li>
+
+            {/* Direct Customer Management section (separate from Lain-lain) */}
+            <li className="mb-3">
+              <Link
+                to="/customers"
+                className={`flex items-center p-2 rounded hover:bg-gray-700 ${
+                  isActiveLink("/customers")
+                    ? "bg-gray-700 border-l-4 border-teal-500"
+                    : ""
+                }`}
+                title="Customer Management"
+              >
+                <span className="text-xl mr-3">👥</span>
+                <span className={`${sidebarMinimized ? "hidden" : "block"}`}>
+                  Customers
+                </span>
+              </Link>
+            </li>
+
+            {/* Lain-lain section with all extra modules */}
             <DropdownNavSection
-              title="Inventory"
-              icon="📦"
+              title="Lain-lain"
+              icon="🧰"
               items={[
                 {
-                  to: "/stock",
-                  title: "Inventory Management",
-                  icon: "📦",
-                  label: "Inventory Management"
+                  to: "/ritase/comprehensive",
+                  title: "Ritase & Laporan",
+                  icon: "📊",
+                  label: "Ritase & Laporan",
                 },
                 {
-                  to: "/infrastructure",
-                  title: "Infrastructure Inventory",
-                  icon: "🏗️",
-                  label: "Infrastructure Inventory",
-                  hasSubItems: true,
-                  subItems: [
-                    {
-                      to: "/vehicles/tires/removed",
-                      title: "Used Tires",
-                      icon: "🔄",
-                      label: "Used Tires"
-                    }
-                  ]
-                }
-              ]}
-              sidebarMinimized={sidebarMinimized}
-              isOpen={dropdownStates.inventory}
-              onToggle={() => toggleDropdown('inventory')}
-            />
-
-            {/* Finance Section */}
-            <DropdownNavSection
-              title="Finance"
-              icon="💰"
-              items={[
+                  to: "/operations/cctv-monitoring",
+                  title: "CCTV Monitoring",
+                  icon: "📹",
+                  label: "CCTV Monitoring",
+                },
+                {
+                  to: "/payments",
+                  title: "Payments",
+                  icon: "💳",
+                  label: "Payments",
+                },
+                {
+                  to: "/deposit-groups",
+                  title: "SPBG Management",
+                  icon: "🏪",
+                  label: "SPBG Management",
+                },
+                {
+                  to: "/customers",
+                  title: "Customer Management",
+                  icon: "👥",
+                  label: "Customers",
+                },
                 {
                   to: "/cash",
                   title: "Cash Book",
-                  icon: "💰",
-                  label: "Cash Book"
+                  icon: "📒",
+                  label: "Cash Book",
                 },
                 {
                   to: "/cash-coordinator",
                   title: "Cash Coordinator",
-                  icon: "👥",
-                  label: "Cash Coordinator"
+                  icon: "🧑‍💼",
+                  label: "Cash Coordinator",
                 },
                 {
                   to: "/tempo",
                   title: "Credit Book",
-                  icon: "🤬",
-                  label: "Credit Book"
+                  icon: "⏱️",
+                  label: "Tempo / Kredit",
                 },
                 {
                   to: "/vehicle-expense-cash",
-                  title: "Vehicle Expense Cash",
+                  title: "Kas Pengeluaran Mobil",
                   icon: "🚗",
-                  label: "Kas Pengeluaran Mobil"
-                }
+                  label: "Kas Pengeluaran Mobil",
+                },
+                {
+                  to: "/driver-expenses",
+                  title: "Pengeluaran Driver",
+                  icon: "🧾",
+                  label: "Pengeluaran Driver",
+                },
               ]}
               sidebarMinimized={sidebarMinimized}
-              isOpen={dropdownStates.finance}
-              onToggle={() => toggleDropdown('finance')}
+              isOpen={dropdownStates.others}
+              onToggle={() => toggleDropdown("others")}
             />
           </ul>
         </nav>

@@ -74,7 +74,16 @@ function App() {
           path="/*"
           element={token ? <MainLayout /> : <Navigate to="/login" replace />}
         >
+          {/* Dashboard */}
           <Route path="" element={<Dashboard />} />
+
+          {/* Simple top-level aliases for ape-friendly navigation */}
+          {/* Pembelian = SPBG / Deposit Groups (gas purchases) */}
+          <Route path="pembelian" element={<DepositGroupManagement />} />
+          {/* Penjualan = Nota kecil/besar + CCTV (sales side) */}
+          <Route path="penjualan" element={<NotaManagementPage />} />
+          <Route path="fleet" element={<LiveTracking />} />
+          <Route path="inventaris" element={<StockManagementPage />} />
 
           {/* Ritase dan Buku Kas */}
           <Route path="ritase" element={<RitaseDashboard />} />

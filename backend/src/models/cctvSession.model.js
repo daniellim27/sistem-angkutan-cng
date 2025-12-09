@@ -9,12 +9,12 @@ module.exports = (sequelize) => {
     },
     delivery_order_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true, // Now nullable - DOs are auto-generated
       references: {
         model: 'delivery_orders',
         key: 'id'
       },
-      comment: 'Foreign key to delivery_orders table'
+      comment: 'Foreign key to delivery_orders table (optional - DOs are auto-generated)'
     },
     customer_location_index: {
       type: DataTypes.INTEGER,

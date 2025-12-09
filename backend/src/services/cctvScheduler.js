@@ -216,12 +216,22 @@ class CCTVScheduler {
       await session.reload();
       const totalCaptures = session.total_screenshots_captured || 0;
 
+      // Count existing notas for this session (delivery_order_id is now optional)
+      const whereClause = {
+        customer_location_index: session.customer_location_index,
+        cctv_session_id: session.id // ✅ Link to specific session
+      };
+      
+      // Only filter by delivery_order_id if it exists
+      if (session.delivery_order_id) {
+        whereClause.delivery_order_id = session.delivery_order_id;
+      } else {
+        // If no delivery_order_id, ensure we only count notas without DO for this session
+        whereClause.delivery_order_id = null;
+      }
+      
       const existingNotas = await NotaKecil.count({
-        where: {
-          delivery_order_id: session.delivery_order_id,
-          customer_location_index: session.customer_location_index,
-          cctv_session_id: session.id // ✅ Link to specific session
-        }
+        where: whereClause
       });
 
       const expectedNotas = Math.floor(totalCaptures / CAPTURES_PER_NOTA_KECIL);
@@ -270,6 +280,26 @@ class CCTVScheduler {
       
       console.log(`📦 Creating Nota Kecil for batch ${batchNumber} (sequences ${startSequence}-${endSequence})...`);
 
+      // Check if a nota kecil already exists for this batch (unless force is true)
+      // Note: Recalibrate should be able to recreate, so we'll allow it but log it
+      const existingNota = await NotaKecil.findOne({
+        where: {
+          cctv_session_id: session.id,
+          batch_start_sequence: startSequence,
+          batch_end_sequence: endSequence
+        }
+      });
+
+      if (existingNota && !batchInfo.force) {
+        console.log(`   ⚠️  Nota Kecil already exists for this batch (ID: ${existingNota.id}), skipping...`);
+        return true; // Return true because the nota already exists
+      }
+
+      if (existingNota && batchInfo.force) {
+        console.log(`   🔄 Deleting existing Nota Kecil (ID: ${existingNota.id}) for recalibration...`);
+        await existingNota.destroy();
+      }
+
       // Get ALL successful OCR results from this session for the batch range
       const allSuccessfulScreenshots = await CCTVScreenshot.findAll({
         where: {
@@ -286,7 +316,8 @@ class CCTVScheduler {
       console.log(`   📸 Found ${allSuccessfulScreenshots.length} successful OCR screenshots`);
 
       if (allSuccessfulScreenshots.length === 0) {
-        console.log(`   ⚠️  No successful OCR screenshots found`);
+        console.log(`   ⚠️  No successful OCR screenshots found for batch ${batchNumber} (sequences ${startSequence}-${endSequence})`);
+        console.log(`   💡 Check if screenshots in this range have ocr_status='success'`);
         return false;
       }
 
@@ -404,8 +435,8 @@ class CCTVScheduler {
       const volume_delta = stanAkhir * k; // This is what the frontend shows as "Final Usage"
 
       // ✅ CREATE NOTA KECIL WITH REPRESENTATIVE SCREENSHOT
+      // Only include delivery_order_id if session has one (now optional)
       const notaData = {
-        delivery_order_id: session.delivery_order_id,
         customer_location_index: session.customer_location_index,
         customer_name: session.customer_name,
         customer_address: session.customer_address || 'Auto-generated from CCTV session',
@@ -447,6 +478,11 @@ class CCTVScheduler {
       
         manual_values_used: false
       };
+
+      // Only include delivery_order_id if session has one (now optional)
+      if (session.delivery_order_id) {
+        notaData.delivery_order_id = session.delivery_order_id;
+      }
 
       // Create Nota Kecil
       const notaKecil = await NotaKecil.create(notaData);

@@ -19,10 +19,10 @@ export interface NotaKecil {
   V: string;
   created_at: string;
   
-  deliveryOrder: {
+  deliveryOrder?: {
     id: number;
     do_number: string;
-  };
+  } | null;
   driver_notes?: string;
   
   // Representative screenshot fields

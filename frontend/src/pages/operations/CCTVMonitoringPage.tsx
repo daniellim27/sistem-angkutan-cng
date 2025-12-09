@@ -28,7 +28,7 @@ import {
 
 interface CCTVSession {
   id: number;
-  delivery_order_id: number;
+  delivery_order_id: number | null; // Now nullable - DOs are auto-generated
   customer_location_index: number;
   customer_name: string;
   device_id: string | null;
@@ -43,7 +43,7 @@ interface CCTVSession {
   delivery_order?: {
     do_number: string;
     do_name: string;
-  };
+  } | null; // Optional - may be null if no DO assigned
   health_status?: 'healthy' | 'warning' | 'critical' | 'dead';
   time_since_last_capture?: string;
   nota_kecil_count?: number;
@@ -193,7 +193,7 @@ const CCTVMonitoringPage: React.FC = () => {
 
   // Create session form
   const [createForm, setCreateForm] = useState<CreateSessionForm>({
-    delivery_order_id: 0,
+    delivery_order_id: 0, // Optional - kept for backward compatibility but not required
     customer_name: '',
     device_id: '',
     panel_row: 1,
@@ -202,11 +202,12 @@ const CCTVMonitoringPage: React.FC = () => {
     meter_type: 'stan',  // Default to stan
   });
 
-  // Dropdowns - fetch real data
-  const [deliveryOrders, setDeliveryOrders] = useState<DeliveryOrder[]>(MOCKUP_DELIVERY_ORDERS);
+  // Customer filter for sessions list
+  const [customerFilter, setCustomerFilter] = useState<string>('');
+
+  // Dropdowns - fetch real data (only customers now, DOs are auto-generated)
   const [customers, setCustomers] = useState<Customer[]>(MOCKUP_CUSTOMERS);
   const [loadingDropdowns, setLoadingDropdowns] = useState(false);
-  const [includeCompletedOrders, setIncludeCompletedOrders] = useState(false);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -305,12 +306,17 @@ const CCTVMonitoringPage: React.FC = () => {
 
       setLoading(true);
       
-      const response = await apiClient.get('/cctv-monitoring/sessions', {
-        params: {
+      const params: any = {
           limit: sessionsPerPage,
           offset: (currentPage - 1) * sessionsPerPage
+      };
+      
+      // Add customer filter if specified
+      if (customerFilter) {
+        params.customer_name = customerFilter;
         }
-      });
+      
+      const response = await apiClient.get('/cctv-monitoring/sessions', { params });
 
       console.log('🔍 RAW API RESPONSE:', JSON.stringify(response.data, null, 2));
 
@@ -387,7 +393,7 @@ const CCTVMonitoringPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [useRealData, currentPage, sessionsPerPage, mockDataNoticeShown]); // ✅ NO LOADING HERE!
+  }, [useRealData, currentPage, sessionsPerPage, mockDataNoticeShown, customerFilter]); // ✅ Added customerFilter dependency
 
   // Calculate health statistics
   const calculateHealthStats = (sessionsList: CCTVSession[]): HealthStats => {
@@ -569,10 +575,6 @@ const CCTVMonitoringPage: React.FC = () => {
     e.preventDefault();
     
     // Validation
-    if (!createForm.delivery_order_id) {
-      toast.error('Please select a delivery order');
-      return;
-    }
     if (!createForm.customer_name) {
       toast.error('Please select a customer');
       return;
@@ -593,9 +595,8 @@ const CCTVMonitoringPage: React.FC = () => {
           panel_column_type: typeof createForm.panel_column
         });
         
-        // Use real API
-        const requestBody = {
-          delivery_order_id: createForm.delivery_order_id,
+        // Use real API - delivery_order_id is now optional
+        const requestBody: any = {
           customer_name: createForm.customer_name,
           customer_location_index: createForm.customer_location_index,
           device_id: createForm.device_id || null,
@@ -604,6 +605,11 @@ const CCTVMonitoringPage: React.FC = () => {
           meter_type: createForm.meter_type,  // KEEP THIS - tells OCR which field to extract
           // Backend will now extract ONLY the selected field from the 4 available readings
         };
+        
+        // Only include delivery_order_id if it's actually set (not 0 or empty)
+        if (createForm.delivery_order_id && createForm.delivery_order_id > 0) {
+          requestBody.delivery_order_id = createForm.delivery_order_id;
+        }
         
         console.log('🔍 DEBUG - Request body being sent:', requestBody);
         
@@ -614,7 +620,7 @@ const CCTVMonitoringPage: React.FC = () => {
         
         // Reset form
         setCreateForm({
-          delivery_order_id: 0,
+          delivery_order_id: 0, // Keep for form state, but won't be sent to API
           customer_name: '',
           device_id: '',
           panel_row: 1,
@@ -632,7 +638,7 @@ const CCTVMonitoringPage: React.FC = () => {
         // Create new session object
         const newSession: CCTVSession = {
           id: sessions.length + 1,
-          delivery_order_id: createForm.delivery_order_id,
+          delivery_order_id: createForm.delivery_order_id || null, // Optional
           customer_location_index: createForm.customer_location_index,
           customer_name: createForm.customer_name,
           device_id: createForm.device_id || `BARDI-CAM-${String(sessions.length + 1).padStart(3, '0')}`,
@@ -643,7 +649,7 @@ const CCTVMonitoringPage: React.FC = () => {
           last_screenshot_at: null,
           session_notes: `Panel Location: Row ${createForm.panel_row}, Column ${createForm.panel_column}`,
           created_nota_kecil_id: null,
-          delivery_order: deliveryOrders.find(d => d.id === createForm.delivery_order_id),
+          delivery_order: null, // DOs are auto-generated, not needed in mockup
           health_status: 'healthy',
           time_since_last_capture: 'No captures yet',
         };
@@ -665,7 +671,7 @@ const CCTVMonitoringPage: React.FC = () => {
         
         // Reset form
         setCreateForm({
-          delivery_order_id: 0,
+          delivery_order_id: 0, // Keep for form state, but won't be sent to API
           customer_name: '',
           device_id: '',
           panel_row: 1,
@@ -746,48 +752,12 @@ const CCTVMonitoringPage: React.FC = () => {
     }
   };
 
-  // Fetch delivery orders and customers when using real data
+  // Fetch customers when using real data (DOs are now auto-generated, no need to fetch)
   useEffect(() => {
     const fetchDropdownData = async () => {
       if (useRealData) {
         setLoadingDropdowns(true);
         try {
-          // Fetch delivery orders (not completed or cancelled)
-          // Valid statuses: assigned, at_spbu, otw_to_unload_location, at_unload_location
-          const doResponse = await apiClient.get('/delivery-orders');
-          console.log('Delivery orders response:', doResponse.data);
-          
-          // Handle response format - could be {success: true, data: [...]} or just [...]
-          let orders = [];
-          if (doResponse.data?.success && doResponse.data?.data) {
-            orders = doResponse.data.data;
-          } else if (Array.isArray(doResponse.data)) {
-            orders = doResponse.data;
-          } else {
-            orders = [];
-          }
-          
-          console.log('All delivery orders:', orders.length, orders);
-          
-          // Filter out completed and cancelled orders (unless includeCompletedOrders is true)
-          const activeOrders = includeCompletedOrders 
-            ? orders 
-            : orders.filter(
-                (order: any) => order.status !== 'completed' && order.status !== 'cancelled'
-              );
-          
-          console.log('Active delivery orders (filtered):', activeOrders.length, activeOrders);
-          
-          if (!includeCompletedOrders && orders.length > 0 && activeOrders.length === 0) {
-            console.warn('All delivery orders are completed or cancelled. No active orders available.');
-            // toast(`Found ${orders.length} delivery order(s), but all are completed/cancelled. Enable "Include Completed Orders" or create an active delivery order.`, {
-            //   icon: '⚠️',
-            //   duration: 5000,
-            // });
-          }
-          
-          setDeliveryOrders(activeOrders);
-          
           // Fetch customers
           const customerResponse = await apiClient.get('/customers');
           console.log('Customers response FULL:', customerResponse);
@@ -837,21 +807,19 @@ const CCTVMonitoringPage: React.FC = () => {
         } catch (error: any) {
           console.error('Error fetching dropdown data:', error);
           // Fall back to mockup data on error
-          setDeliveryOrders(MOCKUP_DELIVERY_ORDERS);
           setCustomers(MOCKUP_CUSTOMERS);
-          toast.error('Failed to load delivery orders. Using demo data.');
+          toast.error('Failed to load customers. Using demo data.');
         } finally {
           setLoadingDropdowns(false);
         }
       } else {
         // Use mockup data when not in real data mode
-        setDeliveryOrders(MOCKUP_DELIVERY_ORDERS);
         setCustomers(MOCKUP_CUSTOMERS);
       }
     };
     
     fetchDropdownData();
-  }, [useRealData, includeCompletedOrders]);
+  }, [useRealData]);
 
   // Auto-refresh effect
   useEffect(() => {
@@ -1208,8 +1176,36 @@ const CCTVMonitoringPage: React.FC = () => {
 
         {/* Sessions Table */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-gray-200">
+          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900">Monitoring Sessions</h2>
+            {/* Customer Filter */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">Filter by Customer:</label>
+              <select
+                value={customerFilter}
+                onChange={(e) => {
+                  setCustomerFilter(e.target.value);
+                  setCurrentPage(1); // Reset to first page when filter changes
+                }}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              >
+                <option value="">All Customers</option>
+                {Array.from(new Set(sessions.map(s => s.customer_name))).map(customer => (
+                  <option key={customer} value={customer}>{customer}</option>
+                ))}
+              </select>
+              {customerFilter && (
+                <button
+                  onClick={() => {
+                    setCustomerFilter('');
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
 
           {loading ? (
@@ -1772,65 +1768,12 @@ const CCTVMonitoringPage: React.FC = () => {
                 {useRealData && (
                   <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
                     <p className="text-sm text-purple-800">
-                      <strong>Real Data Mode:</strong> Using actual delivery orders and customers from the database
+                      <strong>Real Data Mode:</strong> Using actual customers from the database. Delivery orders are auto-generated when needed.
                     </p>
                   </div>
                 )}
 
-                {/* Include Completed Orders Checkbox */}
-                {useRealData && (
-                  <div className="mb-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={includeCompletedOrders}
-                        onChange={(e) => setIncludeCompletedOrders(e.target.checked)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-700">
-                        Include completed/cancelled delivery orders
-                      </span>
-                      <span className="text-xs text-gray-500">(for testing purposes)</span>
-                    </label>
-                  </div>
-                )}
-
                 <div className="space-y-4">
-                  {/* Delivery Order Dropdown */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Delivery Order <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={createForm.delivery_order_id}
-                      onChange={(e) => {
-                        const selectedDO = deliveryOrders.find(d => d.id === parseInt(e.target.value));
-                        setCreateForm({
-                          ...createForm,
-                          delivery_order_id: parseInt(e.target.value),
-                          customer_name: selectedDO?.customer_name || '',
-                        });
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      disabled={loadingDropdowns}
-                      required
-                    >
-                      <option value="">
-                        {loadingDropdowns ? 'Loading delivery orders...' : 'Select Delivery Order'}
-                      </option>
-                      {deliveryOrders.map(do_order => (
-                        <option key={do_order.id} value={do_order.id}>
-                          {do_order.do_number} - {do_order.do_name}
-                        </option>
-                      ))}
-                    </select>
-                    {useRealData && deliveryOrders.length === 0 && !loadingDropdowns && (
-                      <p className="text-xs text-yellow-600 mt-1">
-                        No active delivery orders found. Create one first.
-                      </p>
-                    )}
-                  </div>
-
                   {/* Customer Dropdown */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">

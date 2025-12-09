@@ -62,7 +62,6 @@ const DepositGroupManagement = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showDOModal, setShowDOModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [showTopUpModal, setShowTopUpModal] = useState(false);
   const [showTagihanModal, setShowTagihanModal] = useState(false);
@@ -81,7 +80,6 @@ const DepositGroupManagement = () => {
   
   // JISDOR rate state for automatic calculation
   const [currentJisdorRate, setCurrentJisdorRate] = useState<number | null>(null);
-  const [jisdorLastUpdated, setJisdorLastUpdated] = useState<string | null>(null);
 
   // Form data for creating/editing groups
   const [formData, setFormData] = useState({
@@ -113,30 +111,6 @@ const DepositGroupManagement = () => {
   const [balancingPageSize] = useState(10);
   const [balancingTotalPages, setBalancingTotalPages] = useState(1);
 
-  // Form data for creating DOs - match delivery orders page structure
-  const [doFormData, setDOFormData] = useState({
-    unit: 'kubik', // DOs always use kubik
-    unit_price: '0',
-    load_location: '', // Will be auto-set from selectedGroup.spbg_location
-    driver_id: '',
-    vehicle_id: '',
-    trip_allowance: '0',
-    gaji: '0',
-    do_name: '',
-    paid_amount: '0',
-    // Gas filling fields - match delivery orders page
-    gas_volume_m3: '',
-    calculation_method: 'jisdor' as 'jisdor' | 'fixed',
-    jisdor_rate: '',
-    gas_filling_cost: ''
-  });
-
-  // SPBG location is now auto-set from selectedGroup context
-
-  // State for customer locations - with dropdown support like delivery orders
-  const [customerLocations, setCustomerLocations] = useState<string[]>(['']);
-  const [selectedCustomerIds, setSelectedCustomerIds] = useState<(number | null)[]>([null]);
-
   // Unit is always kubik (m³) for deposit groups
 
   useEffect(() => {
@@ -148,20 +122,6 @@ const DepositGroupManagement = () => {
     initializeData();
   }, []);
 
-  // Auto-calculate gas volume when relevant fields change
-  useEffect(() => {
-    calculateGasVolume();
-  }, [doFormData.gas_filling_cost, doFormData.calculation_method, doFormData.jisdor_rate, currentJisdorRate]);
-
-  // Auto-set SPBG location when selectedGroup changes for DO creation
-  useEffect(() => {
-    if (selectedGroup && showDOModal) {
-      setDOFormData(prev => ({
-        ...prev,
-        load_location: selectedGroup.spbg_location
-      }));
-    }
-  }, [selectedGroup, showDOModal]);
 
   const fetchDriversAndVehicles = async () => {
     try {
@@ -191,10 +151,8 @@ const DepositGroupManagement = () => {
       
       if (response.data.success) {
         const rate = response.data.data.rate;
-        const lastScraped = response.data.data.last_scraped_at;
         
         setCurrentJisdorRate(rate);
-        setJisdorLastUpdated(lastScraped);
         console.log('✅ JISDOR rate fetched successfully:', rate);
       } else {
         throw new Error('API response indicates failure');
@@ -203,7 +161,6 @@ const DepositGroupManagement = () => {
       console.error('Failed to fetch JISDOR rate:', err);
       // Set default JISDOR rate if API fails
       setCurrentJisdorRate(16364.42);
-      setJisdorLastUpdated(new Date().toISOString());
     }
   };
 
@@ -321,11 +278,6 @@ const DepositGroupManagement = () => {
     setShowMembersModal(true);
   };
 
-  const openDOModal = (group: DepositGroupWithMembers) => {
-    setSelectedGroup(group);
-    setShowDOModal(true);
-  };
-
   const openTopUpModal = (group: DepositGroupWithMembers) => {
     setSelectedGroup(group);
     setTopUpAmount('');
@@ -432,170 +384,6 @@ const DepositGroupManagement = () => {
     }
   };
 
-  const handleDOSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!selectedGroup) return;
-
-    try {
-      // Get the proper customer name from the customers array using the selected customer ID
-      const primaryCustomerId = selectedCustomerIds[0];
-      let customerName = doFormData.do_name || 'SPBG Customer';
-      
-      if (primaryCustomerId) {
-        const selectedCustomer = customers.find(c => c.id === primaryCustomerId);
-        if (selectedCustomer) {
-          customerName = selectedCustomer.customer_name;
-        }
-      }
-
-      const payload = {
-        unit: 'kubik', // Force kubik for DOs
-        unit_price: parseFloat(doFormData.unit_price),
-        driver_id: parseInt(doFormData.driver_id),
-        vehicle_id: parseInt(doFormData.vehicle_id),
-        load_location: doFormData.load_location,
-        unload_location: customerLocations[0] || '', // First customer location as primary
-        customer_name: customerName, // Use proper customer name from customers table
-        customer_location: customerLocations[0] || '', // First customer location
-        additional_unload_locations: customerLocations.slice(1).filter(loc => loc.trim() !== ''), // Additional locations
-        trip_allowance: parseFloat(doFormData.trip_allowance),
-        gaji: parseFloat(doFormData.gaji),
-        do_name: doFormData.do_name,
-        deposit_group_id: selectedGroup.id,
-        // Set actual_load_quantity to gas_volume_m3
-        actual_load_quantity: doFormData.gas_volume_m3 ? parseFloat(doFormData.gas_volume_m3) : null,
-        // Include gas filling data - match delivery orders page
-        gas_volume_m3: doFormData.gas_volume_m3 ? parseFloat(doFormData.gas_volume_m3) : null,
-        calculation_method: doFormData.calculation_method,
-        jisdor_rate: doFormData.jisdor_rate ? parseFloat(doFormData.jisdor_rate) : null,
-        gas_filling_cost: doFormData.gas_filling_cost ? parseFloat(doFormData.gas_filling_cost) : null
-      };
-
-      // Use the same endpoint as delivery orders page
-      await apiClient.post('/delivery-orders', payload);
-      setShowDOModal(false);
-      resetDOForm();
-      resetCustomerLocations();
-      // Refresh groups after creating DO (no longer need PO data)
-      fetchGroups();
-    } catch (err) {
-      setError('Failed to create delivery order.');
-      console.error(err);
-    }
-  };
-
-  const resetDOForm = () => {
-    setDOFormData({
-      unit: 'kubik',
-      unit_price: '0',
-      load_location: '', // Will be auto-set from selectedGroup
-      driver_id: '',
-      vehicle_id: '',
-      trip_allowance: '0',
-      gaji: '0',
-      do_name: '',
-      paid_amount: '0',
-      // Gas filling fields - match delivery orders page
-      gas_volume_m3: '',
-      calculation_method: 'jisdor' as 'jisdor' | 'fixed',
-      jisdor_rate: currentJisdorRate ? currentJisdorRate.toString() : '',
-      gas_filling_cost: ''
-    });
-  };
-
-  const resetCustomerLocations = () => {
-    setCustomerLocations(['']);
-    setSelectedCustomerIds([null]);
-  };
-
-  // Functions to handle customer locations
-  const addCustomerLocation = () => {
-    setCustomerLocations([...customerLocations, '']);
-    setSelectedCustomerIds([...selectedCustomerIds, null]);
-  };
-
-  const updateCustomerLocation = (index: number, value: string) => {
-    const updated = [...customerLocations];
-    updated[index] = value;
-    setCustomerLocations(updated);
-  };
-
-  const removeCustomerLocation = (index: number) => {
-    if (customerLocations.length > 1 && index > 0) {
-      const updatedLocations = customerLocations.filter((_, i) => i !== index);
-      const updatedIds = selectedCustomerIds.filter((_, i) => i !== index);
-      setCustomerLocations(updatedLocations);
-      setSelectedCustomerIds(updatedIds);
-    }
-  };
-
-  const handleCustomerDropdownChange = (index: number, e: React.ChangeEvent<HTMLSelectElement>) => {
-    const customerId = e.target.value;
-    if (customerId) {
-      const selectedCustomer = customers.find((c: Customer) => c.id.toString() === customerId);
-      if (selectedCustomer) {
-        // Update the location
-        const newLocations = [...customerLocations];
-        newLocations[index] = selectedCustomer.location;
-        setCustomerLocations(newLocations);
-
-        // Update selected customer IDs
-        const newIds = [...selectedCustomerIds];
-        newIds[index] = selectedCustomer.id;
-        setSelectedCustomerIds(newIds);
-      }
-    } else {
-      // Clear the location
-      const newLocations = [...customerLocations];
-      newLocations[index] = '';
-      setCustomerLocations(newLocations);
-
-      const newIds = [...selectedCustomerIds];
-      newIds[index] = null;
-      setSelectedCustomerIds(newIds);
-    }
-  };
-
-  // Get available customers for a specific dropdown (excluding already selected ones)
-  const getAvailableCustomers = (currentIndex: number) => {
-    return customers.filter((customer) => {
-      const isAlreadySelected = selectedCustomerIds.some((id, index) => 
-        index !== currentIndex && id === customer.id
-      );
-      return !isAlreadySelected;
-    });
-  };
-
-  // Auto-calculate gas volume when gas filling cost changes
-  const calculateGasVolume = () => {
-    const cost = parseFloat(doFormData.gas_filling_cost);
-    if (!cost) {
-      setDOFormData(prev => ({ ...prev, gas_volume_m3: '' }));
-      return;
-    }
-
-    let volume = 0;
-    if (doFormData.calculation_method === 'jisdor') {
-      // Use current JISDOR rate if available, otherwise use the manually entered rate
-      const jisdorRate = doFormData.jisdor_rate ? parseFloat(doFormData.jisdor_rate) : currentJisdorRate;
-      if (jisdorRate && !isNaN(jisdorRate)) {
-        // Reverse formula: cost / ((1/27.27) * 12.7 * jisdor_rate)
-        // Simplified: cost / (12.7 * jisdor_rate / 27.27)
-        volume = cost / (12.7 * jisdorRate / 27.27);
-      }
-    } else if (doFormData.calculation_method === 'fixed') {
-      // Fixed rate: 7800 IDR per m³
-      volume = cost / 7800;
-    }
-
-    setDOFormData(prev => ({ 
-      ...prev, 
-      gas_volume_m3: volume > 0 ? volume.toFixed(2) : ''
-    }));
-  };
-
-
   const handleTopUpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -692,7 +480,6 @@ const DepositGroupManagement = () => {
 
   const closeModal = () => {
     setShowCreateModal(false);
-    setShowDOModal(false);
     setShowMembersModal(false);
     setShowTopUpModal(false);
     setShowTagihanModal(false);
@@ -708,8 +495,6 @@ const DepositGroupManagement = () => {
     setBalancingPage(1);
     setBalancingTotalPages(1);
     resetForm();
-    resetDOForm();
-    resetCustomerLocations();
   };
 
   const formatCurrency = (amount: number) => {
@@ -931,12 +716,6 @@ const DepositGroupManagement = () => {
               <div className="space-y-2">
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => openDOModal(group)}
-                    className="flex-1 bg-green-500 hover:bg-green-600 text-white text-sm py-2 px-3 rounded"
-                  >
-                    Add DO
-                  </button>
-                  <button
                     onClick={() => openTopUpModal(group)}
                     className="flex-1 bg-purple-500 hover:bg-purple-600 text-white text-sm py-2 px-3 rounded"
                   >
@@ -1117,317 +896,6 @@ const DepositGroupManagement = () => {
                     className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
                   >
                     Create SPBG
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* DO Creation Modal */}
-      {showDOModal && selectedGroup && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                  Create Delivery Order in {selectedGroup.spbg_location}
-              </h3>
-              
-              <form onSubmit={handleDOSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* DO Name */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      DO Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={doFormData.do_name}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, do_name: e.target.value }))}
-                      placeholder="Enter DO name"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                  </div>
-
-
-                  {/* Driver */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Driver *
-                    </label>
-                    <select
-                      value={doFormData.driver_id}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, driver_id: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    >
-                      <option value="">Select Driver</option>
-                      {drivers.map(driver => (
-                        <option key={driver.id} value={driver.id}>
-                          {driver.full_name || driver.username}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Only drivers with 'available' status are shown. Drivers with 'busy' or 'on leave' status are automatically filtered out by the system.
-                    </p>
-                  </div>
-
-                  {/* Vehicle */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Vehicle *
-                    </label>
-                    <select
-                      value={doFormData.vehicle_id}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, vehicle_id: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      required
-                    >
-                      <option value="">Select Vehicle</option>
-                      {vehicles.map(vehicle => (
-                        <option key={vehicle.id} value={vehicle.id}>
-                          {vehicle.license_plate} - {vehicle.brand}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Only vehicles with 'available' status are shown. Vehicles with 'in use' or 'maintenance' status are automatically filtered out by the system.
-                    </p>
-                  </div>
-
-                  {/* Trip Allowance */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Trip Allowance (IDR)
-                    </label>
-                    <input
-                      type="number"
-                      value={doFormData.trip_allowance}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, trip_allowance: e.target.value }))}
-                      placeholder="Enter trip allowance"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-
-                  {/* Gaji */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Gaji (IDR)
-                    </label>
-                    <input
-                      type="number"
-                      value={doFormData.gaji}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, gaji: e.target.value }))}
-                      placeholder="Enter gaji"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-
-                  {/* Gas Filling Cost */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Gas Filling Cost (IDR) *
-                    </label>
-                    <input
-                      type="number"
-                      value={doFormData.gas_filling_cost}
-                      onChange={(e) => setDOFormData(prev => ({ ...prev, gas_filling_cost: e.target.value }))}
-                      placeholder="Enter gas filling cost"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      min="0"
-                      step="0.01"
-                      required
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Enter the total cost for gas filling
-                    </p>
-                  </div>
-
-                  {/* Calculated Gas Volume */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Calculated Gas Volume (m³)
-                    </label>
-                    <input
-                      type="number"
-                      value={doFormData.gas_volume_m3}
-                      readOnly
-                      placeholder="Auto-calculated"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-600"
-                      min="0"
-                      step="0.01"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">This will be used as the actual load quantity</p>
-                  </div>
-
-                  {/* Calculation Method */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Calculation Method
-                    </label>
-                    <select
-                      value={doFormData.calculation_method}
-                      onChange={(e) => {
-                        const method = e.target.value as 'jisdor' | 'fixed';
-                        setDOFormData(prev => ({ 
-                          ...prev, 
-                          calculation_method: method,
-                          // Auto-set JISDOR rate when method changes to jisdor
-                          jisdor_rate: method === 'jisdor' && currentJisdorRate ? currentJisdorRate.toString() : prev.jisdor_rate
-                        }));
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    >
-                      <option value="jisdor">JISDOR</option>
-                      <option value="fixed">Fixed</option>
-                    </select>
-                  </div>
-
-                  {/* JISDOR Rate */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      JISDOR Rate
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        value={doFormData.jisdor_rate}
-                        onChange={(e) => setDOFormData(prev => ({ ...prev, jisdor_rate: e.target.value }))}
-                        placeholder={currentJisdorRate ? `Current rate: ${currentJisdorRate.toLocaleString()}` : "Enter JISDOR rate"}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
-                        min="0"
-                        step="0.01"
-                      />
-                      <button
-                        type="button"
-                        onClick={fetchCurrentJisdorRate}
-                        className="px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        title="Refresh JISDOR rate"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                      </button>
-                    </div>
-                    {currentJisdorRate && (
-                      <p className="text-xs text-green-600 mt-1">
-                        ✓ Current rate from Bank Indonesia: Rp {currentJisdorRate.toLocaleString('id-ID')}
-                        {jisdorLastUpdated && (
-                          <span className="block text-gray-500">Last updated: {new Date(jisdorLastUpdated).toLocaleDateString()}</span>
-                        )}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* SPBG Location - Auto-set from context */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      SPBG Location
-                    </label>
-                    <div className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-gray-700">
-                      {selectedGroup?.spbg_location || 'Not selected'}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Automatically set from selected SPBG context
-                    </p>
-                  </div>
-
-                  {/* Customer Locations */}
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Customer Locations *
-                    </label>
-                    <div className="space-y-2">
-                      {customerLocations.map((location, index) => (
-                        <div key={index} className="flex gap-2">
-                          <div className="flex-1">
-                            <select
-                              value={selectedCustomerIds[index] || ''}
-                              onChange={(e) => handleCustomerDropdownChange(index, e)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              required={index === 0} // First location is required
-                            >
-                              <option value="">
-                                {index === 0 ? "Select Primary Customer Location" : `Select Additional Customer Location ${index + 1}`}
-                              </option>
-                              {getAvailableCustomers(index).map((customer: Customer) => (
-                                <option key={customer.id} value={customer.id}>
-                                  {customer.display_name}
-                                </option>
-                              ))}
-                            </select>
-                            {/* Hidden input to store the actual location text */}
-                            <input
-                              type="hidden"
-                              value={location}
-                              onChange={(e) => updateCustomerLocation(index, e.target.value)}
-                            />
-                          </div>
-                          {customerLocations.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeCustomerLocation(index)}
-                              className="px-3 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
-                              title="Remove location"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={addCustomerLocation}
-                        className="inline-flex items-center px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                        </svg>
-                        Add Customer Location
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Select customers from the dropdown. Each customer can only be selected once.
-                    </p>
-                  </div>
-
-
-                  {/* Unit (Read-only) */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Unit
-                    </label>
-                    <input
-                      type="text"
-                      value="Kubik (m³)"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
-                      disabled
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end space-x-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
-                  >
-                    Create DO
                   </button>
                 </div>
               </form>

@@ -58,10 +58,23 @@ class IdleVehicleDetectionService {
         attributes: ['id', 'spbg_name', 'spbg_location', 'latitude', 'longitude']
       });
 
+      // If no SPBGs found in database, use dummy/test data for simulation
+      let testSpbgs = [];
+      if (spbgs.length === 0) {
+        // Dummy SPBG locations for testing (Jakarta area)
+        testSpbgs = [
+          { id: 999, spbg_name: 'Test SPBG 1', spbg_location: 'Jakarta Pusat', latitude: -6.2088, longitude: 106.8456 },
+          { id: 998, spbg_name: 'Test SPBG 2', spbg_location: 'Jakarta Selatan', latitude: -6.2297, longitude: 106.7970 },
+          { id: 997, spbg_name: 'Test SPBG 3', spbg_location: 'Jakarta Barat', latitude: -6.1699, longitude: 106.7896 }
+        ];
+        logger.info('No SPBGs found in database, using dummy/test data for proximity simulation');
+      }
+
+      const allSpbgs = spbgs.length > 0 ? spbgs : testSpbgs;
       let nearestSpbg = null;
       let minDistance = Infinity;
 
-      for (const spbg of spbgs) {
+      for (const spbg of allSpbgs) {
         const distance = this.calculateDistance(
           parseFloat(lat),
           parseFloat(lng),
