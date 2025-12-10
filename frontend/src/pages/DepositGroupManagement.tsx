@@ -1,5 +1,6 @@
 // src/pages/DepositGroupManagement.tsx
 import React, { useState, useEffect } from 'react';
+import { toast } from 'react-hot-toast';
 import apiClient from '../api/axiosConfig';
 import { GasStationApi } from '../api/gasStationApi';
 import { convertMoneyToVolume, formatVolume } from '../utils/volumeConversionUtils';
@@ -89,6 +90,9 @@ const DepositGroupManagement = () => {
     deposited_amount: '',
     unit: 'kubik' // Fixed to kubik (m³)
   });
+
+  // Input method selection: 'location' or 'coordinate'
+  const [locationInputMethod, setLocationInputMethod] = useState<'location' | 'coordinate'>('location');
 
   // Form data for top up
   const [topUpAmount, setTopUpAmount] = useState('');
@@ -203,12 +207,19 @@ const DepositGroupManagement = () => {
     e.preventDefault();
     
     try {
-      // Parse coordinates from single input (lat, lng)
       let latitude: number | null = null;
       let longitude: number | null = null;
-      const coordinateText = formData.coordinateInput.trim();
+      let spbgLocationValue: string = '';
 
-      if (coordinateText) {
+      if (locationInputMethod === 'coordinate') {
+        // Coordinate method: require and parse coordinates
+        const coordinateText = formData.coordinateInput.trim();
+        
+        if (!coordinateText) {
+          alert('Coordinates are required when using coordinate input method.');
+          return;
+        }
+
         const parts = coordinateText.split(',').map(p => p.trim());
         if (parts.length !== 2 || parts.some(p => p === '')) {
           alert('Invalid coordinates. Use format: "-6.2, 106.8".');
@@ -226,27 +237,65 @@ const DepositGroupManagement = () => {
           alert('Invalid longitude. Must be between -180 and 180.');
           return;
         }
+
+        spbgLocationValue = `${latitude}, ${longitude}`;
+      } else {
+        // Location method: require location address
+        if (!formData.spbg_location.trim()) {
+          alert('SPBG location is required when using location input method.');
+          return;
+        }
+
+        spbgLocationValue = formData.spbg_location;
+
+        // Optionally parse coordinates if provided (for backward compatibility)
+        const coordinateText = formData.coordinateInput.trim();
+        if (coordinateText) {
+          const parts = coordinateText.split(',').map(p => p.trim());
+          if (parts.length === 2 && !parts.some(p => p === '')) {
+            const parsedLat = parseFloat(parts[0]);
+            const parsedLng = parseFloat(parts[1]);
+            if (!isNaN(parsedLat) && !isNaN(parsedLng) && 
+                parsedLat >= -90 && parsedLat <= 90 && 
+                parsedLng >= -180 && parsedLng <= 180) {
+              latitude = parsedLat;
+              longitude = parsedLng;
+            }
+          }
+        }
       }
       
-      const coordsProvided = latitude !== null && longitude !== null;
       const payload = {
         spbg_name: formData.spbg_name || undefined, // Optional SPBG name
-        spbg_location: coordsProvided
-          ? `${latitude}, ${longitude}` // Coordinates override address when both are provided
-          : formData.spbg_location,
+        spbg_location: spbgLocationValue,
         latitude,
         longitude,
         deposited_amount: formData.deposited_amount ? parseFloat(formData.deposited_amount) : 0,
         status: 'active'
       };
 
-      await apiClient.post('/deposit-groups', payload);
+      const response = await apiClient.post('/deposit-groups', payload);
+      
+      // Check if SPBG was created with coordinates
+      const createdGroup = response.data;
+      const hasCoords = createdGroup?.latitude != null && createdGroup?.longitude != null;
+      
+      if (locationInputMethod === 'location' && !hasCoords) {
+        toast.success('SPBG created successfully');
+        toast(
+          '⚠️ Location geocoding may take a moment. If SPBG doesn\'t appear on map, try editing with Coordinate input method.',
+          { icon: '📍', duration: 6000 }
+        );
+      } else {
+        toast.success('SPBG created successfully');
+      }
       
       setShowCreateModal(false);
       resetForm();
       fetchGroups();
     } catch (err) {
       setError('Failed to create deposit group.');
+      toast.error('Failed to create SPBG');
       console.error(err);
     }
   };
@@ -273,6 +322,7 @@ const DepositGroupManagement = () => {
       deposited_amount: '',
       unit: 'kubik' // Always kubik (m³)
     });
+    setLocationInputMethod('location');
   };
 
   const openCreateModal = () => {
@@ -801,40 +851,76 @@ const DepositGroupManagement = () => {
                   </p>
                 </div>
 
-                {/* SPBG Location */}
+                {/* Input Method Selection */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    SPBG Location *
+                    Input Method *
                   </label>
-                  <input
-                    type="text"
-                    value={formData.spbg_location}
-                    onChange={(e) => setFormData(prev => ({ ...prev, spbg_location: e.target.value }))}
-                    placeholder="Enter SPBG location/address"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Enter the SPBG location address
-                  </p>
+                  <div className="flex space-x-4">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="locationInputMethod"
+                        value="location"
+                        checked={locationInputMethod === 'location'}
+                        onChange={(e) => setLocationInputMethod(e.target.value as 'location' | 'coordinate')}
+                        className="mr-2"
+                      />
+                      <span className="text-sm text-gray-700">Location</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="locationInputMethod"
+                        value="coordinate"
+                        checked={locationInputMethod === 'coordinate'}
+                        onChange={(e) => setLocationInputMethod(e.target.value as 'location' | 'coordinate')}
+                        className="mr-2"
+                      />
+                      <span className="text-sm text-gray-700">Coordinate</span>
+                    </label>
+                  </div>
                 </div>
 
-                {/* Coordinates (single input) */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Coordinates (lat, lng)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.coordinateInput}
-                    onChange={(e) => setFormData(prev => ({ ...prev, coordinateInput: e.target.value }))}
-                    placeholder="-6.200000, 106.816666"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Optional: enter as "lat, lng" or leave empty to auto-geocode from address
-                  </p>
-                </div>
+                {/* SPBG Location - shown when location method is selected */}
+                {locationInputMethod === 'location' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      SPBG Location *
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.spbg_location}
+                      onChange={(e) => setFormData(prev => ({ ...prev, spbg_location: e.target.value }))}
+                      placeholder="Enter SPBG location/address"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                    <p className="text-xs text-amber-600 mt-1">
+                      ⚠️ Location addresses will be auto-geocoded. For guaranteed map display, use Coordinate input method instead.
+                    </p>
+                  </div>
+                )}
+
+                {/* Coordinates - shown when coordinate method is selected */}
+                {locationInputMethod === 'coordinate' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Coordinates (lat, lng) *
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.coordinateInput}
+                      onChange={(e) => setFormData(prev => ({ ...prev, coordinateInput: e.target.value }))}
+                      placeholder="-6.200000, 106.816666"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Enter coordinates as "lat, lng" (e.g., -6.200000, 106.816666)
+                    </p>
+                  </div>
+                )}
 
 
                 {/* Unit (Fixed to m³) */}
