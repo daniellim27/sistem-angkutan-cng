@@ -19,6 +19,7 @@ interface Customer {
 interface CustomerFormData {
   customer_name: string;
   location: string;
+  coordinateInput: string;
   phone: string;
 }
 
@@ -97,8 +98,12 @@ const CustomerManagement: React.FC = () => {
   const [formData, setFormData] = useState<CustomerFormData>({
     customer_name: "",
     location: "",
+    coordinateInput: "",
     phone: "",
   });
+
+  // Input method selection: 'location' or 'coordinate'
+  const [locationInputMethod, setLocationInputMethod] = useState<'location' | 'coordinate'>('location');
 
   // Fetch customers
   const fetchCustomers = async (page = 1, search = "") => {
@@ -148,7 +153,43 @@ const CustomerManagement: React.FC = () => {
     e.preventDefault();
     setSubmitting(true);
 
-    const manualCoordinates = parseCoordinateInput(formData.location);
+    let locationValue: string = '';
+    let manualCoordinates: { latitude: number; longitude: number } | null = null;
+
+    if (locationInputMethod === 'coordinate') {
+      // Coordinate method: require and parse coordinates
+      const coordinateText = formData.coordinateInput.trim();
+      
+      if (!coordinateText) {
+        toast.error('Coordinates are required when using coordinate input method.');
+        setSubmitting(false);
+        return;
+      }
+
+      manualCoordinates = parseCoordinateInput(coordinateText);
+      if (!manualCoordinates) {
+        toast.error('Invalid coordinates. Use format: "-6.2, 106.8".');
+        setSubmitting(false);
+        return;
+      }
+
+      locationValue = `${manualCoordinates.latitude}, ${manualCoordinates.longitude}`;
+    } else {
+      // Location method: require location address
+      if (!formData.location.trim()) {
+        toast.error('Location is required when using location input method.');
+        setSubmitting(false);
+        return;
+      }
+
+      locationValue = formData.location.trim();
+
+      // Optionally parse coordinates if provided (for backward compatibility)
+      const coordinateText = formData.coordinateInput.trim();
+      if (coordinateText) {
+        manualCoordinates = parseCoordinateInput(coordinateText);
+      }
+    }
 
     try {
       const token = localStorage.getItem("token");
@@ -160,7 +201,7 @@ const CustomerManagement: React.FC = () => {
 
       const payload: Record<string, unknown> = {
         customer_name: formData.customer_name.trim(),
-        location: formData.location.trim(),
+        location: locationValue,
       };
 
       const trimmedPhone = formData.phone.trim();
@@ -206,11 +247,22 @@ const CustomerManagement: React.FC = () => {
             );
             const geocodeData = await geocodeRes.json().catch(() => null);
             if (geocodeRes.ok && geocodeData?.success) {
-              toast.success(
-                `Updated ${geocodeData.data?.updated || 0} customer coordinate(s)`
-              );
+              if (geocodeData.data?.updated > 0) {
+                toast.success(
+                  `Updated ${geocodeData.data?.updated || 0} customer coordinate(s)`
+                );
+              } else {
+                // Geocoding might still be processing or location not found
+                toast(
+                  '📍 Location geocoding may take a moment. If customer doesn\'t appear on map, try editing with Coordinate input method.',
+                  { duration: 6000 }
+                );
+              }
             }
-          } catch {}
+          } catch {
+            // Silently fail - geocoding is best effort
+            console.warn('Geocoding request failed');
+          }
         }
         setShowForm(false);
         setEditingCustomer(null);
@@ -260,11 +312,44 @@ const CustomerManagement: React.FC = () => {
   // Handle edit
   const handleEdit = (customer: Customer) => {
     setEditingCustomer(customer);
-    setFormData({
-      customer_name: customer.customer_name,
-      location: customer.location,
-      phone: customer.phone || "",
-    });
+    
+    // Determine input method based on existing data
+    const hasCoordinates = customer.latitude !== null && customer.latitude !== undefined && 
+                          customer.longitude !== null && customer.longitude !== undefined;
+    const coordinateStr = formatCoordinateDisplay(customer.latitude);
+    const longitudeStr = formatCoordinateDisplay(customer.longitude);
+    
+    if (hasCoordinates && coordinateStr && longitudeStr) {
+      // If customer has coordinates, check if location is just coordinates
+      const locationIsCoords = parseCoordinateInput(customer.location);
+      if (locationIsCoords) {
+        setLocationInputMethod('coordinate');
+        setFormData({
+          customer_name: customer.customer_name,
+          location: customer.location,
+          coordinateInput: customer.location,
+          phone: customer.phone || "",
+        });
+      } else {
+        // Has coordinates but location is an address
+        setLocationInputMethod('location');
+        setFormData({
+          customer_name: customer.customer_name,
+          location: customer.location,
+          coordinateInput: `${coordinateStr}, ${longitudeStr}`,
+          phone: customer.phone || "",
+        });
+      }
+    } else {
+      // No coordinates, use location method
+      setLocationInputMethod('location');
+      setFormData({
+        customer_name: customer.customer_name,
+        location: customer.location,
+        coordinateInput: "",
+        phone: customer.phone || "",
+      });
+    }
     setShowForm(true);
   };
 
@@ -308,8 +393,10 @@ const CustomerManagement: React.FC = () => {
     setFormData({
       customer_name: "",
       location: "",
+      coordinateInput: "",
       phone: "",
     });
+    setLocationInputMethod('location');
     setEditingCustomer(null);
   };
 
@@ -442,29 +529,85 @@ const CustomerManagement: React.FC = () => {
                 />
               </div>
 
+              {/* Input Method Selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Location *
+                  Input Method *
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.location}
-                  onChange={(e) =>
-                    setFormData({ ...formData, location: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder='Enter customer location or coordinates (e.g. "-6.200000, 106.816666")'
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  You can enter coordinates in the format "latitude, longitude" to use an exact map location.
-                </p>
-                {editingCustomer && existingLatitude && existingLongitude && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Current coordinates: {existingLatitude}, {existingLongitude}
-                  </p>
-                )}
+                <div className="flex space-x-4">
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="locationInputMethod"
+                      value="location"
+                      checked={locationInputMethod === 'location'}
+                      onChange={(e) => setLocationInputMethod(e.target.value as 'location' | 'coordinate')}
+                      className="mr-2"
+                    />
+                    <span className="text-sm text-gray-700">Location</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="locationInputMethod"
+                      value="coordinate"
+                      checked={locationInputMethod === 'coordinate'}
+                      onChange={(e) => setLocationInputMethod(e.target.value as 'location' | 'coordinate')}
+                      className="mr-2"
+                    />
+                    <span className="text-sm text-gray-700">Coordinate</span>
+                  </label>
+                </div>
               </div>
+
+              {/* Location - shown when location method is selected */}
+              {locationInputMethod === 'location' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Location *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.location}
+                    onChange={(e) =>
+                      setFormData({ ...formData, location: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter customer location/address"
+                  />
+                  <p className="text-xs text-amber-600 mt-1">
+                    ⚠️ Location addresses will be auto-geocoded. For guaranteed map display, use Coordinate input method instead.
+                  </p>
+                  {editingCustomer && existingLatitude && existingLongitude && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Current coordinates: {existingLatitude}, {existingLongitude}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Coordinates - shown when coordinate method is selected */}
+              {locationInputMethod === 'coordinate' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Coordinates (lat, lng) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.coordinateInput}
+                    onChange={(e) =>
+                      setFormData({ ...formData, coordinateInput: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="-6.200000, 106.816666"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Enter coordinates as "lat, lng" (e.g., -6.200000, 106.816666)
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

@@ -27,9 +27,10 @@ async function scrapeLocationCoordinates(locationName) {
     const response = await axios.get(nominatimUrl, {
       params,
       headers: {
-        'User-Agent': 'CNG-Transport-System/1.0 (contact: admin@example.com)', // Required by Nominatim
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 CNG-Transport-System/1.0',
         'Accept': 'application/json',
         'Accept-Language': 'id,en-US,en;q=0.9', // Prefer Indonesian results
+        'Referer': 'https://www.openstreetmap.org/',
       },
       timeout: 15000
     });
