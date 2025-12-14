@@ -12,6 +12,7 @@ class OCRService {
       this.openai = new OpenAI({
         apiKey: process.env.OPENAI_API_KEY,
       });
+      this.modelName = process.env.OPENAI_NOTA_OCR_MODEL || process.env.OPENAI_OCR_MODEL || 'gpt-5-mini';
       console.log('✅ OpenAI OCR service initialized successfully');
     } else {
       console.warn('⚠️ OpenAI API key not configured. OCR service will be disabled.');
@@ -50,7 +51,7 @@ class OCRService {
       const prompt = this.buildNotaPrompt(options);
       
       const response = await this.openai.chat.completions.create({
-        model: "gpt-4o",
+        model: this.modelName,
         messages: [{
           role: "user",
           content: [
@@ -63,8 +64,8 @@ class OCRService {
             }
           ]
         }],
-        max_tokens: 1000,
-        temperature: 0.1 // Low temperature for consistent extraction
+        // GPT‑5 family: use max_completion_tokens instead of max_tokens
+        max_completion_tokens: 1000
       });
 
       // Parse the response, handling markdown code blocks
@@ -247,7 +248,7 @@ Return ONLY the JSON object starting with { and ending with }. No markdown, no c
       const prompt = this.buildSuratJalanPrompt(options);
       
       const response = await this.openai.chat.completions.create({
-        model: "gpt-4o",
+        model: this.modelName,
         messages: [{
           role: "user",
           content: [
@@ -260,8 +261,7 @@ Return ONLY the JSON object starting with { and ending with }. No markdown, no c
             }
           ]
         }],
-        max_tokens: 1000,
-        temperature: 0.1
+        max_completion_tokens: 1000
       });
 
       let responseContent = response.choices[0].message.content;

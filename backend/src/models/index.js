@@ -45,6 +45,9 @@ const setupNotificationModel = require("./notification.model");
 // Gas Station Model
 const setupGasStationModel = require("./gasStation.model");
 
+// Gas Transaction Model
+const setupGasTransactionModel = require("./gasTransaction.model");
+
 // NEW: Exchange Rate Model for JISDOR scraping
 const setupExchangeRateModel = require("./exchangeRate.model");
 
@@ -146,6 +149,7 @@ db.Notification = setupNotificationModel(sequelize);
 
 // Gas Station Model
 db.GasStation = setupGasStationModel(sequelize);
+db.GasTransaction = setupGasTransactionModel(sequelize);
 
 // Exchange Rate model
 db.ExchangeRate = setupExchangeRateModel(sequelize);
@@ -203,6 +207,7 @@ const {
   DeliveryOrderPaymentHistory,
   SystemSettings,
   DepositGroup,
+  GasTransaction,
   DepositGroupMember,
   DriverLocation,
   GasStation,
@@ -813,6 +818,47 @@ CCTVSession.hasMany(CCTVScreenshot, {
 CCTVScreenshot.belongsTo(CCTVSession, {
   foreignKey: "session_id",
   as: "session",
+});
+
+// === Gas Transaction Associations ===
+// DepositGroup to GasTransaction (One-to-Many)
+DepositGroup.hasMany(GasTransaction, {
+  foreignKey: "deposit_group_id",
+  as: "gasTransactions",
+});
+GasTransaction.belongsTo(DepositGroup, {
+  foreignKey: "deposit_group_id",
+  as: "depositGroup",
+});
+
+// DeliveryOrder to GasTransaction (One-to-Many)
+DeliveryOrder.hasMany(GasTransaction, {
+  foreignKey: "delivery_order_id",
+  as: "gasTransactions",
+});
+GasTransaction.belongsTo(DeliveryOrder, {
+  foreignKey: "delivery_order_id",
+  as: "deliveryOrder",
+});
+
+// User to GasTransaction (One-to-Many) - driver
+User.hasMany(GasTransaction, {
+  foreignKey: "driver_id",
+  as: "gasTransactions",
+});
+GasTransaction.belongsTo(User, {
+  foreignKey: "driver_id",
+  as: "driver",
+});
+
+// Vehicle to GasTransaction (One-to-Many)
+Vehicle.hasMany(GasTransaction, {
+  foreignKey: "vehicle_id",
+  as: "gasTransactions",
+});
+GasTransaction.belongsTo(Vehicle, {
+  foreignKey: "vehicle_id",
+  as: "vehicle",
 });
 
 module.exports = db;

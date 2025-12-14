@@ -270,9 +270,9 @@ module.exports = (sequelize) => {
       },
 
       // === STATUS ===
+      // Updated enum to match database: 'assigned' was removed, use 'at_spbu' instead
       status: {
         type: DataTypes.ENUM(
-          "assigned",
           "at_spbu",
           "otw_to_unload_location",
           "at_unload_location",
@@ -280,7 +280,7 @@ module.exports = (sequelize) => {
           "cancelled"
         ),
         allowNull: false,
-        defaultValue: "assigned",
+        defaultValue: "at_spbu",
       },
 
       // === TIMESTAMPS ===

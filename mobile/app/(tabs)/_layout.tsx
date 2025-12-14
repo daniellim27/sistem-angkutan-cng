@@ -26,6 +26,7 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      initialRouteName="ghost-mode"
       screenOptions={{
         tabBarActiveTintColor: "#3b82f6",
         tabBarInactiveTintColor: "#6b7280",
@@ -44,6 +45,19 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
+        name="ghost-mode"
+        options={{
+          title: "Map",
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "map" : "map-outline"}
+              size={24}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="index"
         options={{
           title: "Trips",
@@ -54,6 +68,7 @@ export default function TabsLayout() {
               color={color}
             />
           ),
+          href: null, // Hide from tab bar but keep accessible
         }}
       />
       {/* Tambah screen lain sesuai folder (tabs)/index */}

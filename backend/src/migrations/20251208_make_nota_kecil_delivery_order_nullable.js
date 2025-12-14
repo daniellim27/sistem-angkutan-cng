@@ -4,7 +4,12 @@ module.exports = {
   up: async (queryInterface, Sequelize) => {
     console.log('🔄 Making delivery_order_id nullable in nota_kecils...');
     
-    // Make delivery_order_id nullable
+    // Explicitly DROP NOT NULL first (safer across environments)
+    await queryInterface.sequelize.query(
+      'ALTER TABLE nota_kecils ALTER COLUMN delivery_order_id DROP NOT NULL;'
+    );
+
+    // Then make delivery_order_id nullable & adjust FK behavior
     await queryInterface.changeColumn('nota_kecils', 'delivery_order_id', {
       type: Sequelize.INTEGER,
       allowNull: true, // Now nullable

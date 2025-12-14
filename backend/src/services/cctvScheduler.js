@@ -214,6 +214,19 @@ class CCTVScheduler {
   async processPendingNotaBatches(session) {
     try {
       await session.reload();
+
+      // ✅ Only create Nota Kecil from a single “primary” session per customer/location
+      //    to avoid generating 1 nota per meter_type (stan, pressure, temperature, etc).
+      //    Primary is assumed to be the STAN / main volume session.
+      // NOTE: DB enum currently allows 'stan' but not 'current_stan' here.
+      const primaryMeterTypes = ['stan', null];
+      if (!primaryMeterTypes.includes(session.meter_type)) {
+        console.log(
+          `   ℹ️ Skipping nota kecil batch processing for non-primary meter_type="${session.meter_type}" (session ${session.id})`
+        );
+        return;
+      }
+
       const totalCaptures = session.total_screenshots_captured || 0;
 
       // Count existing notas for this session (delivery_order_id is now optional)
@@ -325,114 +338,225 @@ class CCTVScheduler {
       const representativeScreenshot = allSuccessfulScreenshots[0]; // Most recent
       console.log(`   🖼️ Using screenshot ${representativeScreenshot.id} as representative image`);
 
-      // ✅ EXTRACT SENSOR READINGS FROM MOST RECENT 6 SCREENSHOTS
-      const recentScreenshots = allSuccessfulScreenshots.slice(0, 6); // Get 6 most recent
-      console.log(`   📊 Using ${recentScreenshots.length} most recent screenshots for averages`);
+      // Define the time window of this batch based on this session’s screenshots
+      const batchEndTime = new Date(allSuccessfulScreenshots[0].captured_at); // newest
+      const batchStartTime = new Date(
+        allSuccessfulScreenshots[allSuccessfulScreenshots.length - 1].captured_at
+      ); // oldest
+      console.log(
+        `   🕒 Batch time window: ${batchStartTime.toISOString()} → ${batchEndTime.toISOString()}`
+      );
 
-      const sensorReadings = {
-        stan: [],
-        pressure_inlet: [],
-        pressure_outlet: [],
-        temperature: []
-      };
-
-      // Extract readings from the 6 most recent screenshots
-      recentScreenshots.forEach(screenshot => {
-        const ocr = screenshot.ocr_result || {};
-        
-        // Extract readings that exist
-        if (ocr.stan !== null && ocr.stan !== undefined) {
-          const val = parseFloat(ocr.stan);
-          if (!isNaN(val)) sensorReadings.stan.push(val);
-        }
-        if (ocr.meter_reading !== null && ocr.meter_reading !== undefined) {
-          const val = parseFloat(ocr.meter_reading);
-          if (!isNaN(val)) sensorReadings.stan.push(val);
-        }
-        if (ocr.pressure_inlet !== null && ocr.pressure_inlet !== undefined) {
-          const val = parseFloat(ocr.pressure_inlet);
-          if (!isNaN(val)) sensorReadings.pressure_inlet.push(val);
-        }
-        if (ocr.pressure_outlet !== null && ocr.pressure_outlet !== undefined) {
-          const val = parseFloat(ocr.pressure_outlet);
-          if (!isNaN(val)) sensorReadings.pressure_outlet.push(val);
-        }
-        if (ocr.temperature !== null && ocr.temperature !== undefined) {
-          const val = parseFloat(ocr.temperature);
-          if (!isNaN(val)) sensorReadings.temperature.push(val);
-        }
-        if (ocr.pressure !== null && ocr.pressure !== undefined) {
-          const val = parseFloat(ocr.pressure);
-          if (!isNaN(val)) {
-            // Distribute to both if we don't know which pressure
-            sensorReadings.pressure_inlet.push(val);
-            sensorReadings.pressure_outlet.push(val);
-          }
-        }
-      });
-
-      console.log(`   📊 Readings extracted from recent screenshots:`, {
-        stan: sensorReadings.stan.length,
-        pressure_inlet: sensorReadings.pressure_inlet.length,
-        pressure_outlet: sensorReadings.pressure_outlet.length,
-        temperature: sensorReadings.temperature.length
-      });
-
-      // ✅ CALCULATE AVERAGES (for pressure_inlet, pressure_outlet, temperature)
-      const calculateAverage = (readings) => {
-        if (readings.length === 0) return null;
-        const sum = readings.reduce((a, b) => a + b, 0);
-        const avg = sum / readings.length;
-        return Math.round(avg * 100) / 100; // Round to 2 decimal places
-      };
-
-      // Calculate averages for sensors (using all available readings from recent screenshots)
-      const avgPressureInlet = calculateAverage(sensorReadings.pressure_inlet);
-      const avgPressureOutlet = calculateAverage(sensorReadings.pressure_outlet);
-      const avgTemperature = calculateAverage(sensorReadings.temperature);
-
-      // ✅ SPECIAL CALCULATION FOR STAN: Rolling window (latest vs 6 readings ago)
+      // === 1) STAN CALCULATION (PRIMARY SESSION) ===
       let stanAwal = 0;
       let currentStan = 0;
       let stanAkhir = 0;
 
-      if (sensorReadings.stan.length > 0) {
-        // Use ALL stan readings from the batch for the rolling window calculation
-        const allStanReadings = [];
-        
-        // Extract stan readings from ALL screenshots in the batch (not just recent 6)
-        allSuccessfulScreenshots.forEach(screenshot => {
-          const ocr = screenshot.ocr_result || {};
-          if (ocr.stan !== null && ocr.stan !== undefined) {
-            const val = parseFloat(ocr.stan);
-            if (!isNaN(val)) allStanReadings.push(val);
-          }
-          if (ocr.meter_reading !== null && ocr.meter_reading !== undefined) {
-            const val = parseFloat(ocr.meter_reading);
-            if (!isNaN(val)) allStanReadings.push(val);
-          }
-        });
+      // Use ALL stan readings from this (primary) session within the batch
+      const stanScreenshotsChrono = [...allSuccessfulScreenshots].sort(
+        (a, b) => new Date(a.captured_at) - new Date(b.captured_at)
+      );
 
-        if (allStanReadings.length > 0) {
-          // Sort by sequence (ascending) to get chronological order
-          const chronologicalStan = allStanReadings.reverse();
-          
-          currentStan = chronologicalStan[chronologicalStan.length - 1]; // Latest reading
-          
-          // Find stan from 6 readings ago (or use oldest available)
-          const lookbackIndex = Math.max(0, chronologicalStan.length - 6);
-          stanAwal = chronologicalStan[lookbackIndex];
-          
-          stanAkhir = currentStan - stanAwal;
-          
-          console.log(`   🔢 STAN calculation: ${stanAwal} → ${currentStan} = ${stanAkhir} m³`);
-          console.log(`   📈 STAN readings used: ${chronologicalStan.length} total, window: ${lookbackIndex} to ${chronologicalStan.length - 1}`);
+      const stanValues = [];
+      stanScreenshotsChrono.forEach((screenshot) => {
+        const ocr = screenshot.ocr_result || {};
+        if (ocr.stan !== null && ocr.stan !== undefined) {
+          const val = parseFloat(ocr.stan);
+          if (!isNaN(val)) stanValues.push(val);
+        } else if (ocr.meter_reading !== null && ocr.meter_reading !== undefined) {
+          const val = parseFloat(ocr.meter_reading);
+          if (!isNaN(val)) stanValues.push(val);
         }
+      });
+
+      if (stanValues.length >= 2) {
+        // NOTE: On this physical meter, STAN goes DOWN as gas is used.
+        // So "usage" is stan_awal - stan_akhir (awal > akhir), NOT akhir - awal.
+        stanAwal = stanValues[0]; // first reading (higher)
+        currentStan = stanValues[stanValues.length - 1]; // last reading (lower)
+        stanAkhir = stanAwal - currentStan; // positive usage
+
+        console.log(
+          `   🔢 STAN calculation (primary session): ${stanAwal} → ${currentStan} = ${stanAkhir} m³ used (from ${stanValues.length} readings)`
+        );
+      } else if (stanValues.length === 1) {
+        stanAwal = stanValues[0];
+        currentStan = stanValues[0];
+        stanAkhir = 0;
+        console.log(
+          `   🔢 STAN calculation: only one reading available (${stanValues[0]}), using delta 0`
+        );
+      } else {
+        console.log(`   ⚠️ No STAN readings found in batch window for primary session`);
       }
 
+      // === 2) PRESSURE & TEMPERATURE FROM SIBLING SESSIONS (4-panels) ===
+      const sensorReadings = {
+        pressure_inlet: [],
+        pressure_outlet: [],
+        temperature: [],
+      };
+
+      // Helper: filter outliers & average
+      const filterOutliers = (values) => {
+        if (!values || values.length <= 2) return values || [];
+
+        const mean = values.reduce((a, b) => a + b, 0) / values.length;
+        const variance =
+          values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
+        const stdDev = Math.sqrt(variance);
+
+        const filtered = values.filter((v) => Math.abs(v - mean) <= 2 * stdDev);
+        return filtered.length === 0 ? values : filtered;
+      };
+
+      const calculateAverage = (readings) => {
+        if (!readings || readings.length === 0) return null;
+        const sum = readings.reduce((a, b) => a + b, 0);
+        const avg = sum / readings.length;
+        return Math.round(avg * 100) / 100;
+      };
+
+      // Find sibling sessions for the same customer & location (4-panel set)
+      // DO is no longer used for grouping; we rely purely on customer + location
+      // and the batch time window on screenshots.
+      const siblingSessions = await CCTVSession.findAll({
+        where: {
+          customer_name: session.customer_name,
+          customer_location_index: session.customer_location_index,
+        },
+      });
+
+      const temperatureSession = siblingSessions.find(
+        (s) => s.id !== session.id && s.meter_type === 'temperature'
+      );
+      const pressureInletSession = siblingSessions.find(
+        (s) => s.id !== session.id && s.meter_type === 'pressure_inlet'
+      );
+      const pressureOutletSession = siblingSessions.find(
+        (s) => s.id !== session.id && s.meter_type === 'pressure_outlet'
+      );
+
+      const loadSensorReadingsFromSession = async (targetSession, fieldName) => {
+        if (!targetSession) return;
+
+        const screenshots = await CCTVScreenshot.findAll({
+          where: {
+            session_id: targetSession.id,
+            is_deleted: false,
+            ocr_status: 'success',
+            captured_at: {
+              [Op.between]: [batchStartTime, batchEndTime],
+            },
+          },
+          order: [['captured_at', 'ASC']],
+        });
+
+        console.log(
+          `   📸 Found ${screenshots.length} screenshots for ${fieldName} from session ${targetSession.id} in batch window`
+        );
+
+        screenshots.forEach((screenshot) => {
+          const ocr = screenshot.ocr_result || {};
+          const rawValue = ocr[fieldName] ?? ocr.pressure ?? ocr.temperature;
+          if (rawValue !== null && rawValue !== undefined) {
+            const val = parseFloat(rawValue);
+            if (!isNaN(val)) {
+              sensorReadings[fieldName].push(val);
+            }
+          }
+        });
+      };
+
+      await loadSensorReadingsFromSession(pressureInletSession, 'pressure_inlet');
+      await loadSensorReadingsFromSession(pressureOutletSession, 'pressure_outlet');
+      await loadSensorReadingsFromSession(temperatureSession, 'temperature');
+
+      // Fallback: if for some reason we did not find sibling sessions, try to use this session’s OCR
+      if (
+        sensorReadings.pressure_inlet.length === 0 ||
+        sensorReadings.pressure_outlet.length === 0 ||
+        sensorReadings.temperature.length === 0
+      ) {
+        console.log(
+          `   ℹ️ Some sensor arrays are empty from sibling sessions, falling back to primary session OCR where available`
+        );
+
+        allSuccessfulScreenshots.forEach((screenshot) => {
+          const ocr = screenshot.ocr_result || {};
+          if (
+            sensorReadings.pressure_inlet.length === 0 &&
+            ocr.pressure_inlet !== null &&
+            ocr.pressure_inlet !== undefined
+          ) {
+            const v = parseFloat(ocr.pressure_inlet);
+            if (!isNaN(v)) sensorReadings.pressure_inlet.push(v);
+          }
+          if (
+            sensorReadings.pressure_outlet.length === 0 &&
+            ocr.pressure_outlet !== null &&
+            ocr.pressure_outlet !== undefined
+          ) {
+            const v = parseFloat(ocr.pressure_outlet);
+            if (!isNaN(v)) sensorReadings.pressure_outlet.push(v);
+          }
+          if (
+            sensorReadings.temperature.length === 0 &&
+            ocr.temperature !== null &&
+            ocr.temperature !== undefined
+          ) {
+            const v = parseFloat(ocr.temperature);
+            if (!isNaN(v)) sensorReadings.temperature.push(v);
+          }
+        });
+      }
+
+      // Filter & average
+      sensorReadings.pressure_inlet = filterOutliers(sensorReadings.pressure_inlet);
+      sensorReadings.pressure_outlet = filterOutliers(sensorReadings.pressure_outlet);
+      sensorReadings.temperature = filterOutliers(sensorReadings.temperature);
+
+      const avgPressureInlet = calculateAverage(sensorReadings.pressure_inlet);
+      const avgPressureOutlet = calculateAverage(sensorReadings.pressure_outlet);
+      const avgTemperature = calculateAverage(sensorReadings.temperature);
+
       // ✅ FIXED: Use model's existing fields for volume calculation
-      const k = 1.0; // Default correction factor
-      const volume_delta = stanAkhir * k; // This is what the frontend shows as "Final Usage"
+      // Base usage at meter conditions (m³) – selisih stan
+      const Vt = stanAkhir;
+
+      // Gas calculation according to PT Gaspol formula:
+      // V = Vt × ((1.01325 + p) / 1.01325) × (300 / (273 + t)) × k
+      // where:
+      //  - Vt = stan_awal - current_stan   (already in stanAkhir)
+      //  - p  = pressure_inlet (bar)
+      //  - t  = temperature (°C)
+      //  - k  = super compressibility factor
+
+      let k = 1.0;
+      let volume_delta = Vt;
+
+      if (avgPressureInlet !== null && avgTemperature !== null) {
+        const p = avgPressureInlet;
+        const t = avgTemperature;
+
+        // Super compressibility factor from gasCalculationService
+        try {
+          k = gasCalculationService.calculateSuperCompressibilityFactor(p);
+        } catch (calcErr) {
+          console.warn('⚠️ Failed to calculate super compressibility factor, using k=1.0:', calcErr);
+          k = 1.0;
+        }
+
+        const P0 = 1.01325; // bar
+        const pressureFactor = (P0 + p) / P0;
+        const temperatureFactor = 300 / (273 + t);
+
+        const V = Vt * pressureFactor * temperatureFactor * k;
+
+        // Round to 3 decimals for storage / display
+        volume_delta = Math.round(V * 1000) / 1000;
+        k = Math.round(k * 1_000_000) / 1_000_000;
+      }
 
       // ✅ CREATE NOTA KECIL WITH REPRESENTATIVE SCREENSHOT
       // Only include delivery_order_id if session has one (now optional)
@@ -452,12 +576,12 @@ class CCTVScheduler {
         representative_screenshot_url: representativeScreenshot.screenshot_url,
         representative_screenshot_id: representativeScreenshot.id,
       
-        // ✅ STAN DATA
+        // ✅ STAN DATA (from primary STAN session)
         stan_awal: stanAwal,
         current_stan: currentStan,
         stan_akhir: stanAkhir,
       
-        // ✅ SENSOR DATA
+        // ✅ SENSOR DATA (aggregated across 4-panel sessions)
         pressure_inlet: avgPressureInlet,
         pressure_outlet: avgPressureOutlet,
         temperature: avgTemperature,
@@ -474,7 +598,7 @@ class CCTVScheduler {
         // Driver confirmation
         driver_confirmed: false,
         driver_confirmed_at: null,
-        driver_notes: `Auto-generated from batch ${batchNumber} (${recentScreenshots.length} recent screenshots averaged)`,
+        driver_notes: `Auto-generated from batch ${batchNumber} (${allSuccessfulScreenshots.length} successful screenshots in window; 4-panel aggregated)`,
       
         manual_values_used: false
       };
@@ -489,12 +613,18 @@ class CCTVScheduler {
 
       console.log(`   ✅ Nota Kecil created: ID ${notaKecil.id}`);
       console.log(`   🖼️ Representative screenshot: ${representativeScreenshot.screenshot_url}`);
-      console.log(`   📊 AVERAGED SENSOR DATA (from ${recentScreenshots.length} most recent screenshots):`);
+      console.log(`   📊 AVERAGED SENSOR DATA (4-panel aggregated):`);
       console.log(`      STAN: ${stanAwal} → ${currentStan} = ${stanAkhir} m³`);
       console.log(`      FINAL USAGE (volume_delta): ${volume_delta} m³`);
-      console.log(`      Pressure Inlet: ${avgPressureInlet} bar (from ${sensorReadings.pressure_inlet.length} readings)`);
-      console.log(`      Pressure Outlet: ${avgPressureOutlet} bar (from ${sensorReadings.pressure_outlet.length} readings)`);
-      console.log(`      Temperature: ${avgTemperature}°C (from ${sensorReadings.temperature.length} readings)`);
+      console.log(
+        `      Pressure Inlet: ${avgPressureInlet} bar (from ${sensorReadings.pressure_inlet.length} readings)`
+      );
+      console.log(
+        `      Pressure Outlet: ${avgPressureOutlet} bar (from ${sensorReadings.pressure_outlet.length} readings)`
+      );
+      console.log(
+        `      Temperature: ${avgTemperature}°C (from ${sensorReadings.temperature.length} readings)`
+      );
       
       this.stats.notasCreated++;
       return true;

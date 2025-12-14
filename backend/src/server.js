@@ -92,6 +92,7 @@ const utilsRoutes = require("./routes/utils.routes");
 const webDepositGroupRoutes = require("./routes/web/depositGroup.routes");
 const trackingRoutes = require("./routes/tracking.routes");
 const gasStationRoutes = require("./routes/gasStation.routes");
+const gasTransactionRoutes = require("./routes/gasTransaction.routes");
 const customerRoutes = require("./routes/customer.routes");
 const bardiScrapingRoutes = require("./routes/bardiScraping");
 const receiptOcrRoutes = require("./routes/receiptOcr");
@@ -345,6 +346,9 @@ initializeDatabase().then(() => {
   // Add gas station routes
   app.use("/api/gas-stations", gasStationRoutes);
   app.use("/api/web/gas-stations", gasStationRoutes);
+  
+  // Add gas transaction routes
+  app.use("/api/gas-transactions", gasTransactionRoutes);
 
   // Add customer routes
   app.use("/api/customers", customerRoutes);

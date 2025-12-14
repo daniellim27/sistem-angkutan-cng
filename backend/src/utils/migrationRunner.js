@@ -85,6 +85,7 @@ class MigrationRunner {
       '20251105_set_null_on_delete_driver_id_in_delivery_orders.sql',
       '20250128_make_cctv_delivery_order_nullable.js',
       '20251208_make_nota_kecil_delivery_order_nullable.js',
+      '20251209_make_nota_kecil_cctv_session_nullable.js',
       ];
   }
 

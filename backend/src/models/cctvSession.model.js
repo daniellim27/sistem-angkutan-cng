@@ -90,7 +90,8 @@ module.exports = (sequelize) => {
       comment: 'Panel column location in BARDI interface'
     },
     meter_type: {
-      type: DataTypes.ENUM('pressure_inlet', 'temperature', 'stan_awal', 'current_stan', 'other'),
+      // NOTE: Database enum currently supports: 'pressure_inlet', 'temperature', 'stan', 'current_stan', 'other'
+      type: DataTypes.ENUM('pressure_inlet', 'temperature', 'stan', 'current_stan', 'other'),
       allowNull: true,
       comment: 'Type of meter being captured in this session (NEW SCHEMA)'
     },
@@ -163,8 +164,8 @@ module.exports = (sequelize) => {
   });
 
   // ✅ NEW SCHEMA - Updated meter_type enum
-  // OLD: 'temperature', 'pressure', 'stan_awal', 'stan_akhir'
-  // NEW: 'pressure_inlet', 'temperature', 'stan_awal', 'current_stan'
+  // OLD (DB): 'temperature', 'pressure', 'stan_awal', 'stan_akhir'
+  // CURRENT (DB): 'pressure_inlet', 'temperature', 'stan', 'current_stan', 'other'
 
   // Virtual field for health status (calculated, not stored)
   CCTVSession.prototype.getHealthStatus = function() {
@@ -217,11 +218,11 @@ module.exports = (sequelize) => {
   // ✅ NEW: Virtual field for meter type display
   CCTVSession.prototype.getMeterTypeDisplay = function() {
     const typeMap = {
-      'pressure_inlet': '📊 Pressure Inlet',
-      'temperature': '🌡️ Temperature', 
-      'stan_awal': '⏮️ Stan Awal',
-      'current_stan': '⏭️ Current Stan',
-      'other': '⚙️ Other'
+      pressure_inlet: '📊 Pressure Inlet',
+      temperature: '🌡️ Temperature',
+      stan: '⏮️ Stan',
+      current_stan: '⏭️ Current Stan',
+      other: '⚙️ Other',
     };
     return typeMap[this.meter_type] || 'Unknown';
   };

@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const db = require("./db"); // Pastikan path ini benar
+const MigrationRunner = require("./migrationRunner");
 
 /**
  * Menjalankan migrasi "fresh": Menghapus seluruh skema database
@@ -28,11 +29,14 @@ const run = async () => {
     await client.query(wipeSQL);
     console.log("✅ Schema wiped and recreated successfully");
 
-    console.log("🔄 Running migrations from init.sql...");
-    const migrationSQL = fs
-      .readFileSync(path.resolve(__dirname, "../migrations/init.sql"), "utf-8");
-    await client.query(migrationSQL);
-    console.log("✅ Migrations executed successfully");
+    console.log("🔄 Running full JS/SQL migrations via MigrationRunner...");
+
+    // Use the centralized MigrationRunner so schema matches production (including SPBG columns)
+    const runner = new MigrationRunner();
+    await runner.runMigrations();
+    await runner.close();
+
+    console.log("✅ All migrations executed successfully");
 
     console.log("🌱 Running seeders from seeder.sql...");
     const seederSQL = fs

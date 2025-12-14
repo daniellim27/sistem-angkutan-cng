@@ -12,6 +12,8 @@
 
 const axios = require('axios');
 const { OpenAI } = require('openai');
+const path = require('path');
+const fs = require('fs');
 
 class MeterOcrService {
   constructor() {
@@ -20,6 +22,8 @@ class MeterOcrService {
     const apiKey = rawKey.trim();
 
     this.currentApiKey = apiKey;
+    // Allow overriding model via env; default to GPT‑5 mini family
+    this.modelName = 'gpt-5-mini';
     this.openai = new OpenAI({ apiKey: this.currentApiKey });
     this.isConfigured = !!this.currentApiKey;
 
@@ -38,6 +42,13 @@ class MeterOcrService {
       this.openai = new OpenAI({ apiKey: this.currentApiKey });
       this.isConfigured = !!this.currentApiKey;
       console.log('🔄 OpenAI API key updated in runtime:', this.isConfigured ? 'configured' : 'not configured');
+    }
+
+    // Allow model to change via env at runtime
+    const newModel = 'gpt-5-mini';
+    if (newModel !== this.modelName) {
+      this.modelName = newModel;
+      console.log('🔄 Meter OCR model updated in runtime:', this.modelName);
     }
   }
 
@@ -94,17 +105,50 @@ class MeterOcrService {
           break;
       }
 
-      // Validate - make sure validateMeterData uses meterType parameter
+      // Validate with meterType-aware rules
       parsedData = this.validateMeterData(parsedData, meterType);
 
-      // Confidence (higher for specialized prompts)
-      const confidenceScore = ocrResponse.number ? 0.95 : 0.65;
+      // Determine primary value for this meter type
+      let primaryValue = null;
+      switch (meterType) {
+        case 'temperature':
+          primaryValue = parsedData.temperature;
+          break;
+        case 'pressure_inlet':
+        case 'pressure_outlet':
+          primaryValue = parsedData[meterType] ?? parsedData.pressure;
+          break;
+        case 'stan':
+          primaryValue = parsedData.stan ?? parsedData.meter_reading;
+          break;
+        default:
+          primaryValue = parsedData.meter_reading ?? parsedData.temperature ?? parsedData.pressure;
+          break;
+      }
+
+      const isPrimaryValid = primaryValue !== null && primaryValue !== undefined;
+
+      // Confidence: use richer calculation, drop if primary value invalid
+      const confidenceScore = isPrimaryValid
+        ? this.calculateConfidence(parsedData, ocrResponse)
+        : 0;
+
+      // If we couldn't parse a usable number, surface a clear error message so UI can show why
+      const errorMessage = isPrimaryValid
+        ? null
+        : `No valid numeric reading could be parsed from OCR text: "${ocrResponse?.text ?? ''}"`;
 
       return {
-        success: true,
-        data: parsedData,
+        success: isPrimaryValid,
+        data: isPrimaryValid
+          ? {
+              ...parsedData,
+              primary_value: primaryValue,
+            }
+          : null,
         raw_response: ocrResponse,
         confidence_score: confidenceScore,
+        error: errorMessage,
       };
     } catch (error) {
       console.error(`Meter OCR ${meterType} error:`, error);
@@ -115,6 +159,42 @@ class MeterOcrService {
         raw_response: null,
         confidence_score: 0,
       };
+    }
+  }
+
+  async convertUrlToBase64(imageUrl) {
+    try {
+        // 1. Define where you want to save the temp file
+        const tempFilePath = path.join(__dirname, 'temp_image.jpg'); 
+
+        console.log("Downloading image...");
+
+        // 2. Download the image data
+        const response = await axios.get(imageUrl, {
+            responseType: 'arraybuffer' // Important: ensures we get raw data
+        });
+
+        // 3. Write to a temporary file
+        fs.writeFileSync(tempFilePath, response.data);
+        console.log("Temp file saved.");
+
+        // 4. Read the file back and convert to Base64
+        const fileData = fs.readFileSync(tempFilePath);
+        const base64Image = fileData.toString('base64');
+        
+        // 5. Add the data prefix (Optional, depending on your API needs)
+        // You usually need this if you are displaying it or sending to certain APIs
+        const fullBase64 = `data:image/jpeg;base64,${base64Image}`;
+
+        // 6. Delete the temp file to keep folder clean
+        fs.unlinkSync(tempFilePath);
+        console.log("Temp file deleted.");
+
+        return fullBase64;
+
+    } catch (error) {
+        console.error("Error converting image:", error);
+        return null;
     }
   }
 
@@ -133,20 +213,16 @@ class MeterOcrService {
 
       // ✅ METER-TYPE SPECIFIC PROMPTS
       const prompts = {
-        temperature: `You are reading a THERMOMETER (CELSIUS).
+      temperature: `You are reading a THERMOMETER that shows temperature in CELSIUS (°C).
 
-      FOCUS ONLY on the BLACK CELSIUS SCALE (below the circle).
+      Focus on where the needle is pointing on the Celsius scale and estimate the temperature as a decimal number.
 
-      RULES:
-      1. Each SMALL TICK = 2°C
-      2. Find BIG NUMBER BELOW needle (10, 20, 30, etc.)
-      3. COUNT small ticks AFTER big number to needle
-      4. INCLUDE hidden tick behind needle
-      5. Formula: value = base + (ticks × 2)
+      Rules:
+      - Read the scale naturally as a technician would.
+      - If the value is between two ticks, interpolate and give a decimal (e.g. 28.5).
+      - Do NOT apply any artificial range limits; use what you see on the gauge.
 
-      EXAMPLE: Needle at 25.4°C → "25.4"
-
-      REPLY ONLY WITH NUMBER (e.g., "28.6")`,
+      Reply ONLY with the numeric value in Celsius, for example "28.6". Do NOT include units or explanation.`,
 
         pressure_inlet: `You are reading PRESSURE INLET GAUGE (BAR).
 
@@ -194,7 +270,7 @@ class MeterOcrService {
       const prompt = prompts[meterType] || prompts.other;
       
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-5-mini',
         messages: [
           {
             role: 'user',
@@ -206,17 +282,18 @@ class MeterOcrService {
               {
                 type: 'image_url',
                 image_url: {
-                  url: imageUrl,
-                  detail: 'high'
+                  "url": imageUrl,
+                  'detail': 'high'
                 }
               }
             ]
           }
         ],
-        max_tokens: 20,        // ✅ SHORT - just a number!
-        temperature: 0.1       // ✅ CONSISTENT
+        reasoning_effort: 'low'
       });
 
+      // console.log("INI RAW IMAGE URL AHAHAHAHAHA: ", imageUrl);
+      console.log("INI RAW RESPONSENYAAAAAAAAAAAAAAAAAAAAAA", response.choices[0].message.content);
       const content = response.choices[0].message.content.trim();
       console.log(`✅ ${meterType} OCR → "${content}"`);
 
@@ -399,33 +476,61 @@ class MeterOcrService {
   }
 
   /**
-   * Validate extracted meter data
+   * Validate extracted meter data with meterType-aware limits
    * @param {Object} data - Extracted data
+   * @param {string} meterType - meter type (temperature, pressure_inlet, pressure_outlet, stan, etc.)
    * @returns {Object} Validated data
    */
-  validateMeterData(data) {
-    // Validate meter reading (should be positive, reasonable range)
-    if (data.meter_reading !== null) {
-      if (data.meter_reading < 0 || data.meter_reading > 999999) {
-        console.warn(`⚠️ Suspicious meter reading: ${data.meter_reading}`);
-      }
+  validateMeterData(data, meterType = 'other') {
+    // Global sanity checks (very wide)
+    if (data.meter_reading !== null && (data.meter_reading < 0 || data.meter_reading > 999999)) {
+      console.warn(`⚠️ Suspicious meter reading: ${data.meter_reading}`);
+    }
+    if (data.pressure !== null && (data.pressure < 0 || data.pressure > 1000)) {
+      console.warn(`⚠️ Suspicious pressure reading: ${data.pressure}`);
+    }
+    if (data.temperature !== null && (data.temperature < -100 || data.temperature > 200)) {
+      console.warn(`⚠️ Suspicious temperature reading: ${data.temperature}`);
     }
 
-    // Validate pressure (typical CNG pressure: 200-250 bar)
-    if (data.pressure !== null) {
-      if (data.pressure < 0 || data.pressure > 500) {
-        console.warn(`⚠️ Suspicious pressure reading: ${data.pressure}`);
+    // Meter-type specific physical limits
+    switch (meterType) {
+      case 'temperature': {
+        // Previously we hard-rejected temperatures outside [-20, 60] by setting them to null.
+        // This proved too strict in production and caused many valid readings to be discarded.
+        // Now we only log suspicious values above, but we do NOT force them to null here.
+        break;
       }
+      case 'pressure_inlet':
+      case 'pressure_outlet': {
+        // Typical CNG pressure range (very conservative): 0–300 bar
+        const pressureValue = data[meterType] ?? data.pressure;
+        if (pressureValue !== null && pressureValue !== undefined) {
+          if (pressureValue < 0 || pressureValue > 300) {
+            console.warn(`⚠️ Discarding invalid pressure reading for ${meterType}: ${pressureValue}`);
+            data[meterType] = null;
+            if (data.pressure === pressureValue) data.pressure = null;
+          }
+        }
+        break;
+      }
+      case 'stan': {
+        const stanValue = data.stan ?? data.meter_reading;
+        if (stanValue !== null && stanValue !== undefined) {
+          if (stanValue < 0 || stanValue > 10_000_000) {
+            console.warn(`⚠️ Discarding invalid STAN reading: ${stanValue}`);
+            data.stan = null;
+            if (data.meter_reading === stanValue) data.meter_reading = null;
+          }
+        }
+        break;
+      }
+      default:
+        // For other types we keep only global sanity checks
+        break;
     }
 
-    // Validate temperature (typical range: -20 to 60°C)
-    if (data.temperature !== null) {
-      if (data.temperature < -50 || data.temperature > 100) {
-        console.warn(`⚠️ Suspicious temperature reading: ${data.temperature}`);
-      }
-    }
-
-    // Validate flow rate (typical range: 0-100 m³/h)
+    // Validate flow rate (typical range: 0-200 m³/h)
     if (data.flow_rate !== null) {
       if (data.flow_rate < 0 || data.flow_rate > 200) {
         console.warn(`⚠️ Suspicious flow rate: ${data.flow_rate}`);

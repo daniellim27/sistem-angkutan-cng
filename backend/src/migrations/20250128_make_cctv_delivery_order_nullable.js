@@ -3,8 +3,13 @@
 module.exports = {
   up: async (queryInterface, Sequelize) => {
     console.log('🔄 Making delivery_order_id nullable in cctv_sessions...');
+
+    // Ensure NOT NULL is dropped explicitly (Sequelize changeColumn can be flaky here)
+    await queryInterface.sequelize.query(
+      'ALTER TABLE cctv_sessions ALTER COLUMN delivery_order_id DROP NOT NULL;'
+    );
     
-    // Make delivery_order_id nullable
+    // Then update FK behavior to SET NULL on delete
     await queryInterface.changeColumn('cctv_sessions', 'delivery_order_id', {
       type: Sequelize.INTEGER,
       allowNull: true, // Now nullable

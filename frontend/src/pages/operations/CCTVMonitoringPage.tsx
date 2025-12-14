@@ -217,6 +217,20 @@ const CCTVMonitoringPage: React.FC = () => {
   const [actionMenuPosition, setActionMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [updatingToken, setUpdatingToken] = useState(false);
   const [capturingSessionId, setCapturingSessionId] = useState<number | null>(null);
+  const [testingBatchId, setTestingBatchId] = useState<number | null>(null);
+  const [bulkNotaTestState, setBulkNotaTestState] = useState<{
+    running: boolean;
+    logs: string[];
+    completed: number;
+    failed: number;
+    total: number;
+  }>({
+    running: false,
+    logs: [],
+    completed: 0,
+    failed: 0,
+    total: 0,
+  });
 
   const handleManualCapture = async (sessionId: number) => {
     setCapturingSessionId(sessionId);
@@ -235,6 +249,138 @@ const CCTVMonitoringPage: React.FC = () => {
       // Clear spinner after a few seconds
       setTimeout(() => setCapturingSessionId(null), 3000);
     }
+  };
+
+  // DEV/TEST: Auto-capture 10 batches (4-panel if available) and create Nota Kecil immediately
+  const handleTestAutoCapture = async (sessionId: number) => {
+    setTestingBatchId(sessionId);
+
+    try {
+      const response = await apiClient.post(
+        `/cctv-monitoring/sessions/${sessionId}/test-auto-capture`,
+        { count: 10 },
+        { timeout: 300000 } // up to 5 minutes – OCR + 10 loops can be slow
+      );
+
+      const captured = response.data?.data?.captured ?? 0;
+      const createdNotas = response.data?.data?.createdNotas ?? 0;
+      const failed = response.data?.data?.failed ?? 0;
+      const errors: string[] = response.data?.data?.errors ?? [];
+
+      toast.success(
+        `Test 4-panel x10 done: ${captured} captures, ${failed} failed, ${createdNotas} nota kecil created`
+      );
+
+      if (errors.length > 0) {
+        console.warn('🔍 Test auto-capture errors:', errors);
+        toast(
+          `Some sessions failed: ${errors.slice(0, 3).join(' | ')}${
+            errors.length > 3 ? ' … (see console for more)' : ''
+          }`,
+          { icon: '⚠️' }
+        );
+      }
+
+      // Refresh session + screenshots so UI reflects new totals
+      fetchSessions();
+      if (selectedSession?.id === sessionId) {
+        fetchSessionScreenshots(sessionId);
+      }
+    } catch (err: any) {
+      const message = err.response?.data?.message || err.message || 'Test auto-capture failed';
+      toast.error(message);
+    } finally {
+      setTestingBatchId(null);
+    }
+  };
+
+  // Helper to append a log line for bulk Nota test
+  const appendBulkNotaLog = (line: string) => {
+    setBulkNotaTestState(prev => ({
+      ...prev,
+      logs: [...prev.logs, line],
+    }));
+  };
+
+  // DEV: Run Nota test across customers using 4-panel capture
+  const handleBulkNotaTest = async () => {
+    if (!useRealData) {
+      toast.error('Enable Real Data first to run the Nota test');
+      return;
+    }
+
+    const targetMeterTypes = ['stan', 'pressure_inlet', 'pressure_outlet', 'temperature'];
+
+    // Group sessions by customer + location, and pick ONE primary session per group (prefer stan)
+    const groups: Record<string, CCTVSession[]> = {};
+    sessions.forEach((s) => {
+      const meterType = (s as any).meter_type as string | undefined;
+      if (s.status !== 'active' || !meterType || !targetMeterTypes.includes(meterType)) return;
+
+      const key = `${s.customer_name}::${s.customer_location_index}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(s);
+    });
+
+    const primarySessions: CCTVSession[] = Object.values(groups).map((group) => {
+      const stanSession = group.find((s) => (s as any).meter_type === 'stan');
+      return stanSession || group[0];
+    });
+
+    if (primarySessions.length === 0) {
+      toast.error('No active 4-panel customer sets found (stan / pressure_inlet / pressure_outlet / temperature)');
+      return;
+    }
+
+    setBulkNotaTestState({
+      running: true,
+      logs: [`Starting Nota test for ${primarySessions.length} customer set(s)...`],
+      completed: 0,
+      failed: 0,
+      total: primarySessions.length,
+    });
+
+    for (const session of primarySessions) {
+      appendBulkNotaLog(
+        `▶ Customer "${session.customer_name}" (location ${session.customer_location_index}), primary session #${session.id} – running 4-panel x10 capture...`
+      );
+
+      try {
+        const response = await apiClient.post(
+          `/cctv-monitoring/sessions/${session.id}/test-auto-capture`,
+          { count: 10 },
+          { timeout: 300000 } // 5 minute timeout per session
+        );
+
+        const captured = response.data?.data?.captured ?? 0;
+        const createdNotas = response.data?.data?.createdNotas ?? 0;
+
+        appendBulkNotaLog(`✅ Customer "${session.customer_name}" → ${captured} captures, ${createdNotas} nota kecil created`);
+
+        setBulkNotaTestState(prev => ({
+          ...prev,
+          completed: prev.completed + 1,
+        }));
+      } catch (err: any) {
+        const message = err?.response?.data?.message || err?.message || 'Unknown error';
+        appendBulkNotaLog(`❌ Customer "${session.customer_name}" (session #${session.id}) FAILED: ${message}`);
+
+        setBulkNotaTestState(prev => ({
+          ...prev,
+          completed: prev.completed + 1,
+          failed: prev.failed + 1,
+        }));
+      }
+    }
+
+    appendBulkNotaLog('🎉 Nota test finished for all target sessions.');
+    setBulkNotaTestState(prev => ({
+      ...prev,
+      running: false,
+    }));
+
+    // Refresh list so counts & nota status are up to date
+    fetchSessions();
   };
 
   const [simpleToken, setSimpleToken] = useState({
@@ -710,7 +856,7 @@ const CCTVMonitoringPage: React.FC = () => {
     }
   };
 
-  // Recalibrate nota kecil creation
+  // Recalibrate nota kecil creation (4-panel aware via backend)
   const handleRecalibrateNotaKecil = async (sessionId: number) => {
     if (!window.confirm('This will recalculate nota kecil creation for all batches (including partial batches) in this session. Existing nota kecils for these batches will be deleted and recreated. Continue?')) {
       return;
@@ -718,8 +864,14 @@ const CCTVMonitoringPage: React.FC = () => {
 
     try {
       toast.loading('Recalibrating nota kecil creation...', { id: `recalibrate-${sessionId}` });
-      await apiClient.post(`/cctv-monitoring/sessions/${sessionId}/recalibrate-nota-kecil`);
-      toast.success('Nota kecil recalibration completed', { id: `recalibrate-${sessionId}` });
+      const response = await apiClient.post(
+        `/cctv-monitoring/sessions/${sessionId}/recalibrate-nota-kecil`
+      );
+      const usedId = response.data?.data?.used_session_id ?? sessionId;
+      toast.success(
+        `Nota kecil recalibration completed (primary session #${usedId})`,
+        { id: `recalibrate-${sessionId}` }
+      );
       fetchSessions(); // Refresh list
       if (selectedSession?.id === sessionId) {
         fetchSessionScreenshots(sessionId); // Refresh screenshots if viewing this session
@@ -727,6 +879,44 @@ const CCTVMonitoringPage: React.FC = () => {
     } catch (error: any) {
       console.error('Error recalibrating nota kecil:', error);
       toast.error(error.response?.data?.message || 'Failed to recalibrate nota kecil', { id: `recalibrate-${sessionId}` });
+    }
+  };
+
+  // DEV/TEST: Create Nota Kecil from existing screenshots only (no new captures)
+  const handleCreateNotaFromExisting = async (sessionId: number) => {
+    try {
+      toast.loading('Creating Nota Kecil from existing screenshots…', {
+        id: `create-nota-existing-${sessionId}`,
+      });
+
+      const response = await apiClient.post(
+        `/cctv-monitoring/sessions/${sessionId}/test-create-nota-only`,
+        {},
+        { timeout: 300000 }
+      );
+
+      const createdNotas = response.data?.data?.createdNotas ?? 0;
+      const primaryId = response.data?.data?.session_id ?? sessionId;
+
+      toast.success(
+        `Created ${createdNotas} nota kecil from existing screenshots (primary session #${primaryId})`,
+        { id: `create-nota-existing-${sessionId}` }
+      );
+
+      fetchSessions();
+      if (selectedSession?.id === sessionId || selectedSession?.id === primaryId) {
+        fetchSessionScreenshots(primaryId);
+      }
+    } catch (error: any) {
+      console.error('Error creating nota from existing screenshots:', error);
+      const apiMessage = error.response?.data?.message;
+      const apiDetail = error.response?.data?.error;
+      const friendly =
+        apiMessage && apiDetail
+          ? `${apiMessage} — ${apiDetail}`
+          : apiMessage || 'Failed to create nota kecil from existing screenshots';
+
+      toast.error(friendly, { id: `create-nota-existing-${sessionId}` });
     }
   };
 
@@ -1054,6 +1244,29 @@ const CCTVMonitoringPage: React.FC = () => {
                         {autoRefresh ? 'ON' : 'OFF'}
                       </span>
                     </div>
+
+                    {/* DEV: Bulk Nota Test for 4 panels (stan + pressures + temperature) */}
+                    <button
+                      onClick={handleBulkNotaTest}
+                      disabled={bulkNotaTestState.running}
+                      className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 border
+                        ${bulkNotaTestState.running
+                          ? 'bg-indigo-100 text-indigo-700 border-indigo-200 cursor-wait'
+                          : 'bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-50'
+                        }`}
+                    >
+                      {bulkNotaTestState.running ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                          Testing 4 panels (x10 each)...
+                        </>
+                      ) : (
+                        <>
+                          <Camera className="w-4 h-4 text-indigo-500" />
+                          Test 4 Panels x10 (Nota)
+                        </>
+                      )}
+                    </button>
                   </>
                 )}
 
@@ -1444,6 +1657,31 @@ const CCTVMonitoringPage: React.FC = () => {
           </button>
         )}
 
+        {/* DEV: Auto-capture 10x + create Nota Kecil immediately (real data only) */}
+        {devModeEnabled && useRealData && activeActionMenuSession.status === 'active' && (
+          <button
+            onClick={() => {
+              closeActionMenu();
+              handleTestAutoCapture(activeActionMenuSession.id);
+            }}
+            disabled={testingBatchId === activeActionMenuSession.id}
+            className={`w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2
+              ${testingBatchId === activeActionMenuSession.id ? 'opacity-60 cursor-not-allowed' : ''}`}
+          >
+            {testingBatchId === activeActionMenuSession.id ? (
+              <>
+                <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                Running 10x Auto-Snapshot Test...
+              </>
+            ) : (
+              <>
+                <Camera className="w-4 h-4 text-indigo-500" />
+                Auto-Snapshot x10 & Create Nota (DEV)
+              </>
+            )}
+          </button>
+        )}
+
         {/* Stop Session */}
         {activeActionMenuSession.status === 'active' && (
           <button
@@ -1486,13 +1724,25 @@ const CCTVMonitoringPage: React.FC = () => {
           </button>
         )}
 
+        {/* Create Nota from Existing Screenshots */}
+        <button
+          onClick={() => {
+            closeActionMenu();
+            handleCreateNotaFromExisting(activeActionMenuSession.id);
+          }}
+          className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-t border-gray-200"
+        >
+          <ClipboardList className="w-4 h-4 text-purple-500" />
+          Create Nota from Existing
+        </button>
+
         {/* Recalibrate Nota Kecil */}
         <button
           onClick={() => {
             closeActionMenu();
             handleRecalibrateNotaKecil(activeActionMenuSession.id);
           }}
-          className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-t border-gray-200"
+          className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
         >
           <RefreshCw className="w-4 h-4 text-orange-500" />
           Recalibrate Nota Kecil
@@ -1687,51 +1937,57 @@ const CCTVMonitoringPage: React.FC = () => {
                           <p className="text-xs text-gray-500">
                             {new Date(screenshot.captured_at).toLocaleString()}
                           </p>
-                          {screenshot.ocr_result && (
-                            <div className="mt-2 pt-2 border-t border-gray-100">
-                              {(() => {
-                                const meterType = selectedSession?.meter_type;
-                                let displayValue: number | undefined;
-                                let displayLabel: string;
-                                let displayUnit: string;
+                          <div className="mt-2 pt-2 border-t border-gray-100">
+                            {/* Quick summary if OCR data exists */}
+                            {screenshot.ocr_result && (() => {
+                              const meterType = selectedSession?.meter_type;
+                              let displayValue: number | undefined;
+                              let displayLabel: string;
+                              let displayUnit: string;
 
-                                if (meterType === 'temperature') {
-                                  displayValue = screenshot.ocr_result.temperature ?? screenshot.ocr_result.temperatur_operasi;
-                                  displayLabel = 'Temperature';
-                                  displayUnit = '°C';
-                                } else if (meterType === 'pressure') {
-                                  displayValue = screenshot.ocr_result.pressure ?? screenshot.ocr_result.tekanan_operasi;
-                                  displayLabel = 'Pressure';
-                                  displayUnit = 'bar';
-                                } else {
-                                  // For stan_awal, stan_akhir, other, or no meter_type
-                                  displayValue = screenshot.ocr_result.meter_reading;
-                                  displayLabel = meterType === 'stan_awal' ? 'Stan Awal' : 
-                                               meterType === 'stan_akhir' ? 'Stan Akhir' : 
-                                               'Meter';
-                                  displayUnit = screenshot.ocr_result.unit || 'm³';
-                                }
+                              if (meterType === 'temperature') {
+                                displayValue =
+                                  screenshot.ocr_result.temperature ?? screenshot.ocr_result.temperatur_operasi;
+                                displayLabel = 'Temperature';
+                                displayUnit = '°C';
+                              } else if (meterType === 'pressure' || (meterType as any) === 'pressure_inlet' || (meterType as any) === 'pressure_outlet') {
+                                displayValue =
+                                  screenshot.ocr_result.pressure ?? screenshot.ocr_result.tekanan_operasi;
+                                displayLabel = 'Pressure';
+                                displayUnit = 'bar';
+                              } else {
+                                // For stan / other / unknown
+                                displayValue = screenshot.ocr_result.meter_reading;
+                                displayLabel = meterType === 'stan_awal'
+                                  ? 'Stan Awal'
+                                  : meterType === 'stan_akhir'
+                                  ? 'Stan Akhir'
+                                  : 'Meter';
+                                displayUnit = screenshot.ocr_result.unit || 'm³';
+                              }
 
-                                return displayValue !== undefined && displayValue !== null ? (
-                                  <p className="text-sm font-medium text-gray-900">
-                                    {displayLabel}: {displayValue} {displayUnit}
-                                  </p>
-                                ) : null;
-                              })()}
-                              {screenshot.ocr_confidence_score !== null && (
-                                <p className="text-xs text-gray-500">
-                                  Confidence: {(screenshot.ocr_confidence_score * 100).toFixed(0)}%
+                              return displayValue !== undefined && displayValue !== null ? (
+                                <p className="text-sm font-medium text-gray-900">
+                                  {displayLabel}: {displayValue} {displayUnit}
                                 </p>
-                              )}
-                              <button
-                                onClick={() => setViewingOcrDetails(screenshot)}
-                                className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
-                              >
-                                <Eye className="w-3 h-3" />
-                                View Details
-                              </button>
-                            </div>
-                          )}
+                              ) : null;
+                            })()}
+
+                            {screenshot.ocr_confidence_score !== null && (
+                              <p className="text-xs text-gray-500">
+                                Confidence: {(screenshot.ocr_confidence_score * 100).toFixed(0)}%
+                              </p>
+                            )}
+
+                            {/* Always allow opening full OCR details, even on failed/null result */}
+                            <button
+                              onClick={() => setViewingOcrDetails(screenshot)}
+                              className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                            >
+                              <Eye className="w-3 h-3" />
+                              View Details
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1739,6 +1995,58 @@ const CCTVMonitoringPage: React.FC = () => {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Nota Test Log Modal (shows while running and after until closed) */}
+      {(bulkNotaTestState.running || bulkNotaTestState.logs.length > 0) && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-40 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Nota Kecil Test – 4 Panels x10 Screenshots
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  {bulkNotaTestState.completed}/{bulkNotaTestState.total} sessions processed,
+                  {' '}
+                  {bulkNotaTestState.failed} failed.
+                </p>
+              </div>
+              {!bulkNotaTestState.running && (
+                <button
+                  onClick={() =>
+                    setBulkNotaTestState({
+                      running: false,
+                      logs: [],
+                      completed: 0,
+                      failed: 0,
+                      total: 0,
+                    })
+                  }
+                  className="text-gray-400 hover:text-gray-600 text-sm"
+                >
+                  Close
+                </button>
+              )}
+            </div>
+            <div className="p-4 flex-1 overflow-y-auto bg-gray-50 text-xs font-mono text-gray-800 space-y-1">
+              {bulkNotaTestState.logs.map((line, idx) => (
+                <div key={idx}>{line}</div>
+              ))}
+              {bulkNotaTestState.running && (
+                <div className="mt-2 text-indigo-600">
+                  Please keep this window open while the test runs (it can take several minutes)...
+                </div>
+              )}
+            </div>
+            {bulkNotaTestState.running && (
+              <div className="p-3 border-t border-gray-200 flex items-center gap-2 text-xs text-gray-600">
+                <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                Running captures and OCR – this may take a few minutes.
+              </div>
+            )}
           </div>
         </div>
       )}
