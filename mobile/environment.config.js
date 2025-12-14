@@ -4,7 +4,7 @@
 
 export const ENV_CONFIG = {
   // Default API URL for local development (note the /api suffix)
-  API_URL: 'https://70575ed45637.ngrok-free.app/api',
+  API_URL: 'https://44e909e9a6a0.ngrok-free.app/api',
   
   // For development with Expo Go on physical device, use your computer's IP:
   // API_URL: 'http://192.168.1.100:3000/api',

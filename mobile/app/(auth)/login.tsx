@@ -74,7 +74,8 @@ export default function LoginScreen() {
         if (result.user.role === "admin" || result.user.role === "owner") {
           router.replace("/(admin)");
         } else if (result.user.role === "driver") {
-          router.replace("/(tabs)");
+          // Driver langsung masuk ke halaman peta (ghost-mode)
+          router.replace("/(tabs)/ghost-mode");
         }
       } else {
         setErrorMessage(result.error || "Login failed.");

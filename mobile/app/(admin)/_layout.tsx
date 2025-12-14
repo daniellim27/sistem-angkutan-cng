@@ -19,7 +19,8 @@ export default function AdminLayout() {
   }
 
   if (user?.role !== "admin") {
-    return <Redirect href="/(tabs)" />;
+    // Non-admin diarahkan kembali ke halaman peta utama
+    return <Redirect href="/(tabs)/ghost-mode" />;
   }
 
   return (

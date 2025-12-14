@@ -10,9 +10,9 @@ export default function AuthLayout() {
     return null;
   }
 
-  // Jika sudah login, langsung ke root (yang akan masuk ke (tabs) layout)
+  // Jika sudah login, langsung ke tabs (ghost-mode sebagai halaman utama)
   if (isSignedIn) {
-    return <Redirect href="/" />;
+    return <Redirect href="/(tabs)/ghost-mode" />;
   }
 
   return (
