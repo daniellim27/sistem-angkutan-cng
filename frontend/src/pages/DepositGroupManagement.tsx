@@ -100,6 +100,9 @@ const DepositGroupManagement = () => {
   // Tagihan state
   const [tagihanData, setTagihanData] = useState<any>(null);
   const [loadingTagihan, setLoadingTagihan] = useState(false);
+  const [gasTransactions, setGasTransactions] = useState<any[]>([]);
+  const [loadingGasTransactions, setLoadingGasTransactions] = useState(false);
+  const [selectedGasTransactionImage, setSelectedGasTransactionImage] = useState<string | null>(null);
 
   // Balancing state
   const [balancingData, setBalancingData] = useState<any>(null);
@@ -296,14 +299,25 @@ const DepositGroupManagement = () => {
     setSelectedGroup(group);
     setShowTagihanModal(true);
     setLoadingTagihan(true);
+    setLoadingGasTransactions(true);
     
     try {
-      const response = await apiClient.get(`/deposit-groups/${group.id}/tagihan`);
-      console.log('Tagihan API Response:', response.data);
+      // Fetch tagihan data and gas transactions in parallel
+      const [tagihanResponse, gasTransactionsResponse] = await Promise.all([
+        apiClient.get(`/deposit-groups/${group.id}/tagihan`),
+        apiClient.get(`/gas-transactions/by-deposit-group/${group.id}`).catch(() => ({ data: { success: true, data: [] } }))
+      ]);
+      
+      console.log('Tagihan API Response:', tagihanResponse.data);
       
       // Handle both intercepted and non-intercepted response structures
-      const data = response.data.data || response.data;
+      const data = tagihanResponse.data.data || tagihanResponse.data;
       setTagihanData(data);
+      
+      // Set gas transactions
+      if (gasTransactionsResponse.data.success) {
+        setGasTransactions(gasTransactionsResponse.data.data || []);
+      }
     } catch (err: any) {
       console.error('Failed to fetch tagihan data:', err);
       console.error('Error response:', err.response?.data);
@@ -313,6 +327,7 @@ const DepositGroupManagement = () => {
       setError(`Failed to load billing data: ${errorMessage}`);
     } finally {
       setLoadingTagihan(false);
+      setLoadingGasTransactions(false);
     }
   };
 
@@ -1313,6 +1328,109 @@ const DepositGroupManagement = () => {
                     </table>
                   </div>
 
+                  {/* Gas Transactions Section */}
+                  {loadingGasTransactions ? (
+                    <div className="text-center py-4">
+                      <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                      <p className="mt-2 text-sm text-gray-500">Loading gas transactions...</p>
+                    </div>
+                  ) : gasTransactions.length > 0 && (
+                    <div className="mt-8 border-t pt-6">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-4">
+                        ⛽ Gas Transactions ({gasTransactions.length})
+                      </h4>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver</th>
+                              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vehicle</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Volume (m³)</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Rate</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total Cost</th>
+                              <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Photos</th>
+                              <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {gasTransactions.map((tx: any) => (
+                              <tr key={tx.id} className="hover:bg-gray-50">
+                                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
+                                  {new Date(tx.created_at).toLocaleDateString()}
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
+                                  {tx.driver?.driverProfile?.full_name || tx.driver?.username || '-'}
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
+                                  {tx.vehicle?.license_plate || '-'}
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap text-sm text-right text-gray-900">
+                                  {tx.volume_m3} m³
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap text-sm text-right text-gray-900">
+                                  {formatCurrency(tx.rate_per_m3)}/m³
+                                  {tx.calculation_method === 'jisdor' && tx.jisdor_rate && (
+                                    <span className="text-xs text-gray-500 ml-1">(JISDOR: {tx.jisdor_rate})</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap text-sm text-right font-medium text-gray-900">
+                                  {formatCurrency(tx.total_cost)}
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap text-sm text-center">
+                                  <div className="flex gap-2 justify-center">
+                                    {tx.surat_jalan_photo_url && (
+                                      <button
+                                        onClick={() => setSelectedGasTransactionImage(tx.surat_jalan_photo_url)}
+                                        className="text-blue-600 hover:text-blue-800 text-xs"
+                                        title="View Surat Jalan"
+                                      >
+                                        📄
+                                      </button>
+                                    )}
+                                    {tx.nota_photo_url && (
+                                      <button
+                                        onClick={() => setSelectedGasTransactionImage(tx.nota_photo_url)}
+                                        className="text-green-600 hover:text-green-800 text-xs font-medium"
+                                        title="View Nota (Used for OCR)"
+                                      >
+                                        🧾*
+                                      </button>
+                                    )}
+                                    {tx.biaya_lain_photo_url && (
+                                      <button
+                                        onClick={() => setSelectedGasTransactionImage(tx.biaya_lain_photo_url)}
+                                        className="text-purple-600 hover:text-purple-800 text-xs"
+                                        title="View Biaya Lain"
+                                      >
+                                        💰
+                                      </button>
+                                    )}
+                                    {!tx.surat_jalan_photo_url && !tx.nota_photo_url && !tx.biaya_lain_photo_url && (
+                                      <span className="text-gray-400">-</span>
+                                    )}
+                                  </div>
+                                  {tx.nota_photo_url && (
+                                    <p className="text-xs text-gray-500 mt-1">*Used for OCR</p>
+                                  )}
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap text-center">
+                                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                    tx.status === 'approved' ? 'bg-green-100 text-green-800' :
+                                    tx.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                    'bg-yellow-100 text-yellow-800'
+                                  }`}>
+                                    {tx.status.charAt(0).toUpperCase() + tx.status.slice(1)}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               ) : (
                 <div className="text-center py-8 text-gray-500">
@@ -1320,6 +1438,31 @@ const DepositGroupManagement = () => {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Gas Transaction Image Modal */}
+      {selectedGasTransactionImage && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-4 max-w-4xl max-h-[90vh] overflow-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">View Photo</h3>
+              <button
+                onClick={() => setSelectedGasTransactionImage(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            <img
+              src={`${BACKEND_URL || 'http://localhost:5000'}${selectedGasTransactionImage}`}
+              alt="Transaction photo"
+              className="max-w-full h-auto"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EImage not found%3C/text%3E%3C/svg%3E';
+              }}
+            />
           </div>
         </div>
       )}

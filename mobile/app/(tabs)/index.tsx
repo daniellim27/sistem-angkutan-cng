@@ -1,20 +1,14 @@
 // mobile/app/(tabs)/index.tsx
+// OLD "Tugas Saya" screen - Redirected to Ghost Mode
+// This file is kept for backward compatibility but redirects to ghost-mode
 
-import React, { useState, useCallback, useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
-  Alert,
-} from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
-import apiClient, { updateDeliveryStatus, uploadNotaPhoto, completeLocation, checkProximityForDeliveryOrder } from "../../src/services/api";
-import { useAuth } from "../../src/contexts/AuthContext";
-import { FontAwesome5 } from "@expo/vector-icons";
+import { Redirect } from "expo-router";
+
+export default function OldTasksScreen() {
+  // Immediately redirect to Ghost Mode (full screen map)
+  // No rendering - just redirect
+  return <Redirect href="/(tabs)/ghost-mode" />;
+}
 
 // === UPDATED INTERFACES ===
 interface Vehicle {

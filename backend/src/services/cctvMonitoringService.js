@@ -191,10 +191,27 @@ class CCTVMonitoringService {
           }
           // ✅ NO created_nota_kecil = NO MORE ERRORS!
         ],
-        // 🔥 ADD created_nota_kecil_id to main CCTVSession attributes
+        // 🔥 ADD derived attributes:
+        // - has_nota_kecil → based on created_nota_kecil_id
+        // - nota_kecil_count → total notas linked to this CCTV session (via cctv_session_id)
         attributes: {
           include: [
-            [Sequelize.literal(`(SELECT "id" FROM "nota_kecils" WHERE "nota_kecils"."id" = "CCTVSession"."created_nota_kecil_id")`), 'has_nota_kecil']
+            [
+              Sequelize.literal(`(
+                SELECT "id"
+                FROM "nota_kecils"
+                WHERE "nota_kecils"."id" = "CCTVSession"."created_nota_kecil_id"
+              )`),
+              'has_nota_kecil'
+            ],
+            [
+              Sequelize.literal(`(
+                SELECT COUNT(*)::int
+                FROM "nota_kecils"
+                WHERE "nota_kecils"."cctv_session_id" = "CCTVSession"."id"
+              )`),
+              'nota_kecil_count'
+            ]
           ]
         }
       });
@@ -224,6 +241,18 @@ class CCTVMonitoringService {
           { model: User, as: 'creator' },
           { model: NotaKecil, as: 'created_nota_kecil' },
         ],
+        attributes: {
+          include: [
+            [
+              Sequelize.literal(`(
+                SELECT COUNT(*)::int
+                FROM "nota_kecils"
+                WHERE "nota_kecils"."cctv_session_id" = "CCTVSession"."id"
+              )`),
+              'nota_kecil_count'
+            ]
+          ]
+        }
       });
 
       if (!session) {
@@ -410,7 +439,15 @@ class CCTVMonitoringService {
         });
         console.log(`OCR SUCCESS (${session.meter_type}):`, ocrResult.data);
       } else {
-        throw new Error(ocrResult.error || 'OCR failed');
+        console.error('OCR FAILED RESULT:', ocrResult);
+        const detailedError =
+          ocrResult.error ||
+          (typeof ocrResult.raw_response === 'string'
+            ? ocrResult.raw_response
+            : ocrResult.raw_response
+            ? JSON.stringify(ocrResult.raw_response)
+            : 'OCR failed');
+        throw new Error(detailedError);
       }
     } catch (error) {
       console.error('OCR processing failed:', error.message);

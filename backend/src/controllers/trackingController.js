@@ -294,21 +294,56 @@ exports.checkProximityForDeliveryOrder = async (req, res, next) => {
 
 /**
  * Get all active vehicles with their latest locations
+ * Scraped vehicles (with device_id): 5 minutes time window
+ * Test vehicles (with vehicle_id but no device_id): 30 minutes time window
  */
 exports.getAllActiveVehicles = async (req, res, next) => {
   try {
-    const { timeWindow = 5 } = req.query; // Default 30 minutes
-    const timeAgo = new Date(Date.now() - timeWindow * 60 * 1000);
+    const { timeWindow } = req.query; // Allow override, but defaults differ by vehicle type
+    
+    // Different time windows for different vehicle types
+    const SCRAPED_VEHICLE_WINDOW = 5; // 5 minutes for Inovatracks scraped vehicles
+    const TEST_VEHICLE_WINDOW = 30; // 30 minutes for test vehicles
+    
+    const scrapedTimeAgo = new Date(Date.now() - SCRAPED_VEHICLE_WINDOW * 60 * 1000);
+    const testTimeAgo = new Date(Date.now() - TEST_VEHICLE_WINDOW * 60 * 1000);
 
-    // Get latest location for each vehicle - only include scraped vehicles with device IDs
-    const locations = await DriverLocation.findAll({
+    console.log(`🔍 Fetching active vehicles:`);
+    console.log(`   Scraped vehicles (with device_id): ${SCRAPED_VEHICLE_WINDOW} minutes`);
+    console.log(`   Test vehicles (vehicle_id only): ${TEST_VEHICLE_WINDOW} minutes`);
+
+    // Get scraped vehicles (with device_id, but NOT test devices) - 5 minutes window
+    // Test devices are identified by DEV- or TEST- prefix
+    const scrapedLocations = await DriverLocation.findAll({
       where: {
-        timestamp: {
-          [Op.gte]: timeAgo
-        },
-        device_id: {
-          [Op.ne]: null // Only include records with device_id
-        }
+        [Op.and]: [
+          {
+            timestamp: {
+              [Op.gte]: scrapedTimeAgo
+            }
+          },
+          {
+            device_id: {
+              [Op.ne]: null
+            }
+          },
+          {
+            [Op.not]: {
+              [Op.or]: [
+                {
+                  device_id: {
+                    [Op.like]: 'DEV-%'
+                  }
+                },
+                {
+                  device_id: {
+                    [Op.like]: 'TEST-%'
+                  }
+                }
+              ]
+            }
+          }
+        ]
       },
       order: [['vehicle_id', 'ASC'], ['timestamp', 'DESC']],
       include: [
@@ -335,6 +370,60 @@ exports.getAllActiveVehicles = async (req, res, next) => {
       ]
     });
 
+    // Get test vehicles - 30 minutes window
+    // Test vehicles are: (1) vehicles with DEV- or TEST- device_id, OR (2) vehicles with vehicle_id but no device_id
+    const testLocations = await DriverLocation.findAll({
+      where: {
+        timestamp: {
+          [Op.gte]: testTimeAgo
+        },
+        [Op.or]: [
+          {
+            device_id: {
+              [Op.like]: 'DEV-%' // Test devices with DEV- prefix
+            }
+          },
+          {
+            device_id: {
+              [Op.like]: 'TEST-%' // Test devices with TEST- prefix
+            }
+          },
+          {
+            device_id: null, // No device_id but has vehicle_id
+            vehicle_id: {
+              [Op.ne]: null
+            }
+          }
+        ]
+      },
+      order: [['vehicle_id', 'ASC'], ['timestamp', 'DESC']],
+      include: [
+        {
+          model: User,
+          as: 'driver',
+          attributes: ['id', 'username'],
+          include: [{
+            model: DriverProfile,
+            as: 'driverProfile',
+            attributes: ['full_name', 'phone']
+          }]
+        },
+        {
+          model: Vehicle,
+          as: 'vehicle',
+          attributes: ['id', 'license_plate', 'type', 'device_id', 'status']
+        },
+        {
+          model: DeliveryOrder,
+          as: 'deliveryOrder',
+          attributes: ['id', 'do_number', 'status', 'customer_name']
+        }
+      ]
+    });
+
+    // Combine both result sets
+    const locations = [...scrapedLocations, ...testLocations];
+
     // Helper function to extract core device ID (removes location suffix)
     const extractCoreDeviceId = (deviceId) => {
       if (!deviceId) return deviceId;
@@ -344,6 +433,7 @@ exports.getAllActiveVehicles = async (req, res, next) => {
       // "BE8877ADUCiasem, Kabupaten Subang" -> "BE8877"
       // "BE8877ADUPCiasem, Kabupaten Subang" -> "BE8877"  
       // "BE8877ADUSukasari, Kabupaten Subang" -> "BE8877"
+      // "DEV-TEST-DEVICE-1" -> "DEV-TEST-DEVICE-1" (test devices)
       // This groups all variants of the same physical device
       
       // Pattern: extract device number only (BE + digits)
@@ -358,34 +448,59 @@ exports.getAllActiveVehicles = async (req, res, next) => {
         return numericMatch[1];
       }
       
+      // For test device IDs (like DEV-TEST-DEVICE-1), keep as-is
+      if (deviceId.startsWith('DEV-') || deviceId.startsWith('TEST-')) {
+        return deviceId;
+      }
+      
       // Fallback: take everything before first comma or space
       return deviceId.split(/[,\s]/)[0];
     };
 
-    // Group by core device ID to show only unique scraped vehicles
+    // Group by core device ID or vehicle_id to show only unique vehicles
     const latestLocations = [];
     const processedDevices = new Set();
+    const processedVehicles = new Set();
 
     for (const location of locations) {
-      // Only include vehicles that are being actively scraped (have device_id)
+      // Include vehicles with device_id (scraped) or vehicle_id (manual/test)
       if (location.device_id) {
         const coreDeviceId = extractCoreDeviceId(location.device_id);
         
         if (!processedDevices.has(coreDeviceId)) {
           latestLocations.push(location);
           processedDevices.add(coreDeviceId);
+          // Also track vehicle_id to avoid duplicates
+          if (location.vehicle_id) {
+            processedVehicles.add(location.vehicle_id);
+          }
+        }
+      } else if (location.vehicle_id) {
+        // Include vehicles without device_id but with vehicle_id (test vehicles, manual entries)
+        // Only add if not already processed via device_id
+        if (!processedVehicles.has(location.vehicle_id)) {
+          latestLocations.push(location);
+          processedVehicles.add(location.vehicle_id);
+          console.log(`✅ Including vehicle without device_id: vehicle_id=${location.vehicle_id}, license_plate=${location.vehicle?.license_plate || 'N/A'}`);
         }
       }
     }
+
+    console.log(`📊 Found ${latestLocations.length} active vehicles (${processedDevices.size} scraped with device_id, ${processedVehicles.size} test vehicles without device_id)`);
 
     res.json({
       success: true,
       data: latestLocations,
       meta: {
         total: latestLocations.length,
-        timeWindow: `${timeWindow} minutes`,
+        scrapedVehicles: processedDevices.size,
+        testVehicles: processedVehicles.size,
+        timeWindows: {
+          scraped: `${SCRAPED_VEHICLE_WINDOW} minutes`,
+          test: `${TEST_VEHICLE_WINDOW} minutes`
+        },
         lastUpdated: new Date(),
-        note: 'Only showing actively scraped vehicles with GPS devices'
+        note: 'Scraped vehicles: 5min window, Test vehicles: 30min window'
       }
     });
 
@@ -1698,6 +1813,106 @@ exports.testGeofence = async (req, res, next) => {
 
   } catch (error) {
     console.error('Error testing geofence:', error);
+    next(error);
+  }
+};
+
+/**
+ * Check proximity to SPBG for Ghost Mode (200m threshold)
+ * Uses vehicle's GPS location from Inovatracks (scraped), not phone location
+ * GET /api/tracking/proximity/spbg
+ */
+exports.checkSPBGProximity = async (req, res, next) => {
+  try {
+    const driverId = req.user?.id;
+    
+    // Get vehicle's current location from Inovatracks scraped data (DriverLocation table)
+    // This is the vehicle's GPS location, not the phone's location
+    let vehicleLocation = null;
+    
+    // First, try to find vehicle by driver_id
+    const vehicle = await Vehicle.findOne({
+      where: { driver_id: driverId }
+    });
+    
+    if (vehicle) {
+      // Get latest location for this vehicle (scraped from Inovatracks)
+      vehicleLocation = await DriverLocation.findOne({
+        where: { vehicle_id: vehicle.id },
+        order: [['timestamp', 'DESC']]
+      });
+    }
+    
+    // Fallback: if no vehicle found, try to get location by driver_id directly
+    if (!vehicleLocation && driverId) {
+      vehicleLocation = await DriverLocation.findOne({
+        where: { driver_id: driverId },
+        order: [['timestamp', 'DESC']]
+      });
+    }
+    
+    if (!vehicleLocation || !vehicleLocation.latitude || !vehicleLocation.longitude) {
+      console.log('⚠️ No vehicle location found for driver:', driverId, 'Vehicle:', vehicle?.id);
+      return res.status(404).json({
+        success: false,
+        message: 'No vehicle GPS location found. Vehicle location is scraped from Inovatracks every 5 minutes.',
+        data: {
+          isNear: false,
+          distance: null,
+          nearestSpbg: null,
+          threshold: 200,
+          vehicleLocation: null,
+          debug: {
+            driverId,
+            vehicleId: vehicle?.id,
+            vehicleFound: !!vehicle,
+            locationFound: !!vehicleLocation
+          }
+        }
+      });
+    }
+    
+    const lat = parseFloat(vehicleLocation.latitude);
+    const lng = parseFloat(vehicleLocation.longitude);
+    
+    if (isNaN(lat) || isNaN(lng)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid vehicle GPS coordinates'
+      });
+    }
+
+    // Use idleVehicleDetectionService with 200m threshold
+    const idleVehicleDetectionService = require('../services/idleVehicleDetectionService');
+    
+    // Temporarily override radius for this check
+    const originalRadius = idleVehicleDetectionService.spbgRadiusMeters;
+    idleVehicleDetectionService.spbgRadiusMeters = 200; // 200m for Ghost Mode
+    
+    const result = await idleVehicleDetectionService.checkNearSPBG(lat, lng);
+    
+    // Restore original radius
+    idleVehicleDetectionService.spbgRadiusMeters = originalRadius;
+
+    console.log(`📍 Proximity check - Vehicle: ${lat}, ${lng}, Distance: ${result.distance}m, Near: ${result.isNear}, SPBG: ${result.nearestSpbg?.spbg_location || 'N/A'}`);
+
+    res.json({
+      success: true,
+      data: {
+        isNear: result.isNear,
+        distance: result.distance,
+        nearestSpbg: result.nearestSpbg,
+        threshold: 200, // meters
+        vehicleLocation: {
+          latitude: lat,
+          longitude: lng,
+          timestamp: vehicleLocation.timestamp
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error checking SPBG proximity:', error);
     next(error);
   }
 }; 

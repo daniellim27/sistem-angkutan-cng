@@ -24,11 +24,12 @@ const runSeeder = async () => {
     const seederPath = path.join(__dirname, '../src/migrations/seeder.sql');
     const seederSQL = fs.readFileSync(seederPath, 'utf8');
 
-    // Split the SQL into individual statements
+    // Split the SQL into individual statements (simple ';' splitter)
+    // Keep any non-empty chunk – comments may be mixed with SQL.
     const statements = seederSQL
       .split(';')
       .map(stmt => stmt.trim())
-      .filter(stmt => stmt.length > 0 && !stmt.startsWith('--'));
+      .filter(stmt => stmt.length > 0);
 
     console.log(`📝 Found ${statements.length} SQL statements to execute`);
 
@@ -37,11 +38,12 @@ const runSeeder = async () => {
       const statement = statements[i];
       
       try {
-        // Add ON CONFLICT DO NOTHING to INSERT statements
-        const modifiedStatement = statement.replace(
-          /INSERT INTO (\w+) \(([^)]+)\) VALUES/gi,
-          'INSERT INTO $1 ($2) VALUES'
-        ) + ' ON CONFLICT DO NOTHING';
+        // For INSERTs, make them idempotent; other statements run as-is
+        const isInsert = /^INSERT\s+INTO\s/i.test(statement);
+        const hasOnConflict = /ON\s+CONFLICT/i.test(statement);
+        const modifiedStatement = isInsert && !hasOnConflict
+          ? `${statement} ON CONFLICT DO NOTHING`
+          : statement;
 
         await db.pool.query(modifiedStatement);
         console.log(`   ✅ Statement ${i + 1} executed successfully`);

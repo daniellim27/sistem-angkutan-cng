@@ -134,6 +134,14 @@ router.post('/scheduler/stop', cctvController.stopScheduler);
 // Immediately capture screenshots for all active sessions
 router.post('/scheduler/capture-all', cctvController.captureAllSessions);
 
+// POST /api/cctv-monitoring/sessions/:id/test-auto-capture
+// DEV/TEST: Auto-capture N batches for a customer 4-panel set and create Nota Kecil (admin only)
+router.post('/sessions/:id/test-auto-capture', isAdmin, cctvController.testAutoCapture);
+
+// POST /api/cctv-monitoring/sessions/:id/test-create-nota-only
+// DEV/TEST: Create Nota Kecil from existing screenshots only (no new captures)
+router.post('/sessions/:id/test-create-nota-only', isAdmin, cctvController.testCreateNotaOnly);
+
 /**
  * Admin Utilities
  */

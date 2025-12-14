@@ -184,4 +184,11 @@ router.post('/auto-status/clear-cache', checkRole(['admin', 'owner']), trackingC
  */
 router.post('/auto-status/test-geofence', checkRole(['admin', 'owner']), trackingController.testGeofence);
 
+/**
+ * GET /api/tracking/proximity/spbg
+ * Check proximity to SPBG for Ghost Mode (200m threshold)
+ * Driver only
+ */
+router.get('/proximity/spbg', verifyToken, checkRole(['driver']), trackingController.checkSPBGProximity);
+
 module.exports = router; 

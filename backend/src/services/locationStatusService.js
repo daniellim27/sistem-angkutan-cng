@@ -228,7 +228,8 @@ class LocationStatusService {
       
       // Validate status transition
       const validTransitions = {
-        'assigned': ['at_spbu'],
+        // 'assigned' status was removed from enum, mapped to 'at_spbu'
+        'at_spbu': ['at_spbu'],
         'at_spbu': ['otw_to_unload_location'],
         'otw_to_unload_location': ['at_unload_location'],
         'at_unload_location': ['completed'],
@@ -346,9 +347,10 @@ class LocationStatusService {
       
       // Find active delivery orders for this vehicle
       // Check by vehicle_id or by device_id through vehicle table
+      // Note: 'assigned' status was removed from enum, use 'at_spbu' instead
       let whereClause = {
         status: {
-          [Op.in]: ['assigned', 'otw_to_unload_location']
+          [Op.in]: ['at_spbu', 'otw_to_unload_location']
         }
       };
       
@@ -369,9 +371,54 @@ class LocationStatusService {
         return { success: false, message: 'No vehicle_id or device_id provided' };
       }
       
-      const activeOrders = await DeliveryOrder.findAll({
-        where: whereClause
-      });
+      // Query with error handling for old "assigned" status values
+      // The database enum may still have "assigned" but Sequelize model doesn't
+      let activeOrders = [];
+      try {
+        activeOrders = await DeliveryOrder.findAll({
+          where: whereClause,
+          // Use raw: true to bypass Sequelize enum validation if needed
+          raw: false
+        });
+      } catch (error) {
+        // Handle case where database enum doesn't match model enum
+        // This can happen if migration hasn't been run or old data exists
+        if (error.message && error.message.includes('invalid input value for enum delivery_status')) {
+          logger.warn('Enum mismatch detected. Database may have old "assigned" status values.');
+          logger.warn('Attempting to query with raw SQL to handle old status values.');
+          
+          // Fallback: Use raw query to handle old "assigned" status
+          const sequelize = DeliveryOrder.sequelize;
+          const vehicleId = whereClause.vehicle_id;
+          
+          const [results] = await sequelize.query(`
+            SELECT * FROM delivery_orders 
+            WHERE vehicle_id = :vehicle_id 
+            AND status IN ('at_spbu', 'otw_to_unload_location')
+            ORDER BY id DESC
+          `, {
+            replacements: { vehicle_id: vehicleId },
+            type: sequelize.QueryTypes.SELECT
+          });
+          
+          if (results.length === 0) {
+            this.stats.skippedNoMatch++;
+            return { success: false, message: 'No active delivery orders for this vehicle' };
+          }
+          
+          // Convert raw results to Sequelize instances
+          activeOrders = await DeliveryOrder.findAll({
+            where: {
+              id: { [Op.in]: results.map(r => r.id) }
+            }
+          });
+          
+          logger.info(`Successfully queried ${activeOrders.length} orders using fallback method.`);
+        } else {
+          // Re-throw if it's a different error
+          throw error;
+        }
+      }
       
       if (activeOrders.length === 0) {
         this.stats.skippedNoMatch++;
@@ -383,7 +430,7 @@ class LocationStatusService {
       for (const order of activeOrders) {
         let result = null;
         
-        if (order.status === 'assigned') {
+        if (order.status === 'at_spbu') {
           // Check if near SPBU (load location)
           result = await this.checkNearSPBU(order, currentLat, currentLng);
         } else if (order.status === 'otw_to_unload_location') {

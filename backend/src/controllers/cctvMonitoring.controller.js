@@ -11,10 +11,34 @@ const { Op } = require('sequelize');
 const cctvMonitoringService = require('../services/cctvMonitoringService');
 const cctvScheduler = require('../services/cctvScheduler');
 const db = require('../models');
-const { CCTVSession, CCTVScreenshot, SystemSettings } = db;
+const { CCTVSession, CCTVScreenshot, SystemSettings, NotaKecil } = db;
 const { cleanupCloudinaryScreenshotsOnce, initCloudinaryFromEnv } = require('../services/cctvScreenshotRetention');
 
 const BARDI_TOKEN_SETTING_KEY = 'cctv.bardi_session_token';
+
+// Helper: find primary STAN session for a customer/location (for 4-panel setups)
+// Falls back to the given session if no more-specific primary is found.
+// NOTE: DB enum currently allows 'stan' but not 'current_stan'.
+const PRIMARY_METER_TYPES = ['stan', null];
+
+async function findPrimarySessionForCustomer(baseSession) {
+  if (!baseSession) return null;
+
+  const whereClause = {
+    customer_name: baseSession.customer_name,
+    customer_location_index: baseSession.customer_location_index,
+  };
+
+  const primary = await CCTVSession.findOne({
+    where: {
+      ...whereClause,
+      meter_type: { [Op.in]: PRIMARY_METER_TYPES },
+    },
+    order: [['id', 'ASC']],
+  });
+
+  return primary || baseSession;
+}
 
 const persistBardiToken = async (sessionToken) => {
   if (!SystemSettings) return null;
@@ -448,6 +472,8 @@ exports.completeSession = async (req, res) => {
 
 /**
  * Recalibrate nota kecil creation for all full batches
+ * Uses the PRIMARY session (usually STAN) for the same customer/location,
+ * so that recalibration is 4-panel aware even if called from a non-STAN session.
  */
 exports.recalibrateNotaKecil = async (req, res) => {
   try {
@@ -461,12 +487,25 @@ exports.recalibrateNotaKecil = async (req, res) => {
       });
     }
 
-    const result = await cctvMonitoringService.recalibrateNotaKecil(sessionId);
+    const baseSession = await CCTVSession.findByPk(sessionId);
+    if (!baseSession) {
+      return res.status(404).json({
+        success: false,
+        message: `Session ${sessionId} not found`,
+      });
+    }
+
+    const primarySession = await findPrimarySessionForCustomer(baseSession);
+
+    const result = await cctvMonitoringService.recalibrateNotaKecil(primarySession.id);
 
     res.json({
       success: true,
       message: 'Nota kecil recalibration completed',
-      data: result,
+      data: {
+        ...result,
+        used_session_id: primarySession.id,
+      },
     });
   } catch (error) {
     console.error('Error in recalibrateNotaKecil:', error);
@@ -1245,6 +1284,215 @@ exports.captureAllSessions = async (req, res) => {
       success: false,
       message: 'Failed to capture all sessions',
       error: error.message,
+    });
+  }
+};
+
+/**
+ * DEV/TEST: Auto-capture N batches for a 4-panel customer set and force Nota Kecil creation
+ *
+ * Semantics:
+ * - :id should point to the PRIMARY session (usually STAN) for a customer/location.
+ * - count = number of BATCH LOOPS.
+ * - For each loop we capture in order: 1,2,3,4 across the sibling sessions
+ *   (stan → pressure_inlet → pressure_outlet → temperature), then repeat.
+ * - After all loops, we trigger nota kecil creation from the primary session.
+ * POST /api/cctv-monitoring/sessions/:id/test-auto-capture
+ */
+exports.testAutoCapture = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const sessionId = parseInt(id);
+    const count = parseInt(req.body?.count ?? 10);
+
+    if (isNaN(sessionId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid session ID',
+      });
+    }
+
+    const session = await CCTVSession.findByPk(sessionId);
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        message: `Session ${sessionId} not found`,
+      });
+    }
+
+    if (session.status !== 'active') {
+      return res.status(400).json({
+        success: false,
+        message: `Session ${sessionId} is not active`,
+      });
+    }
+
+    const effectiveCount = Number.isFinite(count) && count > 0 ? Math.min(count, 50) : 10;
+
+    // Discover the PRIMARY session for this customer/location (usually STAN)
+    const primarySession = await findPrimarySessionForCustomer(session);
+
+    // Discover all sessions for the same customer/location (4-panel set)
+    const siblingSessions = await CCTVSession.findAll({
+      where: {
+        customer_name: primarySession.customer_name,
+        customer_location_index: primarySession.customer_location_index,
+      },
+    });
+
+    // Build ordered panel list: 1,2,3,4 = stan → pressure_inlet → pressure_outlet → temperature
+    const orderMap = {
+      stan: 1,
+      stan_awal: 1,
+      current_stan: 1,
+      pressure_inlet: 2,
+      pressure_outlet: 3,
+      temperature: 4,
+    };
+
+    let panelSessions = siblingSessions
+      .filter((s) => s.status === 'active')
+      .sort((a, b) => {
+        const aOrder = orderMap[a.meter_type] ?? 99;
+        const bOrder = orderMap[b.meter_type] ?? 99;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return a.id - b.id;
+      });
+
+    // Ensure at least the primary session is present
+    if (!panelSessions.find((s) => s.id === primarySession.id)) {
+      panelSessions.unshift(primarySession);
+    }
+
+    // If only one active session exists, fall back to old behaviour
+    const isSingleSession = panelSessions.length === 1;
+
+    const beforeNotaCount = await NotaKecil.count({
+      where: { cctv_session_id: primarySession.id },
+    });
+
+    let captured = 0;
+    let failed = 0;
+    const errors = [];
+
+    if (isSingleSession) {
+      // Legacy mode: capture repeatedly on the single session
+      for (let i = 0; i < effectiveCount; i++) {
+        try {
+          await cctvMonitoringService.captureScreenshot(primarySession.id, { processOcr: true });
+          captured++;
+        } catch (err) {
+          failed++;
+          errors.push(err.message || String(err));
+        }
+      }
+    } else {
+      // New 4-panel mode: each loop = 1,2,3,4 captures
+      for (let loop = 0; loop < effectiveCount; loop++) {
+        for (const panelSession of panelSessions) {
+          try {
+            await cctvMonitoringService.captureScreenshot(panelSession.id, { processOcr: true });
+            captured++;
+          } catch (err) {
+            failed++;
+            errors.push(
+              `Session ${panelSession.id} (${panelSession.meter_type || 'unknown'}): ` +
+                (err.message || String(err)),
+            );
+          }
+        }
+      }
+    }
+
+    // After captures, process pending nota batches for the PRIMARY session
+    await cctvScheduler.processPendingNotaBatches(primarySession);
+
+    const afterNotaCount = await NotaKecil.count({
+      where: { cctv_session_id: primarySession.id },
+    });
+
+    const createdNotas = Math.max(0, afterNotaCount - beforeNotaCount);
+
+    return res.json({
+      success: true,
+      message: `Test capture completed: ${captured} captured, ${failed} failed, ${createdNotas} nota kecil created`,
+      data: {
+        session_id: primarySession.id,
+        requestedLoops: effectiveCount,
+        requestedCaptures: effectiveCount,
+        captured,
+        failed,
+        createdNotas,
+        errors: errors.slice(0, 5), // cap error messages
+      },
+    });
+  } catch (error) {
+    console.error('Error in testAutoCapture:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to run test auto-capture',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * DEV/TEST: Force-create Nota Kecil from existing screenshots only (no new capture)
+ * Uses the PRIMARY session (usually STAN) for the customer/location and processes
+ * any pending nota batches via the 4-panel aggregator.
+ *
+ * POST /api/cctv-monitoring/sessions/:id/test-create-nota-only
+ */
+exports.testCreateNotaOnly = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const sessionId = parseInt(id);
+
+    if (isNaN(sessionId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid session ID',
+      });
+    }
+
+    const baseSession = await CCTVSession.findByPk(sessionId);
+    if (!baseSession) {
+      return res.status(404).json({
+        success: false,
+        message: `Session ${sessionId} not found`,
+      });
+    }
+
+    const primarySession = await findPrimarySessionForCustomer(baseSession);
+
+    const beforeNotaCount = await NotaKecil.count({
+      where: { cctv_session_id: primarySession.id },
+    });
+
+    await cctvScheduler.processPendingNotaBatches(primarySession);
+
+    const afterNotaCount = await NotaKecil.count({
+      where: { cctv_session_id: primarySession.id },
+    });
+
+    const createdNotas = Math.max(0, afterNotaCount - beforeNotaCount);
+
+    return res.json({
+      success: true,
+      message: `Nota kecil creation from existing screenshots completed: ${createdNotas} nota kecil created`,
+      data: {
+        session_id: primarySession.id,
+        createdNotas,
+        beforeNotaCount,
+        afterNotaCount,
+      },
+    });
+  } catch (error) {
+    console.error('Error in testCreateNotaOnly:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create nota kecil from existing screenshots',
+      error: error.stack || String(error),
     });
   }
 };
