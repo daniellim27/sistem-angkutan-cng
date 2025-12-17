@@ -11,11 +11,13 @@ import {
   Alert,
   ActivityIndicator,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import MapView, { Marker } from 'react-native-maps';
 import { useAuth } from '../../src/contexts/AuthContext';
 import apiClient from '../../src/services/api';
+import { getGasTransactionsByDepositGroup } from '../../src/services/api';
 import { FontAwesome5 } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
@@ -29,6 +31,9 @@ const GhostMode = () => {
   const [nearestSpbg, setNearestSpbg] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showGasButton, setShowGasButton] = useState(false);
+  const [viewMode, setViewMode] = useState<'dashboard' | 'map'>('dashboard');
+  const [history, setHistory] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
   // Animation for ISI GAS button
@@ -144,6 +149,34 @@ const GhostMode = () => {
     router.push('/gas-filling-form');
   };
 
+  // Fetch history when nearest SPBG changes and when dashboard is active
+  const loadHistory = async () => {
+    if (!nearestSpbg || !nearestSpbg.id || viewMode !== 'dashboard') return;
+    setHistoryLoading(true);
+    try {
+      const resp = await getGasTransactionsByDepositGroup(nearestSpbg.id);
+      if (resp.data && resp.data.success) {
+        setHistory(Array.isArray(resp.data.data) ? resp.data.data : []);
+        setErrorMessage(null);
+      } else {
+        setHistory([]);
+      }
+    } catch (err: any) {
+      console.error('Error fetching gas transactions history:', err);
+      // Show specific message when access is denied for drivers
+      if (err?.response?.status === 403) {
+        setErrorMessage('Akses ditolak: Anda tidak diizinkan melihat riwayat SPBG.');
+      }
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadHistory();
+  }, [nearestSpbg, viewMode]);
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -169,62 +202,98 @@ const GhostMode = () => {
 
   return (
     <View style={styles.container}>
-      <MapView
-        style={styles.map}
-        initialRegion={{
-          latitude: vehicleLocation.latitude,
-          longitude: vehicleLocation.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        }}
-        region={{
-          latitude: vehicleLocation.latitude,
-          longitude: vehicleLocation.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        }}
-      >
-        {/* Vehicle location marker (from Inovatracks) */}
-        {vehicleLocation && (
-          <Marker
-            coordinate={{
-              latitude: vehicleLocation.latitude,
-              longitude: vehicleLocation.longitude,
-            }}
-            title="Lokasi Kendaraan"
-            description="GPS dari Inovatracks"
-            pinColor="blue"
-          />
-        )}
-        
-        {/* SPBG marker */}
-        {nearestSpbg && (
-          <Marker
-            coordinate={{
-              latitude: parseFloat(nearestSpbg.latitude),
-              longitude: parseFloat(nearestSpbg.longitude),
-            }}
-            title={nearestSpbg.spbg_name || nearestSpbg.spbg_location}
-            pinColor="green"
-          />
-        )}
-      </MapView>
+      {/* Top toggle to switch between Dashboard (history) and Map */}
+      <View style={styles.topToggle}>
+        <TouchableOpacity
+          style={[styles.toggleButton, viewMode === 'dashboard' && styles.toggleActive]}
+          onPress={() => setViewMode('dashboard')}
+        >
+          <Text style={[styles.toggleText, viewMode === 'dashboard' && styles.toggleTextActive]}>Dashboard</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.toggleButton, viewMode === 'map' && styles.toggleActive]}
+          onPress={() => setViewMode('map')}
+        >
+          <Text style={[styles.toggleText, viewMode === 'map' && styles.toggleTextActive]}>Map</Text>
+        </TouchableOpacity>
+      </View>
 
-      {/* Distance indicator */}
-      {distance !== null && (
-        <View style={styles.distanceIndicator}>
-          <Text style={styles.distanceText}>
-            {distance <= 200 ? '✓' : '○'} {distance}m dari SPBG
-          </Text>
-          {nearestSpbg && (
-            <Text style={styles.spbgNameText}>
-              {nearestSpbg.spbg_name || nearestSpbg.spbg_location}
-            </Text>
-          )}
+      {viewMode === 'map' && (
+        <MapView
+          style={styles.map}
+          initialRegion={{
+            latitude: vehicleLocation.latitude,
+            longitude: vehicleLocation.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }}
+          region={{
+            latitude: vehicleLocation.latitude,
+            longitude: vehicleLocation.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }}
+        >
+          {/* Vehicle location marker (from Inovatracks) */}
           {vehicleLocation && (
-            <Text style={styles.locationText}>
-              Kendaraan: {vehicleLocation.latitude.toFixed(6)}, {vehicleLocation.longitude.toFixed(6)}
-            </Text>
+            <Marker
+              coordinate={{
+                latitude: vehicleLocation.latitude,
+                longitude: vehicleLocation.longitude,
+              }}
+              title="Lokasi Kendaraan"
+              description="GPS dari Inovatracks"
+              pinColor="blue"
+            />
+          )}
+          
+          {/* SPBG marker */}
+          {nearestSpbg && (
+            <Marker
+              coordinate={{
+                latitude: parseFloat(nearestSpbg.latitude),
+                longitude: parseFloat(nearestSpbg.longitude),
+              }}
+              title={nearestSpbg.spbg_name || nearestSpbg.spbg_location}
+              pinColor="green"
+            />
+          )}
+        </MapView>
+      )}
+
+      {/* Dashboard / History view */}
+      {viewMode === 'dashboard' && (
+        <View style={styles.dashboardContainer}>
+          <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
+            <Text style={styles.dashboardTitle}>Riwayat Isi Gas SPBG</Text>
+            <TouchableOpacity onPress={loadHistory} style={{padding:6}}>
+              <Text style={{color:'#007AFF', fontWeight:'600'}}>Refresh</Text>
+            </TouchableOpacity>
+          </View>
+
+          {historyLoading ? (
+            <ActivityIndicator size="small" color="#007AFF" />
+          ) : nearestSpbg && history.length === 0 ? (
+            <Text style={styles.noHistoryText}>Belum ada transaksi untuk SPBG ini.</Text>
+          ) : !nearestSpbg ? (
+            <Text style={styles.noHistoryText}>Tidak ada SPBG terdekat. Tunggu hingga kendaraan ditemukan.</Text>
+          ) : (
+            <ScrollView style={styles.historyList}>
+              {history.map((h) => (
+                <View key={h.id} style={styles.historyItem}>
+                  <View style={{flex:1}}>
+                    <Text style={styles.historyTitle}>{h.driver?.driverProfile?.full_name || h.driver?.username || 'Driver'}</Text>
+                    <Text style={styles.historySub}>{new Date(h.created_at).toLocaleString()}</Text>
+                    <Text style={styles.historySub}>Rp {Number(h.total_cost).toLocaleString('id-ID')} • {h.status}</Text>
+                  </View>
+                  {h.nota_photo_url && (
+                    <View style={styles.historyThumbContainer}>
+                      <Text style={styles.historyThumbText}>Nota</Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
           )}
         </View>
       )}
@@ -371,6 +440,84 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     marginLeft: 10,
+  },
+  topToggle: {
+    position: 'absolute',
+    top: 10,
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  toggleButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 20,
+    marginHorizontal: 6,
+  },
+  toggleActive: {
+    backgroundColor: '#007AFF',
+  },
+  toggleText: {
+    color: '#007AFF',
+    fontWeight: '600',
+  },
+  toggleTextActive: {
+    color: '#FFF',
+  },
+  dashboardContainer: {
+    position: 'absolute',
+    top: 60,
+    left: 10,
+    right: 10,
+    bottom: 120,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 12,
+    padding: 12,
+    zIndex: 15,
+  },
+  dashboardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  historyList: {
+    flex: 1,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+    alignItems: 'center',
+  },
+  historyTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  historySub: {
+    fontSize: 12,
+    color: '#666',
+  },
+  noHistoryText: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 10,
+  },
+  historyThumbContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: '#F0F0F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  historyThumbText: {
+    fontSize: 10,
+    color: '#333',
   },
 });
 

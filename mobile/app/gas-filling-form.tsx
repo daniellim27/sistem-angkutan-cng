@@ -15,7 +15,7 @@ import {
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../src/contexts/AuthContext';
-import apiClient from '../src/services/api';
+import apiClient, { createGasTransaction } from '../src/services/api';
 import { FontAwesome5 } from '@expo/vector-icons';
 
 interface PhotoState {
@@ -109,51 +109,21 @@ const GasFillingForm = () => {
 
     setIsSubmitting(true);
     try {
-      const formData = new FormData();
+      const payload: any = {
+        surat_jalan_photo: suratJalanPhoto,
+        nota_photo: notaPhoto,
+        biaya_lain_photo: biayaLainPhoto,
+        volume_m3: volumeM3,
+        calculation_method: calculationMethod,
+        rate_per_m3: ratePerM3,
+        jisdor_rate: jisdorRate || undefined,
+        total_cost: calculateTotalCost().toString(),
+        biaya_lain_amount: biayaLainAmount || undefined,
+        biaya_lain_description: biayaLainDescription || undefined,
+        // Optionally: deposit_group_id or delivery_order_id can be added here
+      };
 
-      // Append photos
-      formData.append('surat_jalan_photo', {
-        uri: suratJalanPhoto.uri,
-        type: suratJalanPhoto.type || 'image/jpeg',
-        name: suratJalanPhoto.name || 'surat_jalan.jpg',
-      } as any);
-
-      formData.append('nota_photo', {
-        uri: notaPhoto.uri,
-        type: notaPhoto.type || 'image/jpeg',
-        name: notaPhoto.name || 'nota.jpg',
-      } as any);
-
-      if (biayaLainPhoto) {
-        formData.append('biaya_lain_photo', {
-          uri: biayaLainPhoto.uri,
-          type: biayaLainPhoto.type || 'image/jpeg',
-          name: biayaLainPhoto.name || 'biaya_lain.jpg',
-        } as any);
-      }
-
-      // Append form data
-      formData.append('volume_m3', volumeM3);
-      formData.append('calculation_method', calculationMethod);
-      formData.append('rate_per_m3', ratePerM3);
-      if (jisdorRate) {
-        formData.append('jisdor_rate', jisdorRate);
-      }
-      formData.append('total_cost', calculateTotalCost().toString());
-
-      if (biayaLainAmount) {
-        formData.append('biaya_lain_amount', biayaLainAmount);
-      }
-      if (biayaLainDescription) {
-        formData.append('biaya_lain_description', biayaLainDescription);
-      }
-
-      // Fire-and-forget submission
-      await apiClient.post('/gas-transactions', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      await createGasTransaction(payload);
 
       Alert.alert('Success', 'Gas transaction submitted successfully', [
         {
@@ -163,10 +133,7 @@ const GasFillingForm = () => {
       ]);
     } catch (error: any) {
       console.error('Error submitting gas transaction:', error);
-      Alert.alert(
-        'Error',
-        error.response?.data?.message || 'Failed to submit gas transaction'
-      );
+      Alert.alert('Error', error.response?.data?.message || error.message || 'Failed to submit gas transaction');
     } finally {
       setIsSubmitting(false);
     }

@@ -116,7 +116,11 @@ exports.createGasTransaction = async (req, res, next) => {
  */
 exports.getGasTransactionsByDepositGroup = async (req, res, next) => {
   try {
-    const { deposit_group_id } = req.params;
+    const deposit_group_id = parseInt(req.params.deposit_group_id, 10);
+
+    if (isNaN(deposit_group_id)) {
+      return res.status(400).json({ success: false, message: 'Invalid deposit_group_id' });
+    }
 
     const gasTransactions = await GasTransaction.findAll({
       where: {
@@ -150,8 +154,9 @@ exports.getGasTransactionsByDepositGroup = async (req, res, next) => {
       data: gasTransactions
     });
   } catch (error) {
-    console.error('Error getting gas transactions by deposit group:', error);
-    next(error);
+    console.error('Error getting gas transactions by deposit group:', error?.stack || error);
+    // Return a clear message for the mobile client in development
+    return res.status(500).json({ success: false, message: 'Failed to fetch gas transactions', details: error?.message || String(error) });
   }
 };
 

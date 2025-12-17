@@ -17,13 +17,13 @@ const getApiUrl = () => {
       console.warn('⚠️ localhost detected on mobile device - this will not work!');
       console.warn('💡 Use your computer IP address or ngrok URL instead');
       // Return the ngrok fallback for mobile devices
-      return 'https://44e909e9a6a0.ngrok-free.app/api';
+      return 'https://decahedral-duane-solitudinous.ngrok-free.dev/api';
     }
     return envUrl;
   }
   
   // Fallback to ngrok URL
-  return 'https://44e909e9a6a0.ngrok-free.app/api';
+  return 'https://decahedral-duane-solitudinous.ngrok-free.dev/api';
 };
 
 const API_BASE_URL = getApiUrl();
@@ -512,6 +512,58 @@ export const createBudgetRequest = async (requestData) => {
     },
     timeout: 30000,
   });
+};
+
+/**
+ * Create a gas transaction using helper that properly appends files
+ * Accepts a transactionData object with fields similar to backend
+ */
+export const createGasTransaction = async (transactionData) => {
+  try {
+    const formData = new FormData();
+
+    // Append files using helper for platform compatibility
+    await appendFileToFormData(formData, 'surat_jalan_photo', transactionData.surat_jalan_photo);
+    await appendFileToFormData(formData, 'nota_photo', transactionData.nota_photo);
+    await appendFileToFormData(formData, 'biaya_lain_photo', transactionData.biaya_lain_photo);
+
+    // Append fields
+    if (transactionData.deposit_group_id) formData.append('deposit_group_id', transactionData.deposit_group_id.toString());
+    if (transactionData.delivery_order_id) formData.append('delivery_order_id', transactionData.delivery_order_id.toString());
+    if (transactionData.vehicle_id) formData.append('vehicle_id', transactionData.vehicle_id.toString());
+    if (transactionData.volume_m3) formData.append('volume_m3', transactionData.volume_m3.toString());
+    if (transactionData.calculation_method) formData.append('calculation_method', transactionData.calculation_method);
+    if (transactionData.rate_per_m3) formData.append('rate_per_m3', transactionData.rate_per_m3.toString());
+    if (transactionData.jisdor_rate) formData.append('jisdor_rate', transactionData.jisdor_rate.toString());
+    if (transactionData.total_cost) formData.append('total_cost', transactionData.total_cost.toString());
+    if (transactionData.biaya_lain_amount) formData.append('biaya_lain_amount', transactionData.biaya_lain_amount.toString());
+    if (transactionData.biaya_lain_description) formData.append('biaya_lain_description', transactionData.biaya_lain_description);
+    if (transactionData.nota_ocr_data) formData.append('nota_ocr_data', JSON.stringify(transactionData.nota_ocr_data));
+
+    // Debug log
+    console.log('Submitting gas transaction with FormData fields:');
+    for (const [k, v] of formData.entries()) {
+      console.log(k, v);
+    }
+
+    const response = await apiClient.post('/gas-transactions', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000,
+    });
+
+    return response;
+  } catch (error) {
+    console.error('Error creating gas transaction:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get gas transactions by deposit group
+ */
+export const getGasTransactionsByDepositGroup = (depositGroupId) => {
+  if (!depositGroupId) return Promise.reject(new Error('depositGroupId is required'));
+  return apiClient.get(`/gas-transactions/by-deposit-group/${depositGroupId}`);
 };
 
 export const getBudgetRequests = async (deliveryOrderId = null) => {

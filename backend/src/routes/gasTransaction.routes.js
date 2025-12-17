@@ -13,7 +13,8 @@ const upload = require('../middlewares/upload.middleware');
 router.get(
   '/by-deposit-group/:deposit_group_id',
   verifyToken,
-  checkRole(['admin', 'owner']),
+  // Allow drivers to see SPBG transactions (driver UX needs history when near SPBG)
+  checkRole(['admin', 'owner', 'driver']),
   gasTransactionController.getGasTransactionsByDepositGroup
 );
 
