@@ -273,62 +273,93 @@ class MeterOcrService {
 
       FOCUS ONLY on OUTLET PRESSURE gauge (usually RIGHT or labeled "OUTLET").
 
-      CRITICAL SCALE READING RULES:
+      CRITICAL SCALE READING RULES - OUTLET HAS DIFFERENT SCALE:
       1. Look at the BAR scale (outer scale, usually black markings)
       2. The gauge reads CLOCKWISE - numbers increase as you go clockwise around the dial
-      3. Each SMALL TICK/MARK between major numbers = 0.2 bar (NOT 5 bar, NOT 0.1 bar)
-      4. Major numbers are typically: 0, 2, 4, 6, 8, 10 (in clockwise order)
-      5. The OUTLET gauge has a FINER scale than inlet - numbers are smaller and ticks are closer together
+      3. Each SMALL TICK/MARK between major numbers = 0.1 bar (NOT 5 bar, NOT 0.2 bar)
+      4. Major numbers are: 1, 2, 3, 4 (in clockwise order) - SMALLER NUMBERS than inlet
+      5. The OUTLET gauge has a FINER scale - numbers are smaller and ticks are closer together
+      6. Between each major number (e.g., between 1-2, 2-3, 3-4), there are 10 small ticks (each = 0.1 bar)
       
       STEP-BY-STEP READING PROCESS - FOLLOW EXACTLY:
-      Step 1: Identify the two major numbers the needle is between
-      Step 2: ALWAYS use the LOWER (smaller) number as your base
-      Step 3: Count how many ticks the needle has passed AFTER the lower number
-      Step 4: Calculate: lower_number + (ticks × 0.2)
+      Step 1: Identify the two major numbers the needle is between (e.g., between 2 and 3)
+      Step 2: ALWAYS use the LOWER (smaller) number as your base (e.g., if between 2-3, use 2)
+      Step 3: Look at the EXACT position of the needle tip - count ONLY the ticks that the needle tip has CLEARLY PASSED
+      Step 4: If the needle tip is ON a tick, that tick counts. If the needle tip is BEFORE a tick, don't count that tick yet.
+      Step 5: Count carefully - be precise, don't over-count
+      Step 6: Calculate: lower_number + (ticks × 0.1)
 
       ABSOLUTE RULES - NO EXCEPTIONS:
-      - If needle is between 0 and 2 → base = 0, reading will be 0.x (like 1.0, 1.5)
-      - If needle is between 2 and 4 → base = 2, reading will be 2.x (like 3.0, 3.5, 3.6)
-      - If needle is between 4 and 6 → base = 4, reading will be 4.x (like 4.2, 4.6, 5.0)
-      - If needle is between 6 and 8 → base = 6, reading will be 6.x (like 6.4, 7.0)
-      - If needle is between 8 and 10 → base = 8, reading will be 8.x (like 8.6, 9.0)
+      - If needle is between 1 and 2 → base = 1, reading will be 1.x (like 1.0, 1.5, 1.8)
+      - If needle is between 2 and 3 → base = 2, reading will be 2.x (like 2.0, 2.5, 2.6, 2.9)
+      - If needle is between 3 and 4 → base = 3, reading will be 3.x (like 3.0, 3.5, 3.8)
+      - If needle is at exactly 1 = "1.0"
+      - If needle is at exactly 2 = "2.0"
+      - If needle is at exactly 3 = "3.0"
+      - If needle is at exactly 4 = "4.0"
 
-      CRITICAL DIRECTION RULES:
+      CRITICAL DIRECTION RULES - READ CAREFULLY:
       - The needle moves CLOCKWISE (rightward) as pressure increases
-      - If needle is between 2 and 4, it has PASSED 2 and is APPROACHING 4
-      - The reading is ALWAYS closer to the number the needle is approaching, but still uses the lower base
+      - Clockwise direction: 1 → 2 → 3 → 4
+      - If needle is between 2 and 3, it has PASSED 2 and is APPROACHING 3
+      - The reading is ALWAYS between the two numbers (2.x if between 2-3, NOT 3.x)
       - NEVER use the higher number as base
       - NEVER count backward from the higher number
       - NEVER subtract from the higher number
+      - Always count FORWARD from the LOWER number
+      - If needle is between 2-3, the answer MUST be 2.x (like 2.1, 2.5, 2.6, 2.9), NOT 3.x
 
       VISUAL GUIDANCE:
-      - Imagine the gauge: 0 at top, then clockwise: 2, 4, 6, 8, 10
-      - If needle points between 2 and 4, it's in the 2-4 range
-      - Count ticks from 2 going toward 4
-      - Between 2-4: 2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 3.2, 3.4, 3.6, 3.8, 4.0
-      - If needle is at ~3.5, it has passed ~7-8 ticks from 2: 2 + (7.5 × 0.2) = 3.5
+      - Imagine the gauge: 1 at top, then clockwise: 2, 3, 4
+      - If needle points between 2 and 3, it's in the 2-3 range
+      - Count ticks from 2 going toward 3 (clockwise/forward)
+      - Between 2-3: 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0
+      - If needle tip is at ~2.6, it has passed exactly 6 ticks from 2: 2 + (6 × 0.1) = 2.6
+      - If needle tip is at ~2.8, it has passed exactly 8 ticks from 2: 2 + (8 × 0.1) = 2.8
+      - Be careful: 2.6 means 6 ticks passed, 2.8 means 8 ticks passed - don't confuse them!
 
       EXAMPLES WITH CORRECT DIRECTION:
-      - Needle between 2 and 4, pointing to ~3.5 → base=2, ~7-8 ticks → 2 + (7.5 × 0.2) = 3.5 → "3.5"
-      - Needle between 2 and 4, pointing to ~3.0 → base=2, ~5 ticks → 2 + (5 × 0.2) = 3.0 → "3.0"
-      - Needle between 2 and 4, pointing to ~3.6 → base=2, ~8 ticks → 2 + (8 × 0.2) = 3.6 → "3.6"
-      - Needle between 0 and 2, pointing to ~1.0 → base=0, ~5 ticks → 0 + (5 × 0.2) = 1.0 → "1.0"
-      - Needle between 4 and 6, pointing to ~4.6 → base=4, ~3 ticks → 4 + (3 × 0.2) = 4.6 → "4.6"
+      - Needle between 2 and 3, pointing to ~2.6 → base=2, ~6 ticks PASSED → 2 + (6 × 0.1) = 2.6 → "2.6"
+      - Needle between 2 and 3, pointing to ~2.5 → base=2, ~5 ticks PASSED → 2 + (5 × 0.1) = 2.5 → "2.5"
+      - Needle between 2 and 3, pointing to ~2.4 → base=2, ~4 ticks PASSED → 2 + (4 × 0.1) = 2.4 → "2.4"
+      - Needle between 2 and 3, pointing to ~2.8 → base=2, ~8 ticks PASSED → 2 + (8 × 0.1) = 2.8 → "2.8"
+      - Needle between 2 and 3, pointing to ~2.9 → base=2, ~9 ticks PASSED → 2 + (9 × 0.1) = 2.9 → "2.9"
+      - Needle between 1 and 2, pointing to ~1.5 → base=1, ~5 ticks PASSED → 1 + (5 × 0.1) = 1.5 → "1.5"
+      - Needle between 3 and 4, pointing to ~3.2 → base=3, ~2 ticks PASSED → 3 + (2 × 0.1) = 3.2 → "3.2"
       - Needle at exactly 2 = "2.0"
-      - Needle at exactly 4 = "4.0"
+      - Needle at exactly 3 = "3.0"
+
+      PRECISION TIPS:
+      - Look at the EXACT needle tip position, not where you think it should be
+      - Count only ticks the needle tip has CLEARLY passed - be conservative
+      - If unsure between two values, choose the lower one (e.g., if between 2.6 and 2.8, choose 2.6)
+      - Don't count ticks the needle is approaching - only count passed ticks
 
       COMMON MISTAKES TO AVOID:
-      ❌ WRONG: Needle between 2-4, using 4 as base → 4.6 (INCORRECT)
-      ✅ CORRECT: Needle between 2-4, using 2 as base → 3.5 (CORRECT)
-      ❌ WRONG: Counting backward from 4
+      ❌ WRONG: Needle between 2-3, using 3 as base → 3.2 (INCORRECT - reading can't be 3.x if needle is between 2-3)
+      ✅ CORRECT: Needle between 2-3, using 2 as base → 2.6 (CORRECT - reading is between 2-3)
+      ❌ WRONG: Needle between 2-3, reading 3.2 (this means you used 3 as base - WRONG!)
+      ✅ CORRECT: Needle between 2-3, reading 2.6 (this means you used 2 as base - CORRECT!)
+      ❌ WRONG: Counting backward from 3
       ✅ CORRECT: Counting forward from 2
+      ❌ WRONG: Using 5 bar per tick (that's for inlet, not outlet)
+      ✅ CORRECT: Using 0.1 bar per tick (for outlet)
 
-      FINAL CHECK:
-      - If your answer is 4.6 and needle is between 2-4, you're WRONG - use 2 as base
-      - If your answer is 2.x or 3.x and needle is between 2-4, you're CORRECT
-      - The answer MUST be between the two major numbers (2.x if between 2-4)
+      FINAL CHECK - CRITICAL:
+      - If needle is between 2-3 and your answer is 3.2, you're WRONG - you used 3 as base
+      - If needle is between 2-3 and your answer is 2.6, you're CORRECT - you used 2 as base
+      - The answer MUST be between the two major numbers (2.x if between 2-3, 3.x if between 3-4)
+      - If your answer is higher than the upper number, you used the wrong base!
 
-      REPLY ONLY WITH NUMBER (e.g., "3.5" or "3.6" or "1.0")`,
+      CRITICAL: 
+      - Each small mark/tick = 0.1 bar (NOT 5 bar - that's for inlet!)
+      - Major numbers are 1, 2, 3, 4 (NOT 0, 50, 100 - that's for inlet!)
+      - Read CLOCKWISE - find the LOWER major number BEFORE the needle, then count FORWARD
+      - Always use the LOWER major number as base when needle is between two numbers
+      - The reading must be between the two numbers (2.x if between 2-3, NOT 3.x)
+      - If you get 3.2 when needle is between 2-3, you made a direction error - use 2 as base!
+
+      REPLY ONLY WITH NUMBER (e.g., "2.6" or "2.5" or "1.5")`,
 
         stan: `You are reading CONTINUOUS GAS METER (STAN).
 
