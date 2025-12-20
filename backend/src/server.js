@@ -1,5 +1,6 @@
 // server.js
-require("dotenv").config();
+// Load .env file and override system environment variables
+require("dotenv").config({ override: true });
 
 // Polyfill for File API to fix undici compatibility issues
 if (typeof globalThis.File === 'undefined') {
@@ -314,6 +315,9 @@ initializeDatabase().then(() => {
 
   // Static uploads
   app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+  
+  // Static public files (for test interfaces)
+  app.use("/public", express.static(path.join(__dirname, "../public")));
 
   // === New Web Routes (ADDED) ===
   app.use("/api/web/purchase-orders", webPurchaseOrderRoutes);
@@ -362,11 +366,9 @@ initializeDatabase().then(() => {
   app.use("/api/web", webNotaBesarRoutes);
   app.use("/api/web/image-upload", webImageUploadRoutes);
 
-  // Test routes (only in development)
-  if (process.env.NODE_ENV === 'development') {
+  // Test routes (available in all environments for testing)
     const ocrTestRoutes = require("./routes/test/ocrTest.routes");
     app.use("/api/test/ocr", ocrTestRoutes);
-  }
 
   // Add Bardi scraping routes
   app.use("/api/bardi", bardiScrapingRoutes);

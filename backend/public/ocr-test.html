@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR Test Interface - System Angkutan CNG</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .ocr-type-selector {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .ocr-type-card {
+            border: 3px solid #e0e0e0;
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        .ocr-type-card:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.2);
+        }
+
+        .ocr-type-card.active {
+            border-color: #667eea;
+            background: #e8edff;
+        }
+
+        .ocr-type-card h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.3em;
+        }
+
+        .ocr-type-card p {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .upload-section {
+            margin-bottom: 30px;
+        }
+
+        .upload-area {
+            border: 3px dashed #ddd;
+            border-radius: 15px;
+            padding: 60px 20px;
+            text-align: center;
+            background: #fafafa;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #e8edff;
+            transform: scale(1.02);
+        }
+
+        .upload-area.has-file {
+            border-color: #4caf50;
+            background: #e8f5e9;
+        }
+
+        .upload-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        .upload-text {
+            font-size: 1.2em;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .upload-hint {
+            color: #999;
+            font-size: 0.9em;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .meter-type-selector {
+            margin: 20px 0;
+            display: none;
+        }
+
+        .meter-type-selector.active {
+            display: block;
+        }
+
+        .meter-type-selector label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .meter-type-selector select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+            background: white;
+        }
+
+        .meter-type-selector select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .image-preview {
+            max-width: 100%;
+            max-height: 400px;
+            margin: 20px auto;
+            display: block;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .result {
+            margin-top: 30px;
+            padding: 30px;
+            border-radius: 15px;
+            display: none;
+        }
+
+        .result.show {
+            display: block;
+        }
+
+        .result.success {
+            background: #d4edda;
+            border: 2px solid #c3e6cb;
+        }
+
+        .result.error {
+            background: #f8d7da;
+            border: 2px solid #f5c6cb;
+        }
+
+        .result.loading {
+            background: #d1ecf1;
+            border: 2px solid #bee5eb;
+        }
+
+        .result h3 {
+            margin-bottom: 20px;
+            color: #155724;
+        }
+
+        .result.error h3 {
+            color: #721c24;
+        }
+
+        .result.loading h3 {
+            color: #0c5460;
+        }
+
+        .data-display {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .field-group {
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .field-label {
+            font-weight: bold;
+            color: #495057;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+
+        .field-value {
+            color: #212529;
+            font-family: 'Courier New', monospace;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            word-break: break-all;
+        }
+
+        .confidence {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .confidence.high {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .confidence.medium {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .confidence.low {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .calculation-summary {
+            background: #e3f2fd;
+            border: 2px solid #bbdefb;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .calculation-summary h4 {
+            color: #1976d2;
+            margin-bottom: 15px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .json-display {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            margin-top: 15px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 1em;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: bold;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .login-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .login-modal.show {
+            display: flex;
+        }
+
+        .login-box {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .login-box h2 {
+            margin-bottom: 20px;
+            color: #333;
+            text-align: center;
+        }
+
+        .login-box input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+        }
+
+        .login-box input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .auth-status {
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 0.9em;
+        }
+
+        .auth-status.authenticated {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .auth-status.not-authenticated {
+            background: #fff3cd;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Modal -->
+    <div class="login-modal" id="loginModal">
+        <div class="login-box">
+            <h2>🔐 Login Required</h2>
+            <div id="authStatus" class="auth-status not-authenticated">
+                Not authenticated - Test routes may require login
+            </div>
+            <input type="text" id="username" placeholder="Username" value="admin">
+            <input type="password" id="password" placeholder="Password" value="awak1234">
+            <div class="button-group" style="margin-top: 20px;">
+                <button class="btn btn-primary" onclick="handleLogin()">Login</button>
+                <button class="btn btn-secondary" onclick="skipLogin()">Skip (Test Mode)</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <h1>🔍 OCR Test Interface</h1>
+            <p>Test OCR processing for NOTA, Surat Jalan, and Meter readings</p>
+            <div id="userInfo" style="margin-top: 15px; font-size: 0.9em; opacity: 0.9;"></div>
+        </div>
+
+        <div class="content">
+            <!-- OCR Type Selector -->
+            <div class="ocr-type-selector">
+                <div class="ocr-type-card active" data-type="nota">
+                    <h3>📄 NOTA</h3>
+                    <p>Gas Station Receipt</p>
+                </div>
+                <div class="ocr-type-card" data-type="surat-jalan">
+                    <h3>📋 Surat Jalan</h3>
+                    <p>Delivery Note</p>
+                </div>
+                <div class="ocr-type-card" data-type="meter">
+                    <h3>📊 Meter</h3>
+                    <p>CCTV Screenshot</p>
+                </div>
+            </div>
+
+            <!-- Upload Section -->
+            <div class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📸</div>
+                    <div class="upload-text">Click here or drag and drop your image</div>
+                    <div class="upload-hint">Supported: JPG, PNG, JPEG (Max 10MB)</div>
+                    <input type="file" id="imageInput" accept="image/*">
+                </div>
+
+                <!-- Meter Type Selector (only shown for meter OCR) -->
+                <div class="meter-type-selector" id="meterTypeSelector">
+                    <label for="meterType">Meter Type:</label>
+                    <select id="meterType">
+                        <option value="temperature">🌡️ Temperature</option>
+                        <option value="pressure_inlet">⚡ Pressure Inlet</option>
+                        <option value="pressure_outlet">⚡ Pressure Outlet</option>
+                        <option value="stan">🔢 STAN (Continuous Meter)</option>
+                        <option value="other">📊 Other</option>
+                    </select>
+                </div>
+
+                <img id="imagePreview" class="image-preview" style="display: none;">
+
+                <div class="button-group">
+                    <button class="btn btn-primary" id="processBtn" disabled>
+                        🚀 Process OCR
+                    </button>
+                    <button class="btn btn-secondary" id="clearBtn">
+                        🗑️ Clear
+                    </button>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div class="result" id="result">
+                <div id="resultContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let selectedOCRType = 'nota';
+        let selectedFile = null;
+        let authToken = null;
+        const API_BASE = '/api/test/ocr';
+        const AUTH_API = '/api/auth/web/login';
+
+        // Check authentication on load
+        window.addEventListener('DOMContentLoaded', () => {
+            authToken = localStorage.getItem('ocrTestAuthToken');
+            if (authToken) {
+                updateAuthStatus(true);
+            } else {
+                // Show login modal
+                document.getElementById('loginModal').classList.add('show');
+            }
+        });
+
+        // Login function
+        async function handleLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            if (!username || !password) {
+                alert('Please enter username and password');
+                return;
+            }
+
+            try {
+                const response = await fetch(AUTH_API, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                // Check if login was successful (API returns token directly, not in success field)
+                if (response.ok && data.token) {
+                    authToken = data.token;
+                    localStorage.setItem('ocrTestAuthToken', authToken);
+                    updateAuthStatus(true);
+                    document.getElementById('loginModal').classList.remove('show');
+                    console.log('Login successful!', data.message);
+                } else {
+                    alert('Login failed: ' + (data.message || 'Invalid credentials'));
+                }
+            } catch (error) {
+                alert('Login error: ' + error.message);
+            }
+        }
+
+        // Skip login (for test routes that don't require auth)
+        function skipLogin() {
+            document.getElementById('loginModal').classList.remove('show');
+            updateAuthStatus(false);
+        }
+
+        // Update auth status display
+        function updateAuthStatus(authenticated) {
+            const userInfo = document.getElementById('userInfo');
+            const authStatus = document.getElementById('authStatus');
+            
+            if (authenticated && authToken) {
+                userInfo.innerHTML = '✅ Authenticated | <a href="#" onclick="logout()" style="color: white; text-decoration: underline;">Logout</a>';
+                if (authStatus) {
+                    authStatus.textContent = 'Authenticated';
+                    authStatus.className = 'auth-status authenticated';
+                }
+            } else {
+                userInfo.innerHTML = '⚠️ Test Mode (No Auth) | <a href="#" onclick="showLogin()" style="color: white; text-decoration: underline;">Login</a>';
+                if (authStatus) {
+                    authStatus.textContent = 'Not authenticated - Using test endpoints';
+                    authStatus.className = 'auth-status not-authenticated';
+                }
+            }
+        }
+
+        // Show login modal
+        function showLogin() {
+            document.getElementById('loginModal').classList.add('show');
+        }
+
+        // Logout
+        function logout() {
+            authToken = null;
+            localStorage.removeItem('ocrTestAuthToken');
+            updateAuthStatus(false);
+        }
+
+        // Elements
+        const ocrTypeCards = document.querySelectorAll('.ocr-type-card');
+        const uploadArea = document.getElementById('uploadArea');
+        const imageInput = document.getElementById('imageInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const meterTypeSelector = document.getElementById('meterTypeSelector');
+        const meterType = document.getElementById('meterType');
+        const processBtn = document.getElementById('processBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const result = document.getElementById('result');
+        const resultContent = document.getElementById('resultContent');
+
+        // OCR Type Selection
+        ocrTypeCards.forEach(card => {
+            card.addEventListener('click', () => {
+                ocrTypeCards.forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+                selectedOCRType = card.dataset.type;
+                
+                // Show/hide meter type selector
+                if (selectedOCRType === 'meter') {
+                    meterTypeSelector.classList.add('active');
+                } else {
+                    meterTypeSelector.classList.remove('active');
+                }
+                
+                // Reset file selection
+                resetFileSelection();
+            });
+        });
+
+        // File Upload Handling
+        uploadArea.addEventListener('click', () => imageInput.click());
+        uploadArea.addEventListener('dragover', handleDragOver);
+        uploadArea.addEventListener('dragleave', handleDragLeave);
+        uploadArea.addEventListener('drop', handleDrop);
+        imageInput.addEventListener('change', handleFileSelect);
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleFile(e.dataTransfer.files[0]);
+            }
+        }
+
+        function handleFileSelect(e) {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        }
+
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showResult('❌ Please select an image file.', 'error');
+                return;
+            }
+
+            if (file.size > 10 * 1024 * 1024) {
+                showResult('❌ File size must be less than 10MB.', 'error');
+                return;
+            }
+
+            selectedFile = file;
+            processBtn.disabled = false;
+            uploadArea.classList.add('has-file');
+            
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imagePreview.src = e.target.result;
+                imagePreview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Process OCR
+        processBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            showResult('<div class="spinner"></div><h3>🔄 Processing image with OCR...</h3>', 'loading');
+            processBtn.disabled = true;
+
+            try {
+                const formData = new FormData();
+                formData.append('image', selectedFile);
+
+                let endpoint = `${API_BASE}/${selectedOCRType}`;
+                
+                // Add meter_type for meter OCR
+                if (selectedOCRType === 'meter') {
+                    formData.append('meter_type', meterType.value);
+                }
+
+                const headers = {};
+                if (authToken) {
+                    headers['Authorization'] = `Bearer ${authToken}`;
+                }
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: headers,
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    displayResults(data.data);
+                } else {
+                    showResult(`❌ Error: ${data.message || data.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Network Error: ${error.message}`, 'error');
+            } finally {
+                processBtn.disabled = false;
+            }
+        });
+
+        // Display Results
+        function displayResults(data) {
+            let html = '<h3>✅ OCR Processing Results</h3>';
+            
+            // Tabs for different views
+            html += `
+                <div class="tabs">
+                    <button class="tab active" onclick="showTab('summary')">Summary</button>
+                    <button class="tab" onclick="showTab('raw')">Raw Data</button>
+                </div>
+            `;
+
+            // Summary Tab
+            html += '<div id="summaryTab" class="tab-content active">';
+            
+            const ocrResult = data.ocr_result || data;
+            
+            if (selectedOCRType === 'nota') {
+                html += displayNotaResults(ocrResult, data.billing_calculation);
+            } else if (selectedOCRType === 'surat-jalan') {
+                html += displaySuratJalanResults(ocrResult);
+            } else if (selectedOCRType === 'meter') {
+                html += displayMeterResults(ocrResult);
+            }
+            
+            html += '</div>';
+
+            // Raw Data Tab
+            html += `
+                <div id="rawTab" class="tab-content">
+                    <div class="json-display">
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </div>
+                </div>
+            `;
+
+            showResult(html, 'success');
+        }
+
+        function displayNotaResults(ocr, billing) {
+            let html = '<div class="data-display">';
+            html += '<h4>📄 NOTA (Receipt) Data</h4>';
+
+            if (ocr.tanggal_mulai || ocr.tanggal_selesai) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">📅 Date Range</div>
+                        <div class="field-value">
+                            Start: ${ocr.tanggal_mulai || 'N/A'}<br>
+                            End: ${ocr.tanggal_selesai || 'N/A'}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (ocr.stan_awal !== null && ocr.stan_awal !== undefined) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">🔢 STAN Awal</div>
+                        <div class="field-value">${ocr.stan_awal} m³</div>
+                    </div>
+                `;
+            }
+
+            if (ocr.current_stan !== null && ocr.current_stan !== undefined) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">🔢 STAN Akhir</div>
+                        <div class="field-value">${ocr.current_stan} m³</div>
+                    </div>
+                `;
+            }
+
+            if (ocr.pressure_inlet !== null && ocr.pressure_inlet !== undefined) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">⚡ Pressure Inlet</div>
+                        <div class="field-value">${ocr.pressure_inlet} Bar</div>
+                    </div>
+                `;
+            }
+
+            if (ocr.pressure_outlet !== null && ocr.pressure_outlet !== undefined) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">⚡ Pressure Outlet</div>
+                        <div class="field-value">${ocr.pressure_outlet} Bar</div>
+                    </div>
+                `;
+            }
+
+            if (ocr.temperature !== null && ocr.temperature !== undefined) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">🌡️ Temperature</div>
+                        <div class="field-value">${ocr.temperature}°C</div>
+                    </div>
+                `;
+            }
+
+            if (ocr.harga_satuan || ocr.total_harga) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">💰 Pricing</div>
+                        <div class="field-value">
+                            Unit Price: ${ocr.harga_satuan ? 'Rp ' + ocr.harga_satuan.toLocaleString('id-ID') : 'N/A'}<br>
+                            Total: ${ocr.total_harga ? 'Rp ' + ocr.total_harga.toLocaleString('id-ID') : 'N/A'}
+                        </div>
+                    </div>
+                `;
+            }
+
+            const confidence = ocr.overall_confidence || ocr.confidence || 0;
+            const confidenceClass = confidence >= 80 ? 'high' : confidence >= 60 ? 'medium' : 'low';
+            html += `
+                <div class="field-group">
+                    <div class="field-label">🎯 Confidence Score</div>
+                    <div class="field-value">
+                        <span class="confidence ${confidenceClass}">${confidence}%</span>
+                    </div>
+                </div>
+            `;
+
+            html += '</div>';
+
+            // Billing Calculation
+            if (billing && billing.success) {
+                html += '<div class="calculation-summary">';
+                html += '<h4>🧮 Billing Calculation</h4>';
+                
+                if (billing.summary) {
+                    const summary = billing.summary;
+                    html += `
+                        <div class="field-group">
+                            <div class="field-label">💰 Billing Summary</div>
+                            <div class="field-value">
+                                Volume: ${summary.final_volume_m3} m³<br>
+                                Unit Price: Rp ${summary.unit_price.toLocaleString('id-ID')}<br>
+                                <strong>Total Amount: Rp ${summary.total_amount.toLocaleString('id-ID')}</strong>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += '</div>';
+            }
+
+            return html;
+        }
+
+        function displaySuratJalanResults(ocr) {
+            let html = '<div class="data-display">';
+            html += '<h4>📋 Surat Jalan (Delivery Note) Data</h4>';
+
+            if (ocr.total_volume_pengisian !== null && ocr.total_volume_pengisian !== undefined) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">📊 Total Volume Pengisian</div>
+                        <div class="field-value">${ocr.total_volume_pengisian} ${ocr.satuan || 'm³'}</div>
+                    </div>
+                `;
+            }
+
+            if (ocr.nomor_surat_jalan) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">📄 Nomor Surat Jalan</div>
+                        <div class="field-value">${ocr.nomor_surat_jalan}</div>
+                    </div>
+                `;
+            }
+
+            if (ocr.tanggal) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">📅 Tanggal</div>
+                        <div class="field-value">${ocr.tanggal}</div>
+                    </div>
+                `;
+            }
+
+            if (ocr.nama_pengirim) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">👤 Pengirim</div>
+                        <div class="field-value">${ocr.nama_pengirim}</div>
+                    </div>
+                `;
+            }
+
+            if (ocr.nama_penerima) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">👤 Penerima</div>
+                        <div class="field-value">${ocr.nama_penerima}</div>
+                    </div>
+                `;
+            }
+
+            if (ocr.jenis_barang) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">📦 Jenis Barang</div>
+                        <div class="field-value">${ocr.jenis_barang}</div>
+                    </div>
+                `;
+            }
+
+            const confidence = ocr.overall_confidence || ocr.confidence || 0;
+            const confidenceClass = confidence >= 80 ? 'high' : confidence >= 60 ? 'medium' : 'low';
+            html += `
+                <div class="field-group">
+                    <div class="field-label">🎯 Confidence Score</div>
+                    <div class="field-value">
+                        <span class="confidence ${confidenceClass}">${confidence}%</span>
+                    </div>
+                </div>
+            `;
+
+            html += '</div>';
+            return html;
+        }
+
+        function displayMeterResults(ocr) {
+            let html = '<div class="data-display">';
+            html += '<h4>📊 Meter Reading Data</h4>';
+
+            const ocrData = ocr.data || ocr;
+
+            if (ocr.success === false) {
+                html += `
+                    <div class="field-group">
+                        <div class="field-label">❌ Error</div>
+                        <div class="field-value">${ocr.error || 'Failed to extract meter reading'}</div>
+                    </div>
+                `;
+            } else {
+                if (ocrData.temperature !== null && ocrData.temperature !== undefined) {
+                    html += `
+                        <div class="field-group">
+                            <div class="field-label">🌡️ Temperature</div>
+                            <div class="field-value">${ocrData.temperature}°C</div>
+                        </div>
+                    `;
+                }
+
+                if (ocrData.pressure_inlet !== null && ocrData.pressure_inlet !== undefined) {
+                    html += `
+                        <div class="field-group">
+                            <div class="field-label">⚡ Pressure Inlet</div>
+                            <div class="field-value">${ocrData.pressure_inlet} Bar</div>
+                        </div>
+                    `;
+                }
+
+                if (ocrData.pressure_outlet !== null && ocrData.pressure_outlet !== undefined) {
+                    html += `
+                        <div class="field-group">
+                            <div class="field-label">⚡ Pressure Outlet</div>
+                            <div class="field-value">${ocrData.pressure_outlet} Bar</div>
+                        </div>
+                    `;
+                }
+
+                if (ocrData.stan !== null && ocrData.stan !== undefined) {
+                    html += `
+                        <div class="field-group">
+                            <div class="field-label">🔢 STAN</div>
+                            <div class="field-value">${ocrData.stan} m³</div>
+                        </div>
+                    `;
+                }
+
+                if (ocrData.meter_reading !== null && ocrData.meter_reading !== undefined) {
+                    html += `
+                        <div class="field-group">
+                            <div class="field-label">📊 Meter Reading</div>
+                            <div class="field-value">${ocrData.meter_reading} ${ocrData.unit || 'm³'}</div>
+                        </div>
+                    `;
+                }
+
+                if (ocr.confidence_score !== null && ocr.confidence_score !== undefined) {
+                    const confidence = Math.round(ocr.confidence_score * 100);
+                    const confidenceClass = confidence >= 80 ? 'high' : confidence >= 60 ? 'medium' : 'low';
+                    html += `
+                        <div class="field-group">
+                            <div class="field-label">🎯 Confidence Score</div>
+                            <div class="field-value">
+                                <span class="confidence ${confidenceClass}">${confidence}%</span>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (ocrData.raw_text) {
+                    html += `
+                        <div class="field-group">
+                            <div class="field-label">📝 Raw Text</div>
+                            <div class="field-value">${ocrData.raw_text}</div>
+                        </div>
+                    `;
+                }
+            }
+
+            html += '</div>';
+            return html;
+        }
+
+        function showResult(content, type) {
+            resultContent.innerHTML = content;
+            result.className = `result ${type} show`;
+            result.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        // Tab switching
+        window.showTab = function(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName + 'Tab').classList.add('active');
+        };
+
+        // Clear function
+        clearBtn.addEventListener('click', () => {
+            resetFileSelection();
+        });
+
+        function resetFileSelection() {
+            selectedFile = null;
+            processBtn.disabled = true;
+            imageInput.value = '';
+            imagePreview.style.display = 'none';
+            uploadArea.classList.remove('has-file');
+            result.classList.remove('show');
+        }
+    </script>
+</body>
+</html>

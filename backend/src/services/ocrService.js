@@ -2,18 +2,27 @@ const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 
-// Ensure dotenv is loaded
-require('dotenv').config();
+// Ensure dotenv is loaded (override system env vars to use .env file)
+require('dotenv').config({ override: true });
 
 class OCRService {
   constructor() {
-    this.isConfigured = !!process.env.OPENAI_API_KEY;
+    // Trim whitespace from API key
+    const rawKey = process.env.OPENAI_API_KEY || '';
+    const apiKey = rawKey.trim();
+    
+    this.isConfigured = !!apiKey;
     if (this.isConfigured) {
       this.openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
+        apiKey: apiKey,
       });
       this.modelName = process.env.OPENAI_NOTA_OCR_MODEL || process.env.OPENAI_OCR_MODEL || 'gpt-5-mini';
       console.log('✅ OpenAI OCR service initialized successfully');
+      
+      // Warn if key had whitespace
+      if (rawKey !== apiKey) {
+        console.warn('⚠️ OPENAI_API_KEY contained leading/trailing whitespace; it has been trimmed');
+      }
     } else {
       console.warn('⚠️ OpenAI API key not configured. OCR service will be disabled.');
     }
@@ -88,7 +97,13 @@ class OCRService {
       
     } catch (error) {
       console.error('OCR Processing Error:', error);
+      
+      // Provide more helpful error messages for common issues
+      if (error.message && (error.message.includes('401') || error.message.includes('Incorrect API key'))) {
+        throw new Error(`OCR processing failed: Invalid OpenAI API key. Please check your OPENAI_API_KEY in .env file. The key may be expired or incorrect. Visit https://platform.openai.com/account/api-keys to verify your key.`);
+      } else {
       throw new Error(`OCR processing failed: ${error.message}`);
+      }
     }
   }
 
@@ -280,7 +295,13 @@ Return ONLY the JSON object starting with { and ending with }. No markdown, no c
       
     } catch (error) {
       console.error('Surat Jalan OCR Processing Error:', error);
+      
+      // Provide more helpful error messages for common issues
+      if (error.message && (error.message.includes('401') || error.message.includes('Incorrect API key'))) {
+        throw new Error(`Surat Jalan OCR processing failed: Invalid OpenAI API key. Please check your OPENAI_API_KEY in .env file. The key may be expired or incorrect. Visit https://platform.openai.com/account/api-keys to verify your key.`);
+      } else {
       throw new Error(`Surat Jalan OCR processing failed: ${error.message}`);
+      }
     }
   }
 

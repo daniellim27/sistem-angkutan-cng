@@ -86,6 +86,7 @@ class MigrationRunner {
       '20250128_make_cctv_delivery_order_nullable.js',
       '20251208_make_nota_kecil_delivery_order_nullable.js',
       '20251209_make_nota_kecil_cctv_session_nullable.js',
+      '20251218_fix_cctv_sessions_delivery_order_nullable.js',
       ];
   }
 

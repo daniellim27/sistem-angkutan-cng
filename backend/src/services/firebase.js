@@ -1,6 +1,6 @@
 const admin = require("firebase-admin");
 const path = require("path");
-require("dotenv").config();
+require("dotenv").config({ override: true });
 
 const serviceAccount = require(path.join(
   __dirname,
