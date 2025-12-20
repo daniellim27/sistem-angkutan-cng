@@ -215,14 +215,68 @@ class MeterOcrService {
       const prompts = {
       temperature: `You are reading a THERMOMETER that shows temperature in CELSIUS (°C).
 
-      Focus on where the needle is pointing on the Celsius scale and estimate the temperature as a decimal number.
+      CRITICAL SCALE READING RULES:
+      1. Look at the Celsius scale (usually marked with °C)
+      2. The gauge reads CLOCKWISE - numbers increase as you go clockwise around the dial
+      3. Each SMALL TICK/MARK between major numbers = 2°C (NOT 1°C, NOT 5°C)
+      4. Major numbers are: 0, 20, 40, 60, 80, 100, 120 (in clockwise order)
+      5. Between each major number (e.g., between 20-40), there are 10 small ticks (20°C ÷ 2°C = 10 ticks)
 
-      Rules:
-      - Read the scale naturally as a technician would.
-      - If the value is between two ticks, interpolate and give a decimal (e.g. 28.5).
-      - Do NOT apply any artificial range limits; use what you see on the gauge.
+      STEP-BY-STEP READING PROCESS - FOLLOW CAREFULLY:
+      Step 1: FIRST, identify ALL major numbers visible on the gauge (0, 20, 40, 60, 80, 100, 120)
+      Step 2: Look at where the needle tip is pointing - identify which TWO major numbers it is between
+      Step 3: The needle can be between ANY two major numbers - don't assume it's in the high range!
+      Step 4: ALWAYS use the LOWER (smaller) number as your base
+      Step 5: Look at the EXACT position of the needle tip - count ONLY the ticks that the needle tip has CLEARLY PASSED
+      Step 6: If the needle tip is ON a tick, that tick counts. If the needle tip is BEFORE a tick, don't count that tick yet.
+      Step 7: Count carefully - each tick = 2°C, so be precise
+      Step 8: Calculate: lower_number + (ticks × 2)
+      Step 9: VERIFY: The answer must be between the two major numbers you identified
 
-      Reply ONLY with the numeric value in Celsius, for example "28.6". Do NOT include units or explanation.`,
+      DIRECTION RULES:
+      - Clockwise = numbers increase (0 → 20 → 40 → 60 → 80 → 100 → 120)
+      - If needle is between 100 and 120, it has PASSED 100 and is APPROACHING 120
+      - The reading is ALWAYS between the two numbers (100.x if between 100-120, NOT 120.x)
+      - NEVER use the higher number as base
+      - Always count FORWARD from the LOWER number
+
+      EXAMPLES - ALL RANGES:
+      - Needle between 20 and 40, has passed 3 ticks → 20 + (3 × 2) = 26°C → "26"
+      - Needle between 20 and 40, has passed 3.5 ticks → 20 + (3.5 × 2) = 27°C → "27"
+      - Needle between 20 and 40, has passed 4 ticks → 20 + (4 × 2) = 28°C → "28"
+      - Needle between 0 and 20, has passed 5 ticks → 0 + (5 × 2) = 10°C → "10"
+      - Needle between 40 and 60, has passed 2 ticks → 40 + (2 × 2) = 44°C → "44"
+      - Needle between 60 and 80, has passed 3 ticks → 60 + (3 × 2) = 66°C → "66"
+      - Needle between 80 and 100, has passed 5 ticks → 80 + (5 × 2) = 90°C → "90"
+      - Needle between 100 and 120, has passed 7.5 ticks → 100 + (7.5 × 2) = 115°C → "115"
+      - Needle at exactly 20 = "20"
+      - Needle at exactly 40 = "40"
+
+      COMMON MISTAKES TO AVOID:
+      ❌ WRONG: Assuming needle is always in high range (100-120) - it can be anywhere!
+      ✅ CORRECT: Look at ALL major numbers and identify which range the needle is actually in
+      ❌ WRONG: Needle between 20-40, reading 118 (this means you looked at wrong range!)
+      ✅ CORRECT: Needle between 20-40, reading 26-28 (this is correct range!)
+      ❌ WRONG: Using higher number as base
+      ✅ CORRECT: Always use LOWER number as base
+
+      PRECISION TIPS:
+      - Look at the EXACT needle tip position relative to ALL major numbers (0, 20, 40, 60, 80, 100, 120)
+      - Don't assume the needle is in the high range - check ALL ranges
+      - Count only ticks the needle tip has CLEARLY passed - be conservative
+      - If needle is between two ticks, estimate proportionally (halfway = 0.5 ticks)
+      - Don't count ticks the needle is approaching - only count passed ticks
+      - VERIFY your answer makes sense - if needle is between 20-40, answer must be 20-40 range!
+
+      CRITICAL: 
+      - Each small mark/tick = 2°C (NOT 1°C, NOT 5°C)
+      - Major numbers are: 0, 20, 40, 60, 80, 100, 120
+      - Read CLOCKWISE - find the LOWER major number BEFORE the needle, then count FORWARD
+      - Always use the LOWER major number as base when needle is between two numbers
+      - The reading must be between the two numbers you identified
+      - If you get 118 when needle is between 20-40, you're reading the WRONG range - look again!
+
+      Reply ONLY with the numeric value in Celsius, for example "115" or "114". Do NOT include units or explanation.`,
 
         pressure_inlet: `You are reading PRESSURE INLET GAUGE (BAR).
 
