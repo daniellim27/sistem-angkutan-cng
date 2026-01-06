@@ -345,6 +345,7 @@ const DepositGroupManagement = () => {
     setShowTopUpModal(true);
   };
 
+  // In the openTagihanModal function, update this:
   const openTagihanModal = async (group: DepositGroupWithMembers) => {
     setSelectedGroup(group);
     setShowTagihanModal(true);
@@ -352,11 +353,8 @@ const DepositGroupManagement = () => {
     setLoadingGasTransactions(true);
     
     try {
-      // Fetch tagihan data and gas transactions in parallel
-      const [tagihanResponse, gasTransactionsResponse] = await Promise.all([
-        apiClient.get(`/deposit-groups/${group.id}/tagihan`),
-        apiClient.get(`/gas-transactions/by-deposit-group/${group.id}`).catch(() => ({ data: { success: true, data: [] } }))
-      ]);
+      // Fetch tagihan data (which now includes gas transactions)
+      const tagihanResponse = await apiClient.get(`/deposit-groups/${group.id}/tagihan`);
       
       console.log('Tagihan API Response:', tagihanResponse.data);
       
@@ -364,10 +362,13 @@ const DepositGroupManagement = () => {
       const data = tagihanResponse.data.data || tagihanResponse.data;
       setTagihanData(data);
       
-      // Set gas transactions
-      if (gasTransactionsResponse.data.success) {
-        setGasTransactions(gasTransactionsResponse.data.data || []);
+      // Set gas transactions from the tagihan response
+      if (data.gas_transactions) {
+        setGasTransactions(data.gas_transactions || []);
+      } else {
+        setGasTransactions([]);
       }
+      
     } catch (err: any) {
       console.error('Failed to fetch tagihan data:', err);
       console.error('Error response:', err.response?.data);
@@ -1415,15 +1416,10 @@ const DepositGroupManagement = () => {
                   </div>
 
                   {/* Gas Transactions Section */}
-                  {loadingGasTransactions ? (
-                    <div className="text-center py-4">
-                      <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                      <p className="mt-2 text-sm text-gray-500">Loading gas transactions...</p>
-                    </div>
-                  ) : gasTransactions.length > 0 && (
+                  {tagihanData.gas_transactions && tagihanData.gas_transactions.length > 0 && (
                     <div className="mt-8 border-t pt-6">
                       <h4 className="text-lg font-semibold text-gray-900 mb-4">
-                        ⛽ Gas Transactions ({gasTransactions.length})
+                        ⛽ Gas Transactions ({tagihanData.gas_transactions.length})
                       </h4>
                       <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-gray-200">
@@ -1440,7 +1436,7 @@ const DepositGroupManagement = () => {
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-200">
-                            {gasTransactions.map((tx: any) => (
+                            {tagihanData.gas_transactions.map((tx: any) => (
                               <tr key={tx.id} className="hover:bg-gray-50">
                                 <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
                                   {new Date(tx.created_at).toLocaleDateString()}
@@ -1658,36 +1654,81 @@ const DepositGroupManagement = () => {
               ) : balancingData ? (
                 <div className="space-y-6">
                   {/* Summary Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
-                      <div className="text-sm text-gray-600 mb-2">Total Purchases from SPBG</div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    {/* Existing cards */}
+                    <div className="bg-blue-50 p-4 rounded-lg">
+                      <div className="text-xs text-gray-600 mb-1">Total DOs</div>
                       <div className="text-2xl font-bold text-blue-600">
-                        {formatCurrency(balancingData.summary?.total_purchases || 0)}
+                        {tagihanData.summary.total_delivery_orders}
+                      </div>
+                    </div>
+                    <div className="bg-green-50 p-4 rounded-lg">
+                      <div className="text-xs text-gray-600 mb-1">Base Gas Cost</div>
+                      <div className="text-lg font-bold text-green-600">
+                        {formatCurrency(tagihanData.summary.total_base_gas_cost)}
+                      </div>
+                    </div>
+                    <div className="bg-orange-50 p-4 rounded-lg">
+                      <div className="text-xs text-gray-600 mb-1">Selisih Cost</div>
+                      <div className="text-lg font-bold text-orange-600">
+                        {formatCurrency(tagihanData.summary.total_selisih_cost)}
+                      </div>
+                    </div>
+                    {/* NEW: Gas Transactions Card */}
+                    <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
+                      <div className="text-xs text-gray-600 mb-1">Gas Transactions</div>
+                      <div className="text-xl font-bold text-indigo-600">
+                        {tagihanData.summary.total_gas_transactions || 0}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
-                        Volume: {balancingData.summary?.total_purchase_volume?.toFixed(2) || '0.00'} m³
+                        {formatCurrency(tagihanData.summary.total_gas_transaction_cost || 0)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Additional Costs Summary - Updated */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {/* Existing Receipt Cost */}
+                    <div className="bg-pink-50 p-4 rounded-lg border-2 border-pink-200">
+                      <div className="text-xs text-gray-600 mb-1">Receipt Cost</div>
+                      <div className="text-lg font-bold text-pink-600">
+                        {formatCurrency(tagihanData.summary.total_receipt_cost || 0)}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {tagihanData.summary.total_receipts || 0} receipt{(tagihanData.summary.total_receipts || 0) !== 1 ? 's' : ''}
                       </div>
                     </div>
                     
-                    <div className="bg-green-50 p-6 rounded-lg border border-green-200">
-                      <div className="text-sm text-gray-600 mb-2">Total Sales to Customers</div>
-                      <div className="text-2xl font-bold text-green-600">
-                        {formatCurrency(balancingData.summary?.total_sales || 0)}
+                    {/* NEW: Gas Transactions Total */}
+                    <div className="bg-indigo-50 p-4 rounded-lg border-4 border-indigo-300">
+                      <div className="text-xs text-gray-600 mb-1">⛽ Gas Transaction Cost</div>
+                      <div className="text-xl font-bold text-indigo-600">
+                        {formatCurrency(tagihanData.summary.total_gas_transaction_cost || 0)}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
-                        Volume: {balancingData.summary?.total_sales_volume?.toFixed(2) || '0.00'} m³
+                        {tagihanData.summary.total_gas_transaction_volume?.toFixed(2) || '0.00'} m³
                       </div>
                     </div>
                     
-                    <div className="bg-orange-50 p-6 rounded-lg border border-orange-200">
-                      <div className="text-sm text-gray-600 mb-2">Balance Difference</div>
-                      <div className={`text-2xl font-bold ${
-                        (balancingData.summary?.balance_difference || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {formatCurrency(balancingData.summary?.balance_difference || 0)}
+                    {/* NEW: Delivery Order Total */}
+                    <div className="bg-green-50 p-4 rounded-lg border-4 border-green-300">
+                      <div className="text-xs text-gray-600 mb-1">🚚 Delivery Order Cost</div>
+                      <div className="text-xl font-bold text-green-600">
+                        {formatCurrency(tagihanData.summary.total_delivery_order_cost || 0)}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
-                        Volume Diff: {((balancingData.summary?.volume_difference || 0) >= 0 ? '+' : '')}{balancingData.summary?.volume_difference?.toFixed(2) || '0.00'} m³
+                        DOs + Selisih + Receipts
+                      </div>
+                    </div>
+                    
+                    {/* Updated Grand Total */}
+                    <div className="bg-purple-50 p-4 rounded-lg border-4 border-purple-300">
+                      <div className="text-xs text-gray-600 mb-1">💰 Grand Total Cost</div>
+                      <div className="text-xl font-bold text-purple-600">
+                        {formatCurrency(tagihanData.summary.total_cost || 0)}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        DOs + Gas Transactions
                       </div>
                     </div>
                   </div>

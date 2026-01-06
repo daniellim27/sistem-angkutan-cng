@@ -9,7 +9,7 @@
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    const { INTEGER, DECIMAL, STRING, JSONB, DATE, ENUM } = Sequelize;
+    const { INTEGER, DECIMAL, STRING, TEXT, JSONB, DATE, ENUM } = Sequelize;
 
     await queryInterface.createTable('gas_transactions', {
       id: {
@@ -95,8 +95,37 @@ module.exports = {
       status: {
         type: ENUM('pending', 'approved', 'rejected'),
         allowNull: false,
-        defaultValue: 'approved',
+        defaultValue: 'pending', // Changed from 'approved' to 'pending'
         comment: 'Approval status of this gas transaction'
+      },
+
+      // Photo URLs for uploaded images
+      surat_jalan_photo_url: {
+        type: STRING(500),
+        allowNull: true,
+        comment: 'Path to surat jalan (delivery note) photo - NOT used for OCR'
+      },
+      nota_photo_url: {
+        type: STRING(500),
+        allowNull: true,
+        comment: 'Path to nota (receipt) photo - THIS is used for OCR extraction'
+      },
+      biaya_lain_photo_url: {
+        type: STRING(500),
+        allowNull: true,
+        comment: 'Path to biaya lain (other expenses) photo'
+      },
+      
+      // Additional expense fields
+      biaya_lain_amount: {
+        type: DECIMAL(15, 2),
+        allowNull: true,
+        comment: 'Amount for other expenses'
+      },
+      biaya_lain_description: {
+        type: TEXT,
+        allowNull: true,
+        comment: 'Description of other expenses'
       },
 
       // Snapshot of nota OCR and related data at the time of approval
@@ -128,6 +157,9 @@ module.exports = {
     await queryInterface.addIndex('gas_transactions', ['created_at'], {
       name: 'idx_gas_transactions_created_at'
     });
+    await queryInterface.addIndex('gas_transactions', ['status'], {
+      name: 'idx_gas_transactions_status'
+    });
   },
 
   down: async (queryInterface, Sequelize) => {
@@ -147,5 +179,3 @@ module.exports = {
     }
   }
 };
-
-

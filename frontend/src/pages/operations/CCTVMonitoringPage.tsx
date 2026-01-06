@@ -28,7 +28,7 @@ import {
 
 interface CCTVSession {
   id: number;
-  delivery_order_id: number | null; // Now nullable - DOs are auto-generated
+  delivery_order_id: number | null;
   customer_location_index: number;
   customer_name: string;
   device_id: string | null;
@@ -39,11 +39,14 @@ interface CCTVSession {
   last_screenshot_at: string | null;
   session_notes: string | null;
   created_nota_kecil_id: number | null;
-  meter_type?: 'temperature' | 'pressure' | 'stan_awal' | 'stan_akhir' | 'other' | null;
+  
+  // CORRECTED: Match backend's meter_type values
+  meter_type?: 'stan' | 'pressure_inlet' | 'pressure_outlet' | 'temperature' | null;
+  
   delivery_order?: {
     do_number: string;
     do_name: string;
-  } | null; // Optional - may be null if no DO assigned
+  } | null;
   health_status?: 'healthy' | 'warning' | 'critical' | 'dead';
   time_since_last_capture?: string;
   nota_kecil_count?: number;
@@ -99,7 +102,6 @@ interface CreateSessionForm {
   customer_name: string;
   device_id: string;
   panel_row: number;
-  panel_column: number;
   customer_location_index: number;
   meter_type: 'stan' | 'pressure_inlet' | 'pressure_outlet' | 'temperature';  // NEW: 4 specific types
 }
@@ -197,7 +199,6 @@ const CCTVMonitoringPage: React.FC = () => {
     customer_name: '',
     device_id: '',
     panel_row: 1,
-    panel_column: 1,
     customer_location_index: 0,
     meter_type: 'stan',  // Default to stan
   });
@@ -720,13 +721,13 @@ const CCTVMonitoringPage: React.FC = () => {
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validation
+    // Validation - now only check panel_row
     if (!createForm.customer_name) {
       toast.error('Please select a customer');
       return;
     }
-    if (!createForm.panel_row || !createForm.panel_column) {
-      toast.error('Please specify panel location');
+    if (!createForm.panel_row) { // ✅ Only check panel_row
+      toast.error('Please specify panel row');
       return;
     }
 
@@ -736,23 +737,20 @@ const CCTVMonitoringPage: React.FC = () => {
         // Debug logging
         console.log('🔍 DEBUG - Creating session with form data:', {
           panel_row: createForm.panel_row,
-          panel_column: createForm.panel_column,
-          panel_row_type: typeof createForm.panel_row,
-          panel_column_type: typeof createForm.panel_column
+          panel_row_type: typeof createForm.panel_row
         });
         
-        // Use real API - delivery_order_id is now optional
+        // Request body with panel_row ONLY
         const requestBody: any = {
           customer_name: createForm.customer_name,
           customer_location_index: createForm.customer_location_index,
           device_id: createForm.device_id || null,
-          panel_row: createForm.panel_row,
-          panel_column: createForm.panel_column,
-          meter_type: createForm.meter_type,  // KEEP THIS - tells OCR which field to extract
-          // Backend will now extract ONLY the selected field from the 4 available readings
+          panel_row: createForm.panel_row, // ✅ Send panel_row
+          // panel_column is NOT sent - backend will handle null
+          meter_type: createForm.meter_type,
         };
         
-        // Only include delivery_order_id if it's actually set (not 0 or empty)
+        // Only include delivery_order_id if it's actually set
         if (createForm.delivery_order_id && createForm.delivery_order_id > 0) {
           requestBody.delivery_order_id = createForm.delivery_order_id;
         }
@@ -766,11 +764,10 @@ const CCTVMonitoringPage: React.FC = () => {
         
         // Reset form
         setCreateForm({
-          delivery_order_id: 0, // Keep for form state, but won't be sent to API
+          delivery_order_id: 0,
           customer_name: '',
           device_id: '',
-          panel_row: 1,
-          panel_column: 1,
+          panel_row: 1, // ✅ Keep in reset
           customer_location_index: 0,
           meter_type: 'stan',
         });
@@ -778,13 +775,13 @@ const CCTVMonitoringPage: React.FC = () => {
         // Refresh sessions list
         fetchSessions();
       } else {
-        // Mockup mode - simulate API call
+        // Mockup mode
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Create new session object
         const newSession: CCTVSession = {
           id: sessions.length + 1,
-          delivery_order_id: createForm.delivery_order_id || null, // Optional
+          delivery_order_id: createForm.delivery_order_id || null,
           customer_location_index: createForm.customer_location_index,
           customer_name: createForm.customer_name,
           device_id: createForm.device_id || `BARDI-CAM-${String(sessions.length + 1).padStart(3, '0')}`,
@@ -793,9 +790,9 @@ const CCTVMonitoringPage: React.FC = () => {
           status: 'active',
           total_screenshots_captured: 0,
           last_screenshot_at: null,
-          session_notes: `Panel Location: Row ${createForm.panel_row}, Column ${createForm.panel_column}`,
+          session_notes: `Panel Row: ${createForm.panel_row}`, // ✅ Update note
           created_nota_kecil_id: null,
-          delivery_order: null, // DOs are auto-generated, not needed in mockup
+          delivery_order: null,
           health_status: 'healthy',
           time_since_last_capture: 'No captures yet',
         };
@@ -817,11 +814,10 @@ const CCTVMonitoringPage: React.FC = () => {
         
         // Reset form
         setCreateForm({
-          delivery_order_id: 0, // Keep for form state, but won't be sent to API
+          delivery_order_id: 0,
           customer_name: '',
           device_id: '',
-          panel_row: 1,
-          panel_column: 1,
+          panel_row: 1, // ✅ Keep in reset
           customer_location_index: 0,
           meter_type: 'stan',
         });
@@ -1101,8 +1097,20 @@ const CCTVMonitoringPage: React.FC = () => {
     ? sessions.find((session) => session.id === actionMenuOpenId)
     : null;
 
+  const calculatePageHeight = () => {
+    const baseHeight = 100; // Base 100vh
+    const perSessionHeight = 10; // Additional vh per session
+    const dynamicHeight = baseHeight + (sessions.length * perSessionHeight);
+    const cappedHeight = Math.min(dynamicHeight, 500); // Cap at 500vh
+    
+    return { minHeight: `${cappedHeight}vh` };
+  };
+
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div 
+      className="p-6 bg-gray-50" 
+      style={calculatePageHeight()}
+    >
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
@@ -1439,7 +1447,6 @@ const CCTVMonitoringPage: React.FC = () => {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">DO Number</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Meter Type</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Started</th>
@@ -1457,19 +1464,18 @@ const CCTVMonitoringPage: React.FC = () => {
                         <div className="text-sm font-medium text-gray-900">{session.customer_name}</div>
                         {/* <div className="text-xs text-gray-500">Location Index: {session.customer_location_index}</div> */}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {session.delivery_order?.do_number || 'N/A'}
-                      </td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium">
-                          {createForm.meter_type === 'stan' ? (
+                          {session.meter_type === 'stan' ? ( // ✅ CORRECT: Use session.meter_type
                             <span className="bg-blue-100 text-blue-800">📏 Stan</span>
-                          ) : createForm.meter_type === 'pressure_inlet' ? (
+                          ) : session.meter_type === 'pressure_inlet' ? (
                             <span className="bg-red-100 text-red-800">🔧 P.Inlet</span>
-                          ) : createForm.meter_type === 'pressure_outlet' ? (
+                          ) : session.meter_type === 'pressure_outlet' ? (
                             <span className="bg-orange-100 text-orange-800">🔧 P.Outlet</span>
-                          ) : (
+                          ) : session.meter_type === 'temperature' ? (
                             <span className="bg-green-100 text-green-800">🌡️ Temp</span>
+                          ) : (
+                            <span className="bg-gray-100 text-gray-800">❓ Unknown</span>
                           )}
                         </span>
                       </td>
@@ -1816,11 +1822,11 @@ const CCTVMonitoringPage: React.FC = () => {
                   <p className="text-sm text-gray-500">Meter Type</p>
                   {selectedSession.meter_type ? (
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium mt-1 bg-indigo-50 text-indigo-700 border border-indigo-200">
-                      {selectedSession.meter_type === 'stan_awal' ? 'Stan Awal' :
-                       selectedSession.meter_type === 'stan_akhir' ? 'Stan Akhir' :
-                       selectedSession.meter_type === 'pressure' ? 'Pressure' :
-                       selectedSession.meter_type === 'temperature' ? 'Temperature' :
-                       'Other'}
+                      {selectedSession.meter_type === 'stan' ? 'Stan' :
+                      selectedSession.meter_type === 'pressure_inlet' ? 'Pressure Inlet' :
+                      selectedSession.meter_type === 'pressure_outlet' ? 'Pressure Outlet' :
+                      selectedSession.meter_type === 'temperature' ? 'Temperature' :
+                      'Other'}
                     </span>
                   ) : (
                     <p className="font-medium text-gray-400 mt-1">N/A</p>
@@ -1946,24 +1952,23 @@ const CCTVMonitoringPage: React.FC = () => {
                               let displayUnit: string;
 
                               if (meterType === 'temperature') {
-                                displayValue =
-                                  screenshot.ocr_result.temperature ?? screenshot.ocr_result.temperatur_operasi;
+                                displayValue = screenshot.ocr_result.temperature;
                                 displayLabel = 'Temperature';
                                 displayUnit = '°C';
-                              } else if (meterType === 'pressure' || (meterType as any) === 'pressure_inlet' || (meterType as any) === 'pressure_outlet') {
-                                displayValue =
-                                  screenshot.ocr_result.pressure ?? screenshot.ocr_result.tekanan_operasi;
-                                displayLabel = 'Pressure';
+                              } else if (meterType === 'pressure_inlet') {
+                                displayValue = screenshot.ocr_result.pressure_inlet;
+                                displayLabel = 'P.Inlet';
                                 displayUnit = 'bar';
+                              } else if (meterType === 'pressure_outlet') {
+                                displayValue = screenshot.ocr_result.pressure_outlet;
+                                displayLabel = 'P.Outlet';
+                                displayUnit = 'bar';
+                              } else if (meterType === 'stan') {
+                                displayValue = screenshot.ocr_result.stan;
+                                displayLabel = 'Stan';
+                                displayUnit = 'm³';
                               } else {
-                                // For stan / other / unknown
-                                displayValue = screenshot.ocr_result.meter_reading;
-                                displayLabel = meterType === 'stan_awal'
-                                  ? 'Stan Awal'
-                                  : meterType === 'stan_akhir'
-                                  ? 'Stan Akhir'
-                                  : 'Meter';
-                                displayUnit = screenshot.ocr_result.unit || 'm³';
+                                return null; // No display for unknown/other types
                               }
 
                               return displayValue !== undefined && displayValue !== null ? (
@@ -2129,24 +2134,6 @@ const CCTVMonitoringPage: React.FC = () => {
                         onChange={(e) => {
                           const val = parseInt(e.target.value);
                           setCreateForm({...createForm, panel_row: isNaN(val) ? 1 : val});
-                        }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="1-10"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Panel Column <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={createForm.panel_column}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value);
-                          setCreateForm({...createForm, panel_column: isNaN(val) ? 1 : val});
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         placeholder="1-10"

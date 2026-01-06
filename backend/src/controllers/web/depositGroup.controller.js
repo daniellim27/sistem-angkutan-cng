@@ -1158,7 +1158,43 @@ async linkPOToGroup(req, res) {
         .filter(Boolean) // Remove any null/undefined
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)); // Sort by created_at DESC
 
-      // Calculate summary statistics
+      // ========== NEW: Get gas transactions for this deposit group ==========
+      const { GasTransaction, Vehicle, User, DriverProfile } = require('../../models');
+      
+      const gasTransactions = await GasTransaction.findAll({
+        where: { 
+          deposit_group_id: id,
+          // You can choose to show only 'approved' or all transactions
+          // status: 'approved' // Uncomment to show only approved
+        },
+        include: [
+          {
+            model: Vehicle,
+            as: 'vehicle',
+            attributes: ['id', 'license_plate', 'type']
+          },
+          {
+            model: User,
+            as: 'driver',
+            attributes: ['id', 'username'],
+            include: [{
+              model: DriverProfile,
+              as: 'driverProfile',
+              attributes: ['full_name', 'phone']
+            }]
+          }
+        ],
+        order: [['created_at', 'DESC']]
+      });
+
+      // Calculate gas transaction totals
+      const gasTransactionTotal = gasTransactions.reduce((sum, tx) => 
+        sum + parseFloat(tx.total_cost || 0), 0);
+      const gasTransactionVolume = gasTransactions.reduce((sum, tx) => 
+        sum + parseFloat(tx.volume_m3 || 0), 0);
+      // ========== END OF NEW GAS TRANSACTION CODE ==========
+
+      // Calculate summary statistics - UPDATED to include gas transactions
       const summary = {
         total_delivery_orders: processedDOs.length,
         total_set_volume: processedDOs.reduce((sum, do_item) => 
@@ -1178,9 +1214,17 @@ async linkPOToGroup(req, res) {
           sum + do_item.total_receipt_volume, 0),
         total_receipt_cost: processedDOs.reduce((sum, do_item) => 
           sum + do_item.total_receipt_cost, 0),
-        // Total cost including all components
-        total_cost: processedDOs.reduce((sum, do_item) => 
+        // Total cost including all components FROM DELIVERY ORDERS
+        total_delivery_order_cost: processedDOs.reduce((sum, do_item) => 
           sum + do_item.total_cost, 0),
+        // NEW: Gas transaction statistics
+        total_gas_transactions: gasTransactions.length,
+        total_gas_transaction_volume: gasTransactionVolume,
+        total_gas_transaction_cost: gasTransactionTotal,
+        // GRAND TOTAL: Delivery order cost + Gas transaction cost
+        total_cost: processedDOs.reduce((sum, do_item) => 
+          sum + do_item.total_cost, 0) + gasTransactionTotal,
+        
         pending_confirmation: processedDOs.filter(do_item => 
           do_item.needs_confirmation).length,
         confirmed: processedDOs.filter(do_item => 
@@ -1190,6 +1234,40 @@ async linkPOToGroup(req, res) {
         with_ocr_data: processedDOs.filter(do_item => 
           do_item.has_ocr_data).length
       };
+
+      // Format gas transactions for frontend
+      const formattedGasTransactions = gasTransactions.map(tx => ({
+        id: tx.id,
+        created_at: tx.created_at,
+        updated_at: tx.updated_at,
+        deposit_group_id: tx.deposit_group_id,
+        delivery_order_id: tx.delivery_order_id,
+        driver_id: tx.driver_id,
+        vehicle_id: tx.vehicle_id,
+        volume_m3: parseFloat(tx.volume_m3 || 0),
+        calculation_method: tx.calculation_method,
+        rate_per_m3: parseFloat(tx.rate_per_m3 || 0),
+        jisdor_rate: tx.jisdor_rate ? parseFloat(tx.jisdor_rate) : null,
+        total_cost: parseFloat(tx.total_cost || 0),
+        status: tx.status,
+        surat_jalan_photo_url: tx.surat_jalan_photo_url,
+        nota_photo_url: tx.nota_photo_url,
+        biaya_lain_photo_url: tx.biaya_lain_photo_url,
+        biaya_lain_amount: tx.biaya_lain_amount ? parseFloat(tx.biaya_lain_amount) : null,
+        biaya_lain_description: tx.biaya_lain_description,
+        nota_ocr_data: tx.nota_ocr_data,
+        // Include related data
+        vehicle: tx.vehicle ? {
+          id: tx.vehicle.id,
+          license_plate: tx.vehicle.license_plate,
+          type: tx.vehicle.type
+        } : null,
+        driver: tx.driver ? {
+          id: tx.driver.id,
+          username: tx.driver.username,
+          driverProfile: tx.driver.driverProfile
+        } : null
+      }));
 
       res.json({
         success: true,
@@ -1202,6 +1280,7 @@ async linkPOToGroup(req, res) {
             status: group.status
           },
           delivery_orders: processedDOs,
+          gas_transactions: formattedGasTransactions, // NEW: Add gas transactions to response
           summary
         }
       });

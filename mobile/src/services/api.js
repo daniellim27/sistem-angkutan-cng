@@ -17,13 +17,13 @@ const getApiUrl = () => {
       console.warn('⚠️ localhost detected on mobile device - this will not work!');
       console.warn('💡 Use your computer IP address or ngrok URL instead');
       // Return the ngrok fallback for mobile devices
-      return 'https://decahedral-duane-solitudinous.ngrok-free.dev/api';
+      return 'https://82e18f99a873.ngrok-free.app/api';
     }
     return envUrl;
   }
   
   // Fallback to ngrok URL
-  return 'https://decahedral-duane-solitudinous.ngrok-free.dev/api';
+  return 'https://82e18f99a873.ngrok-free.app/api';
 };
 
 const API_BASE_URL = getApiUrl();

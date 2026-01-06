@@ -382,12 +382,12 @@ const MainLayout = () => {
               title="Lain-lain"
               icon="🧰"
               items={[
-                {
-                  to: "/ritase/comprehensive",
-                  title: "Ritase & Laporan",
-                  icon: "📊",
-                  label: "Ritase & Laporan",
-                },
+                // {
+                //   to: "/ritase/comprehensive",
+                //   title: "Ritase & Laporan",
+                //   icon: "📊",
+                //   label: "Ritase & Laporan",
+                // },
                 {
                   to: "/operations/cctv-monitoring",
                   title: "CCTV Monitoring",

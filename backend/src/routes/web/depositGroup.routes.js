@@ -14,7 +14,7 @@ router.post(
 
 router.get(
   "/",
-  checkRole(["admin", "owner"]),
+  checkRole(["admin", "owner", "driver"]),
   depositGroupController.getAllGroups
 );
 

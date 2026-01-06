@@ -62,7 +62,7 @@ const Dashboard = () => {
         </Link>
 
         {/* RITASE & LAPORAN (customer + nota kecil) */}
-        <Link
+        {/* <Link
           to="/ritase/comprehensive"
           className="group flex flex-col justify-between rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-lg transition-shadow"
         >
@@ -83,7 +83,7 @@ const Dashboard = () => {
           <button className="mt-4 w-full rounded-lg bg-indigo-600 py-2 text-sm font-semibold text-white group-hover:bg-indigo-700">
             Buka Ritase & Laporan
           </button>
-        </Link>
+        </Link> */}
 
         {/* CUSTOMERS */}
         <Link
