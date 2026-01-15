@@ -31,7 +31,7 @@ const GhostMode = () => {
   const [nearestSpbg, setNearestSpbg] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showGasButton, setShowGasButton] = useState(false);
-  const [viewMode, setViewMode] = useState<'dashboard' | 'map'>('dashboard');
+  const [viewMode, setViewMode] = useState<'dashboard' | 'map'>('map');
   const [history, setHistory] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -146,7 +146,11 @@ const GhostMode = () => {
   }, []);
 
   const handleIsiGasPress = () => {
-    router.push('/gas-filling-form');
+    if (nearestSpbg?.id) {
+      router.push(`/gas-filling-form?deposit_group_id=${nearestSpbg.id}`);
+    } else {
+      router.push('/gas-filling-form');
+    }
   };
 
   // Fetch history when nearest SPBG changes and when dashboard is active
@@ -219,46 +223,65 @@ const GhostMode = () => {
       </View>
 
       {viewMode === 'map' && (
-        <MapView
-          style={styles.map}
-          initialRegion={{
-            latitude: vehicleLocation.latitude,
-            longitude: vehicleLocation.longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          }}
-          region={{
-            latitude: vehicleLocation.latitude,
-            longitude: vehicleLocation.longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          }}
-        >
-          {/* Vehicle location marker (from Inovatracks) */}
-          {vehicleLocation && (
-            <Marker
-              coordinate={{
-                latitude: vehicleLocation.latitude,
-                longitude: vehicleLocation.longitude,
-              }}
-              title="Lokasi Kendaraan"
-              description="GPS dari Inovatracks"
-              pinColor="blue"
-            />
+        <>
+          <MapView
+            style={styles.map}
+            initialRegion={{
+              latitude: vehicleLocation.latitude,
+              longitude: vehicleLocation.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            }}
+            region={{
+              latitude: vehicleLocation.latitude,
+              longitude: vehicleLocation.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            }}
+          >
+            {/* Vehicle location marker (from Inovatracks) */}
+            {vehicleLocation && (
+              <Marker
+                coordinate={{
+                  latitude: vehicleLocation.latitude,
+                  longitude: vehicleLocation.longitude,
+                }}
+                title="Lokasi Kendaraan"
+                description="GPS dari Inovatracks"
+                pinColor="blue"
+              />
+            )}
+            
+            {/* SPBG marker */}
+            {nearestSpbg && (
+              <Marker
+                coordinate={{
+                  latitude: parseFloat(nearestSpbg.latitude),
+                  longitude: parseFloat(nearestSpbg.longitude),
+                }}
+                title={nearestSpbg.spbg_name || nearestSpbg.spbg_location}
+                pinColor="green"
+              />
+            )}
+          </MapView>
+
+          {/* Distance overlay showing how many meters left to SPBG */}
+          {distance !== null && nearestSpbg && (
+            <View style={styles.distanceIndicator}>
+              <Text style={styles.distanceText}>
+                {distance <= 200 ? '✓' : '○'} {Math.max(0, Math.round(distance))} m lagi ke SPBG
+              </Text>
+              <Text style={styles.spbgNameText}>
+                {nearestSpbg.spbg_name || nearestSpbg.spbg_location}
+              </Text>
+              {vehicleLocation && (
+                <Text style={styles.locationText}>
+                  Kendaraan: {vehicleLocation.latitude.toFixed(6)}, {vehicleLocation.longitude.toFixed(6)}
+                </Text>
+              )}
+            </View>
           )}
-          
-          {/* SPBG marker */}
-          {nearestSpbg && (
-            <Marker
-              coordinate={{
-                latitude: parseFloat(nearestSpbg.latitude),
-                longitude: parseFloat(nearestSpbg.longitude),
-              }}
-              title={nearestSpbg.spbg_name || nearestSpbg.spbg_location}
-              pinColor="green"
-            />
-          )}
-        </MapView>
+        </>
       )}
 
       {/* Dashboard / History view */}
@@ -266,9 +289,26 @@ const GhostMode = () => {
         <View style={styles.dashboardContainer}>
           <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
             <Text style={styles.dashboardTitle}>Riwayat Isi Gas SPBG</Text>
-            <TouchableOpacity onPress={loadHistory} style={{padding:6}}>
-              <Text style={{color:'#007AFF', fontWeight:'600'}}>Refresh</Text>
-            </TouchableOpacity>
+            <View style={{flexDirection:'row', gap:12}}>
+              <TouchableOpacity 
+                onPress={() => {
+                  if (nearestSpbg?.id) {
+                    router.push({
+                      pathname: '/gas-transaction-history',
+                      params: { depositGroupId: nearestSpbg.id.toString() },
+                    });
+                  } else {
+                    router.push('/gas-transaction-history');
+                  }
+                }} 
+                style={{padding:6}}
+              >
+                <Text style={{color:'#007AFF', fontWeight:'600'}}>Lihat Semua</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={loadHistory} style={{padding:6}}>
+                <Text style={{color:'#007AFF', fontWeight:'600'}}>Refresh</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {historyLoading ? (
@@ -279,20 +319,62 @@ const GhostMode = () => {
             <Text style={styles.noHistoryText}>Tidak ada SPBG terdekat. Tunggu hingga kendaraan ditemukan.</Text>
           ) : (
             <ScrollView style={styles.historyList}>
-              {history.map((h) => (
-                <View key={h.id} style={styles.historyItem}>
-                  <View style={{flex:1}}>
-                    <Text style={styles.historyTitle}>{h.driver?.driverProfile?.full_name || h.driver?.username || 'Driver'}</Text>
-                    <Text style={styles.historySub}>{new Date(h.created_at).toLocaleString()}</Text>
-                    <Text style={styles.historySub}>Rp {Number(h.total_cost).toLocaleString('id-ID')} • {h.status}</Text>
-                  </View>
-                  {h.nota_photo_url && (
-                    <View style={styles.historyThumbContainer}>
-                      <Text style={styles.historyThumbText}>Nota</Text>
+              {history.map((h) => {
+                // Prefer OCR values when available, fall back to main fields
+                const rawVolume =
+                  h?.nota_ocr_data?.ocr_extracted_values?.volume_liters ??
+                  h?.volume_m3;
+                const rawRate =
+                  h?.nota_ocr_data?.ocr_extracted_values?.rate_per_liter ??
+                  h?.rate_per_m3;
+                const rawTotal =
+                  h?.nota_ocr_data?.ocr_extracted_values?.total_cost ??
+                  h?.total_cost;
+
+                const volume =
+                  rawVolume != null ? parseFloat(String(rawVolume)) : 0;
+                const rate = rawRate != null ? parseFloat(String(rawRate)) : 0;
+                const total =
+                  rawTotal != null ? parseFloat(String(rawTotal)) : 0;
+
+                return (
+                  <View key={h.id} style={styles.historyItem}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.historyTitle}>
+                        {h.driver?.driverProfile?.full_name ||
+                          h.driver?.username ||
+                          'Driver'}
+                      </Text>
+                      <Text style={styles.historySub}>
+                        {new Date(h.created_at).toLocaleString()}
+                      </Text>
+                      <Text style={styles.historySub}>
+                        Volume:{' '}
+                        {!isNaN(volume) ? volume.toFixed(3) : '0.000'} L
+                      </Text>
+                      <Text style={styles.historySub}>
+                        Harga/Liter: Rp{' '}
+                        {!isNaN(rate)
+                          ? rate.toLocaleString('id-ID')
+                          : '0'}
+                        /L
+                      </Text>
+                      <Text style={styles.historySub}>
+                        Rp{' '}
+                        {!isNaN(total)
+                          ? total.toLocaleString('id-ID')
+                          : '0'}{' '}
+                        • {h.status}
+                      </Text>
                     </View>
-                  )}
-                </View>
-              ))}
+                    {h.nota_photo_url && (
+                      <View style={styles.historyThumbContainer}>
+                        <Text style={styles.historyThumbText}>Nota</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
             </ScrollView>
           )}
         </View>

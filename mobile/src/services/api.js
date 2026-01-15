@@ -17,13 +17,13 @@ const getApiUrl = () => {
       console.warn('⚠️ localhost detected on mobile device - this will not work!');
       console.warn('💡 Use your computer IP address or ngrok URL instead');
       // Return the ngrok fallback for mobile devices
-      return 'https://82e18f99a873.ngrok-free.app/api';
+      return 'https://9047cda40acf.ngrok-free.app/api';
     }
     return envUrl;
   }
   
   // Fallback to ngrok URL
-  return 'https://82e18f99a873.ngrok-free.app/api';
+  return 'https://9047cda40acf.ngrok-free.app/api';
 };
 
 const API_BASE_URL = getApiUrl();
@@ -103,6 +103,7 @@ apiClient.interceptors.response.use(
     }
     
     // Handle error response
+    // Only logout on 401 (Unauthorized), not on 503 (Service Unavailable) or other server errors
     if (error.response?.status === 401 && !isLoginEndpoint) {
       console.log("Token expired or invalid, logging out...");
 
@@ -117,6 +118,9 @@ apiClient.interceptors.response.use(
           alert("Sesi Anda telah berakhir. Silakan login kembali.");
         }, 100);
       }
+    } else if (error.response?.status === 503) {
+      // Don't logout on 503 errors - just show a user-friendly message
+      error.message = "Server sedang sibuk. Silakan coba lagi dalam beberapa saat.";
     }
 
     return Promise.reject(error);
@@ -564,6 +568,13 @@ export const createGasTransaction = async (transactionData) => {
 export const getGasTransactionsByDepositGroup = (depositGroupId) => {
   if (!depositGroupId) return Promise.reject(new Error('depositGroupId is required'));
   return apiClient.get(`/gas-transactions/by-deposit-group/${depositGroupId}`);
+};
+
+/**
+ * Get gas transactions by driver (for mobile history)
+ */
+export const getGasTransactionsByDriver = () => {
+  return apiClient.get('/gas-transactions/by-driver');
 };
 
 export const getBudgetRequests = async (deliveryOrderId = null) => {
@@ -1136,6 +1147,50 @@ export const deleteReceipt = async (receiptId) => {
     return await apiClient.delete(`/receipt-ocr/${receiptId}`);
   } catch (error) {
     console.error("Error in deleteReceipt API call:", {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    throw error;
+  }
+};
+
+/**
+ * Process nota photo with OCR and return extracted data
+ * POST /api/gas-transactions/process-nota-ocr
+ */
+export const processNotaOCR = async (photo) => {
+  try {
+    console.log("processNotaOCR called with:", {
+      hasPhoto: !!photo
+    });
+
+    const formData = new FormData();
+    
+    // Add the nota photo
+    if (photo && photo.uri) {
+      const ext = photo.uri.split(".").pop() || "jpg";
+      await appendFileToFormData(
+        formData,
+        "nota_photo",
+        {
+          uri: photo.uri,
+          fileName: photo.fileName || `nota_${Date.now()}.${ext}`,
+          mimeType: photo.mimeType || "image/jpeg"
+        }
+      );
+    }
+
+    console.log("Sending nota photo to OCR processing endpoint...");
+    
+    return await apiClient.post(`/gas-transactions/process-nota-ocr`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      timeout: 90000, // 90 seconds for OCR processing
+    });
+  } catch (error) {
+    console.error("Error in processNotaOCR API call:", {
       message: error.message,
       stack: error.stack,
       response: error.response?.data,

@@ -780,7 +780,7 @@ const CashCoordinatorPage = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {isSPBG && transaction.gas_volume_m3 ? (
                             <span className="font-medium text-blue-600">
-                              {transaction.gas_volume_m3} m³
+                              {transaction.gas_volume_m3} L
                             </span>
                           ) : '-'}
                         </td>
@@ -1234,7 +1234,7 @@ const CashCoordinatorPage = () => {
                                 rate = parseFloat(formData.fixed_rate);
                                 rateLabel = `Rp ${parseFloat(formData.fixed_rate).toLocaleString('id-ID')}`;
                               }
-                              return `${formData.gas_volume_m3} m³ × ${rateLabel} = ${formatCurrency(volume * rate)}`;
+                              return `${formData.gas_volume_m3} L × ${rateLabel} = ${formatCurrency(volume * rate)}`;
                             })()}
                           </p>
                         </div>

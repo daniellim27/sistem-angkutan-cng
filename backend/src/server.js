@@ -353,6 +353,7 @@ initializeDatabase().then(() => {
   
   // Add gas transaction routes
   app.use("/api/gas-transactions", gasTransactionRoutes);
+  app.use("/api/web/gas-transactions", gasTransactionRoutes);
 
   // Add customer routes
   app.use("/api/customers", customerRoutes);

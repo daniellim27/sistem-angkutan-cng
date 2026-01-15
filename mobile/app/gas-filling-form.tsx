@@ -11,11 +11,12 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../src/contexts/AuthContext';
-import apiClient, { createGasTransaction } from '../src/services/api';
+import apiClient, { createGasTransaction, processNotaOCR } from '../src/services/api';
 import { FontAwesome5 } from '@expo/vector-icons';
 
 interface PhotoState {
@@ -26,19 +27,29 @@ interface PhotoState {
 
 const GasFillingForm = () => {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const depositGroupId = params.deposit_group_id ? parseInt(params.deposit_group_id as string, 10) : undefined;
 
   // Step 1: Surat Jalan
   const [suratJalanPhoto, setSuratJalanPhoto] = useState<PhotoState | null>(null);
 
   // Step 2: Nota
   const [notaPhoto, setNotaPhoto] = useState<PhotoState | null>(null);
-  const [volumeM3, setVolumeM3] = useState('');
-  const [calculationMethod, setCalculationMethod] = useState<'jisdor' | 'fixed'>('jisdor');
-  const [ratePerM3, setRatePerM3] = useState('');
-  const [jisdorRate, setJisdorRate] = useState('');
+  const [isProcessingOCR, setIsProcessingOCR] = useState(false);
+  const [ocrResults, setOcrResults] = useState<{
+    volume_liters?: number;
+    rate_per_liter?: number;
+    total_cost?: number;
+    ocr_confidence?: number;
+    raw_extracted?: {
+      volume_liters?: number;
+      rate_per_liter?: number;
+      total_cost?: number;
+    };
+  } | null>(null);
 
   // Step 3: Biaya Lain
   const [biayaLainPhoto, setBiayaLainPhoto] = useState<PhotoState | null>(null);
@@ -62,15 +73,54 @@ const GasFillingForm = () => {
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
-        setPhoto({
+        const photoData = {
           uri: asset.uri,
           type: 'image/jpeg',
           name: `photo_${Date.now()}.jpg`,
-        });
+        };
+        setPhoto(photoData);
+        
+        // If this is a nota photo, automatically process OCR
+        if (setPhoto === setNotaPhoto) {
+          processNotaOCRData(photoData);
+        }
       }
     } catch (error) {
       console.error('Error taking photo:', error);
       Alert.alert('Error', 'Failed to take photo');
+    }
+  };
+
+  const processNotaOCRData = async (photo: PhotoState) => {
+    try {
+      setIsProcessingOCR(true);
+      setOcrResults(null);
+      
+      console.log('Processing nota OCR...');
+      const response = await processNotaOCR(photo);
+      
+      console.log('Nota OCR API Response:', response);
+      
+      if (response.data && response.data.success && response.data.data) {
+        const extractedData = response.data.data;
+        setOcrResults(extractedData);
+        
+        Alert.alert(
+          'OCR Complete',
+          `Receipt data extracted successfully!\n\nVolume: ${extractedData.volume_liters?.toFixed(3)} L\nRate: Rp ${extractedData.rate_per_liter?.toLocaleString('id-ID')}/L\nTotal: Rp ${extractedData.total_cost?.toLocaleString('id-ID')}\n\nConfidence: ${Math.round((extractedData.ocr_confidence || 0) * 100)}%`
+        );
+      } else {
+        throw new Error('Invalid API response: no data received');
+      }
+    } catch (error: any) {
+      console.error('Nota OCR processing error:', error);
+      Alert.alert(
+        'OCR Processing Failed',
+        `Failed to process nota photo.\n\nError: ${error.message || 'Unknown error'}\n\nPlease try taking the photo again.`
+      );
+      setOcrResults(null);
+    } finally {
+      setIsProcessingOCR(false);
     }
   };
 
@@ -79,9 +129,19 @@ const GasFillingForm = () => {
       Alert.alert('Required', 'Please take a photo of Surat Jalan');
       return;
     }
-    if (currentStep === 2 && !notaPhoto) {
-      Alert.alert('Required', 'Please take a photo of Nota');
-      return;
+    if (currentStep === 2) {
+      if (!notaPhoto) {
+        Alert.alert('Required', 'Please take a photo of Nota');
+        return;
+      }
+      if (isProcessingOCR) {
+        Alert.alert('Processing', 'Please wait for OCR processing to complete');
+        return;
+      }
+      if (!ocrResults) {
+        Alert.alert('Required', 'Please wait for OCR processing to complete');
+        return;
+      }
     }
     setCurrentStep(currentStep + 1);
   };
@@ -94,38 +154,58 @@ const GasFillingForm = () => {
     }
   };
 
-  const calculateTotalCost = () => {
-    if (!volumeM3 || !ratePerM3) return 0;
-    const volume = parseFloat(volumeM3);
-    const rate = parseFloat(ratePerM3);
-    return volume * rate;
-  };
 
   const handleSubmit = async () => {
     if (!suratJalanPhoto || !notaPhoto) {
       Alert.alert('Required', 'Please complete all required steps');
       return;
     }
+    if (!ocrResults) {
+      Alert.alert('Required', 'Please wait for OCR processing to complete');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
-      const payload: any = {
+      // Use OCR extracted data if available, otherwise use manual input (fallback)
+    const finalVolumeLiters = ocrResults?.volume_liters || undefined;
+    const finalRatePerLiter = ocrResults?.rate_per_liter || undefined;
+    const finalTotalCost = ocrResults?.total_cost || undefined;
+
+    if (!finalVolumeLiters || !finalRatePerLiter || !finalTotalCost) {
+      Alert.alert('Required', 'Please take a nota photo and wait for OCR processing to complete');
+      return;
+    }
+
+    // Clean biaya lain amount (remove thousand separators) before sending
+    const biayaLainClean =
+      biayaLainAmount && biayaLainAmount.trim()
+        ? biayaLainAmount.replace(/\./g, '').trim()
+        : '';
+
+    const payload: any = {
         surat_jalan_photo: suratJalanPhoto,
         nota_photo: notaPhoto,
         biaya_lain_photo: biayaLainPhoto,
-        volume_m3: volumeM3,
-        calculation_method: calculationMethod,
-        rate_per_m3: ratePerM3,
-        jisdor_rate: jisdorRate || undefined,
-        total_cost: calculateTotalCost().toString(),
-        biaya_lain_amount: biayaLainAmount || undefined,
-        biaya_lain_description: biayaLainDescription || undefined,
-        // Optionally: deposit_group_id or delivery_order_id can be added here
+        // Use OCR extracted data (backend expects volume_m3/rate_per_m3 but stores liters)
+        volume_m3: finalVolumeLiters.toString(),
+        rate_per_m3: finalRatePerLiter.toString(),
+        total_cost: finalTotalCost.toString(),
+        biaya_lain_amount: biayaLainClean ? biayaLainClean : undefined,
+        biaya_lain_description: biayaLainDescription && biayaLainDescription.trim() ? biayaLainDescription.trim() : undefined,
+        deposit_group_id: depositGroupId || undefined,
       };
 
-      await createGasTransaction(payload);
+      const response = await createGasTransaction(payload);
+      const tx = response.data?.data;
 
-      Alert.alert('Success', 'Gas transaction submitted successfully', [
+      const volume = finalVolumeLiters.toFixed(3);
+      const rate = finalRatePerLiter.toLocaleString('id-ID');
+      const total = finalTotalCost.toLocaleString('id-ID');
+
+      const successMessage = `Gas transaction submitted successfully!\n\nExtracted Data:\nVolume: ${volume} L\nRate: Rp ${rate}/L\nTotal: Rp ${total}`;
+
+      Alert.alert('Success', successMessage, [
         {
           text: 'OK',
           onPress: () => router.back(),
@@ -169,14 +249,44 @@ const GasFillingForm = () => {
   const renderStep2 = () => (
     <View style={styles.stepContainer}>
       <Text style={styles.stepTitle}>Step 2: Nota</Text>
-      <Text style={styles.stepDescription}>Take a photo of the Nota and fill in details</Text>
+      <Text style={styles.stepDescription}>
+        Take a photo of the Nota. Sistem akan memakai OCR untuk membaca volume, harga, dan total secara otomatis.
+      </Text>
 
       {notaPhoto ? (
         <View style={styles.photoContainer}>
           <Image source={{ uri: notaPhoto.uri }} style={styles.photo} />
+          {isProcessingOCR && (
+            <View style={styles.ocrProcessingOverlay}>
+              <ActivityIndicator size="small" color="#fff" />
+              <Text style={styles.ocrProcessingText}>Processing OCR...</Text>
+            </View>
+          )}
+          {ocrResults && !isProcessingOCR && (
+            <View style={styles.ocrResultsOverlay}>
+              <Text style={styles.ocrResultsTitle}>Extracted Data:</Text>
+              <Text style={styles.ocrResultsText}>
+                Volume: {ocrResults.volume_liters?.toFixed(3)} L
+              </Text>
+              <Text style={styles.ocrResultsText}>
+                Rate: Rp {ocrResults.rate_per_liter?.toLocaleString('id-ID')}/L
+              </Text>
+              <Text style={styles.ocrResultsText}>
+                Total: Rp {ocrResults.total_cost?.toLocaleString('id-ID')}
+              </Text>
+              {ocrResults.ocr_confidence && (
+                <Text style={styles.ocrConfidenceText}>
+                  Confidence: {Math.round(ocrResults.ocr_confidence * 100)}%
+                </Text>
+              )}
+            </View>
+          )}
           <TouchableOpacity
             style={styles.retakeButton}
-            onPress={() => setNotaPhoto(null)}
+            onPress={() => {
+              setNotaPhoto(null);
+              setOcrResults(null);
+            }}
           >
             <Text style={styles.retakeButtonText}>Retake</Text>
           </TouchableOpacity>
@@ -191,95 +301,29 @@ const GasFillingForm = () => {
         </TouchableOpacity>
       )}
 
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>Volume (m³)</Text>
-        <TouchableOpacity
-          style={styles.input}
-          onPress={() => {
-            // You can add OCR processing here if needed
-            Alert.prompt('Volume', 'Enter volume in m³', (text) => {
-              if (text) setVolumeM3(text);
-            });
-          }}
-        >
-          <Text style={styles.inputText}>{volumeM3 || 'Enter volume'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>Calculation Method</Text>
-        <View style={styles.radioGroup}>
-          <TouchableOpacity
-            style={[
-              styles.radioButton,
-              calculationMethod === 'jisdor' && styles.radioButtonActive,
-            ]}
-            onPress={() => setCalculationMethod('jisdor')}
-          >
-            <Text
-              style={[
-                styles.radioButtonText,
-                calculationMethod === 'jisdor' && styles.radioButtonTextActive,
-              ]}
-            >
-              JISDOR
+      {ocrResults && !isProcessingOCR && (
+        <View style={styles.extractedDataContainer}>
+          <Text style={styles.extractedDataTitle}>📋 Extracted Receipt Data</Text>
+          <View style={styles.extractedDataRow}>
+            <Text style={styles.extractedDataLabel}>Volume:</Text>
+            <Text style={styles.extractedDataValue}>
+              {ocrResults.volume_liters?.toFixed(3)} L
             </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.radioButton,
-              calculationMethod === 'fixed' && styles.radioButtonActive,
-            ]}
-            onPress={() => setCalculationMethod('fixed')}
-          >
-            <Text
-              style={[
-                styles.radioButtonText,
-                calculationMethod === 'fixed' && styles.radioButtonTextActive,
-              ]}
-            >
-              Fixed Rate
+          </View>
+          <View style={styles.extractedDataRow}>
+            <Text style={styles.extractedDataLabel}>Rate per Liter:</Text>
+            <Text style={styles.extractedDataValue}>
+              Rp {ocrResults.rate_per_liter?.toLocaleString('id-ID')}
             </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>Rate per m³</Text>
-        <TouchableOpacity
-          style={styles.input}
-          onPress={() => {
-            Alert.prompt('Rate', 'Enter rate per m³', (text) => {
-              if (text) setRatePerM3(text);
-            });
-          }}
-        >
-          <Text style={styles.inputText}>{ratePerM3 || 'Enter rate'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {calculationMethod === 'jisdor' && (
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>JISDOR Rate</Text>
-          <TouchableOpacity
-            style={styles.input}
-            onPress={() => {
-              Alert.prompt('JISDOR Rate', 'Enter JISDOR rate', (text) => {
-                if (text) setJisdorRate(text);
-              });
-            }}
-          >
-            <Text style={styles.inputText}>{jisdorRate || 'Enter JISDOR rate'}</Text>
-          </TouchableOpacity>
+          </View>
+          <View style={styles.extractedDataRow}>
+            <Text style={styles.extractedDataLabel}>Total Cost:</Text>
+            <Text style={styles.extractedDataValue}>
+              Rp {ocrResults.total_cost?.toLocaleString('id-ID')}
+            </Text>
+          </View>
         </View>
       )}
-
-      <View style={styles.totalContainer}>
-        <Text style={styles.totalLabel}>Total Cost:</Text>
-        <Text style={styles.totalAmount}>
-          Rp {calculateTotalCost().toLocaleString('id-ID')}
-        </Text>
-      </View>
     </View>
   );
 
@@ -309,33 +353,38 @@ const GasFillingForm = () => {
       )}
 
       <View style={styles.formGroup}>
-        <Text style={styles.label}>Amount</Text>
-        <TouchableOpacity
-          style={styles.input}
-          onPress={() => {
-            Alert.prompt('Amount', 'Enter amount', (text) => {
-              if (text) setBiayaLainAmount(text);
-            });
+        <Text style={styles.label}>Amount (Rp)</Text>
+        <TextInput
+          style={styles.textInput}
+          placeholder="Enter amount (optional)"
+          value={biayaLainAmount}
+          onChangeText={(text) => {
+            // Only allow digits, then format with thousand separators (dot)
+            const numeric = text.replace(/[^0-9]/g, '');
+            if (!numeric) {
+              setBiayaLainAmount('');
+              return;
+            }
+            const formatted = numeric.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+            setBiayaLainAmount(formatted);
           }}
-        >
-          <Text style={styles.inputText}>{biayaLainAmount || 'Enter amount'}</Text>
-        </TouchableOpacity>
+          keyboardType="numeric"
+          returnKeyType="done"
+        />
       </View>
 
       <View style={styles.formGroup}>
         <Text style={styles.label}>Description</Text>
-        <TouchableOpacity
-          style={styles.input}
-          onPress={() => {
-            Alert.prompt('Description', 'Enter description', (text) => {
-              if (text) setBiayaLainDescription(text);
-            });
-          }}
-        >
-          <Text style={styles.inputText}>
-            {biayaLainDescription || 'Enter description'}
-          </Text>
-        </TouchableOpacity>
+        <TextInput
+          style={[styles.textInput, styles.textArea]}
+          placeholder="Enter description (optional)"
+          value={biayaLainDescription}
+          onChangeText={setBiayaLainDescription}
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+          returnKeyType="done"
+        />
       </View>
     </View>
   );
@@ -478,6 +527,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#000',
   },
+  textInput: {
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#000',
+    minHeight: 44,
+  },
+  textArea: {
+    minHeight: 80,
+    maxHeight: 120,
+  },
   radioGroup: {
     flexDirection: 'row',
     gap: 10,
@@ -541,6 +604,99 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  ocrProcessingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
+  },
+  ocrProcessingText: {
+    color: '#FFF',
+    marginTop: 10,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  ocrResultsOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    padding: 12,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+  },
+  ocrResultsTitle: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  ocrResultsText: {
+    color: '#FFF',
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  ocrConfidenceText: {
+    color: '#90EE90',
+    fontSize: 11,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  extractedDataContainer: {
+    backgroundColor: '#FFF',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 20,
+    borderWidth: 2,
+    borderColor: '#007AFF',
+  },
+  extractedDataTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#000',
+    marginBottom: 12,
+  },
+  extractedDataRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  extractedDataLabel: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
+  },
+  extractedDataValue: {
+    fontSize: 16,
+    color: '#000',
+    fontWeight: 'bold',
+  },
+  rawDataContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  rawDataTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 4,
+  },
+  rawDataText: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
   },
 });
 

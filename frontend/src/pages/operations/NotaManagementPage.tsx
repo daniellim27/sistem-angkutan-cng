@@ -1,11 +1,10 @@
 // src/pages/operations/NotaManagementPage.tsx
 import React, { useState } from 'react';
 import NotaKecilTab from './components/NotaKecilTab';
-import NotaBesarTab from './components/NotaBesarTab';
-import NotaBesarOutstandingTab from './components/NotaBesarOutstandingTab';
+import CCTVMonitoringPage from './CCTVMonitoringPage';
 
 const NotaManagementPage: React.FC = () => {
-  const [selectedTab, setSelectedTab] = useState<'nota-kecil' | 'nota-besar' | 'nota-besar-outstanding'>('nota-kecil');
+  const [selectedTab, setSelectedTab] = useState<'nota-kecil' | 'cctv-monitoring' >('nota-kecil');
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -30,25 +29,16 @@ const NotaManagementPage: React.FC = () => {
                 Nota Kecil
               </button>
               <button
-                onClick={() => setSelectedTab('nota-besar')}
+                onClick={() => setSelectedTab('cctv-monitoring')}
                 className={`py-4 px-6 border-b-2 font-medium text-sm ${
-                  selectedTab === 'nota-besar'
+                  selectedTab === 'cctv-monitoring'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Nota Besar
+                CCTV Monitoring
               </button>
-              <button
-                onClick={() => setSelectedTab('nota-besar-outstanding')}
-                className={`py-4 px-6 border-b-2 font-medium text-sm ${
-                  selectedTab === 'nota-besar-outstanding'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Outstanding Nota Besar
-              </button>
+              
             </nav>
           </div>
 
@@ -59,14 +49,9 @@ const NotaManagementPage: React.FC = () => {
                 Manage individual nota kecils from drivers. Select multiple nota kecils to create a nota besar.
               </div>
             )}
-            {selectedTab === 'nota-besar' && (
+            {selectedTab === 'cctv-monitoring' && (
               <div className="text-sm text-gray-600">
-                View and manage consolidated nota besars created from selected nota kecils.
-              </div>
-            )}
-            {selectedTab === 'nota-besar-outstanding' && (
-              <div className="text-sm text-gray-600">
-                View nota besars with outstanding payments. Prices shown here contribute to the Outstanding Amount in the Payments page.
+                Monitor CCTV sessions, view screenshots, and manage meter readings from delivery operations.
               </div>
             )}
           </div>
@@ -74,8 +59,7 @@ const NotaManagementPage: React.FC = () => {
 
         {/* Tab Content */}
         {selectedTab === 'nota-kecil' && <NotaKecilTab />}
-        {selectedTab === 'nota-besar' && <NotaBesarTab />}
-        {selectedTab === 'nota-besar-outstanding' && <NotaBesarOutstandingTab />}
+        {selectedTab === 'cctv-monitoring' && <CCTVMonitoringPage />}
       </div>
     </div>
   );

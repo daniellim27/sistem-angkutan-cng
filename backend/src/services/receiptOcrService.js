@@ -4,8 +4,8 @@
  * Receipt OCR Service for Gas Station Receipts
  * 
  * Extracts data from gas station receipts in Indonesian format:
- * - Jml Liter (volume in liters) → volume_m3 (convert to m³)
- * - Harga/Liter (price per liter) → rate_per_m3 (convert to per m³)
+ * - Jml Liter (volume in liters) → volume_liters (keep as liters, no conversion)
+ * - Harga/Liter (price per liter) → rate_per_liter (keep as per liter, no conversion)
  * - Jml Rupiah (total amount) → total_cost
  */
 
@@ -142,21 +142,18 @@ class ReceiptOcrService {
                 throw new Error(`Failed to parse all numbers: ${content}`);
             }
 
-            // Convert to system units (m³)
-            const volume_m3 = volume_liters / 1000; // Convert liters to m³
-            const rate_per_m3 = rate_per_liter * 1000; // Convert per liter to per m³
-
+            // Keep as liters (no conversion to m³)
             console.log(`📊 Extracted values:`);
-            console.log(`   Volume: ${volume_liters} L → ${volume_m3} m³`);
-            console.log(`   Rate: Rp ${rate_per_liter}/L → Rp ${rate_per_m3}/m³`);
+            console.log(`   Volume: ${volume_liters} L`);
+            console.log(`   Rate: Rp ${rate_per_liter}/L`);
             console.log(`   Total: Rp ${total_cost}`);
 
             return {
                 success: true,
                 data: {
-                    volume_m3: volume_m3,
+                    volume_liters: volume_liters,
                     calculation_method: 'fixed_rate',
-                    rate_per_m3: rate_per_m3,
+                    rate_per_liter: rate_per_liter,
                     total_cost: total_cost,
                     currency: 'IDR',
                     ocr_confidence: 0.95,

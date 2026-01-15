@@ -62,13 +62,41 @@ interface Pagination {
   totalPages: number;
 }
 
+interface GasExtraExpense {
+  id: number;
+  status: 'pending' | 'approved' | 'rejected';
+  total_cost: string;
+  biaya_lain_amount?: string;
+  biaya_lain_description?: string;
+  biaya_lain_photo_url?: string | null;
+  created_at: string;
+  driver?: {
+    id: number;
+    username: string;
+    driverProfile?: {
+      full_name: string;
+    };
+  };
+  vehicle?: {
+    id: number;
+    license_plate: string;
+    type?: string;
+  };
+  depositGroup?: {
+    id: number;
+    spbg_name?: string | null;
+    spbg_location: string;
+  };
+}
+
 const DriverExpenseManagement: React.FC = () => {
   const [expenses, setExpenses] = useState<DriverExpense[]>([]);
   const [budgetRequests, setBudgetRequests] = useState<BudgetRequest[]>([]);
+  const [gasExtraExpenses, setGasExtraExpenses] = useState<GasExtraExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'expenses' | 'budgets'>('expenses');
+  const [activeTab, setActiveTab] = useState<'expenses' | 'budgets' | 'gas-extra'>('expenses');
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [selectedExpense, setSelectedExpense] = useState<DriverExpense | null>(null);
@@ -89,8 +117,10 @@ const DriverExpenseManagement: React.FC = () => {
   useEffect(() => {
     if (activeTab === 'expenses') {
       fetchExpenses();
-    } else {
+    } else if (activeTab === 'budgets') {
       fetchBudgetRequests();
+    } else {
+      fetchGasExtraExpenses();
     }
   }, [statusFilter, currentPage, activeTab]);
 
@@ -139,6 +169,42 @@ const DriverExpenseManagement: React.FC = () => {
       });
     } catch (err: any) {
       setError('Failed to fetch budget requests.');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchGasExtraExpenses = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: '20',
+      });
+
+      if (statusFilter) {
+        params.append('status', statusFilter);
+      }
+
+      const response = await apiClient.get(`/gas-transactions/driver-extra-expenses?${params}`);
+
+      // For this endpoint, api interceptor returns `data` as the nested `data` field
+      const { items, pagination: apiPagination } = response.data || {};
+
+      setGasExtraExpenses(items || []);
+      if (apiPagination) {
+        setPagination(apiPagination);
+      } else {
+        setPagination({
+          total: items?.length || 0,
+          page: currentPage,
+          limit: 20,
+          totalPages: Math.max(1, Math.ceil((items?.length || 0) / 20)),
+        });
+      }
+    } catch (err: any) {
+      setError('Failed to fetch driver extra gas expenses.');
       console.error(err);
     } finally {
       setLoading(false);
@@ -325,6 +391,19 @@ const DriverExpenseManagement: React.FC = () => {
             }`}
           >
             💸 Budget Requests
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('gas-extra');
+              setCurrentPage(1);
+            }}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'gas-extra'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            ⛽ Biaya Lain (Gas)
           </button>
         </nav>
       </div>
@@ -617,6 +696,152 @@ const DriverExpenseManagement: React.FC = () => {
           </div>
 
           {/* Pagination for Budget Requests */}
+          {pagination && pagination.totalPages > 1 && (
+            <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200">
+              <div className="flex-1 flex justify-between sm:hidden">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === pagination.totalPages}
+                  className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+              <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm text-gray-700">
+                    Showing <span className="font-medium">{((currentPage - 1) * 20) + 1}</span> to{' '}
+                    <span className="font-medium">
+                      {Math.min(currentPage * 20, pagination.total)}
+                    </span>{' '}
+                    of <span className="font-medium">{pagination.total}</span> results
+                  </p>
+                </div>
+                <div>
+                  <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
+                    {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((page) => (
+                      <button
+                        key={page}
+                        onClick={() => handlePageChange(page)}
+                        className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                          page === currentPage
+                            ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                            : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                  </nav>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Gas Extra Expenses Table (from gas transactions) */}
+      {activeTab === 'gas-extra' && (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Driver & Vehicle
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    SPBG / Deposit Group
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Biaya Lain Amount
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Description
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Gas Total
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Created At
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Picture
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {gasExtraExpenses.map((tx) => {
+                  const backendBase =
+                    process.env.REACT_APP_BACKEND_URL ||
+                    (process.env.REACT_APP_API_URL
+                      ? process.env.REACT_APP_API_URL.replace('/api/web', '').replace('/api', '')
+                      : 'http://localhost:3000');
+
+                  const biayaAmount = tx.biaya_lain_amount || '0';
+
+                  return (
+                    <tr key={tx.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          {tx.driver?.driverProfile?.full_name || tx.driver?.username || '-'}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {tx.vehicle?.license_plate || '-'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {tx.depositGroup?.spbg_name || tx.depositGroup?.spbg_location || '-'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {formatCurrency(biayaAmount)}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
+                        {tx.biaya_lain_description || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatCurrency(tx.total_cost)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {getStatusBadge(tx.status)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {formatDate(tx.created_at)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {tx.biaya_lain_photo_url ? (
+                          <a
+                            href={`${backendBase}${tx.biaya_lain_photo_url}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-900 px-2 py-1 bg-blue-100 rounded text-xs"
+                          >
+                            🖼 View
+                          </a>
+                        ) : (
+                          <span className="text-gray-400 text-xs">No Image</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination for Gas Extra Expenses */}
           {pagination && pagination.totalPages > 1 && (
             <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200">
               <div className="flex-1 flex justify-between sm:hidden">

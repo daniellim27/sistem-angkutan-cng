@@ -35,5 +35,53 @@ router.post(
   gasTransactionController.createGasTransaction
 );
 
+/**
+ * POST /api/gas-transactions/process-nota-ocr
+ * Process nota photo with OCR and return extracted data
+ * Driver only
+ */
+router.post(
+  '/process-nota-ocr',
+  verifyToken,
+  checkRole(['driver']),
+  upload.single('nota_photo'),
+  gasTransactionController.processNotaOCR
+);
+
+/**
+ * GET /api/gas-transactions/by-driver
+ * Get gas transactions by driver (for mobile history)
+ * Driver only
+ */
+router.get(
+  '/by-driver',
+  verifyToken,
+  checkRole(['driver']),
+  gasTransactionController.getGasTransactionsByDriver
+);
+
+/**
+ * GET /api/gas-transactions/driver-extra-expenses
+ * Get all gas transactions that contain driver "biaya lain" (extra expenses)
+ * Admin/Owner only (web)
+ */
+router.get(
+  '/driver-extra-expenses',
+  verifyToken,
+  checkRole(['admin', 'owner']),
+  gasTransactionController.getDriverExtraExpensesForAdmin
+);
+
+/**
+ * PATCH /api/gas-transactions/:id
+ * Update a gas transaction (admin/owner only)
+ */
+router.patch(
+  '/:id',
+  verifyToken,
+  checkRole(['admin', 'owner']),
+  gasTransactionController.updateGasTransaction
+);
+
 module.exports = router;
 

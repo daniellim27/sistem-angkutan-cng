@@ -1,7 +1,7 @@
 // src/pages/DepositGroupManagement.tsx
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
-import apiClient from '../api/axiosConfig';
+import apiClient, { authClient } from '../api/axiosConfig';
 import { GasStationApi } from '../api/gasStationApi';
 import { convertMoneyToVolume, formatVolume } from '../utils/volumeConversionUtils';
 import { getImageUrl } from '../utils/imageUtils';
@@ -68,6 +68,7 @@ const DepositGroupManagement = () => {
   const [showTagihanModal, setShowTagihanModal] = useState(false);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [showBalancingModal, setShowBalancingModal] = useState(false);
+  const [showBiayaLainModal, setShowBiayaLainModal] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<DepositGroupWithMembers | null>(null);
   const [selectedDOPhotos, setSelectedDOPhotos] = useState<{do_number: string, photos: string[]} | null>(null);
   // Removed PO dependencies - system no longer relies on purchase orders
@@ -106,7 +107,15 @@ const DepositGroupManagement = () => {
   const [loadingTagihan, setLoadingTagihan] = useState(false);
   const [gasTransactions, setGasTransactions] = useState<any[]>([]);
   const [loadingGasTransactions, setLoadingGasTransactions] = useState(false);
-  const [selectedGasTransactionImage, setSelectedGasTransactionImage] = useState<string | null>(null);
+  const [selectedGasTransactionImages, setSelectedGasTransactionImages] = useState<string[]>([]);
+  const [selectedGasTransactionImageIndex, setSelectedGasTransactionImageIndex] = useState<number>(0);
+  const [updatingGasTransactionId, setUpdatingGasTransactionId] = useState<number | null>(null);
+  const [editingGasTransaction, setEditingGasTransaction] = useState<any | null>(null);
+  const [editingGasForm, setEditingGasForm] = useState<{ volume: string; rate: string; total: string }>({
+    volume: '',
+    rate: '',
+    total: '',
+  });
 
   // Balancing state
   const [balancingData, setBalancingData] = useState<any>(null);
@@ -382,11 +391,78 @@ const DepositGroupManagement = () => {
     }
   };
 
+  const refreshTagihanData = async () => {
+    if (!selectedGroup) return;
+    await openTagihanModal(selectedGroup);
+  };
+
+  const handleUpdateGasTransactionStatus = async (tx: any, status: 'approved' | 'rejected') => {
+    try {
+      setUpdatingGasTransactionId(tx.id);
+      await authClient.patch(`/gas-transactions/${tx.id}`, { status });
+      toast.success(`Gas transaction ${status === 'approved' ? 'approved' : 'rejected'}`);
+      await refreshTagihanData();
+    } catch (err: any) {
+      console.error('Failed to update gas transaction status:', err);
+      toast.error(err.response?.data?.message || 'Failed to update gas transaction');
+    } finally {
+      setUpdatingGasTransactionId(null);
+    }
+  };
+
+  const openEditGasTransaction = (tx: any) => {
+    setEditingGasTransaction(tx);
+    setEditingGasForm({
+      volume: tx.volume_m3?.toString() || '',
+      rate: tx.rate_per_m3?.toString() || '',
+      total: tx.total_cost?.toString() || '',
+    });
+  };
+
+  const handleSaveEditedGasTransaction = async () => {
+    if (!editingGasTransaction) return;
+    try {
+      const payload: any = {};
+      if (editingGasForm.volume) payload.volume_m3 = editingGasForm.volume;
+      if (editingGasForm.rate) payload.rate_per_m3 = editingGasForm.rate;
+      if (editingGasForm.total) payload.total_cost = editingGasForm.total;
+
+      setUpdatingGasTransactionId(editingGasTransaction.id);
+      await authClient.patch(`/gas-transactions/${editingGasTransaction.id}`, payload);
+      toast.success('Gas transaction updated');
+      setEditingGasTransaction(null);
+      await refreshTagihanData();
+    } catch (err: any) {
+      console.error('Failed to update gas transaction values:', err);
+      toast.error(err.response?.data?.message || 'Failed to update gas transaction');
+    } finally {
+      setUpdatingGasTransactionId(null);
+    }
+  };
+
   const openBalancingModal = async (group: DepositGroupWithMembers) => {
     setSelectedGroup(group);
     setShowBalancingModal(true);
     setBalancingPage(1); // Reset to first page
     await fetchBalancingData(group.id, 1);
+  };
+
+  const openBiayaLainModal = async (group: DepositGroupWithMembers) => {
+    setSelectedGroup(group);
+    setShowBiayaLainModal(true);
+    setLoadingTagihan(true);
+    
+    try {
+      // Fetch tagihan data to get gas transactions with biaya_lain
+      const tagihanResponse = await apiClient.get(`/deposit-groups/${group.id}/tagihan`);
+      const data = tagihanResponse.data.data || tagihanResponse.data;
+      setTagihanData(data);
+    } catch (err: any) {
+      console.error('Failed to fetch biaya lain data:', err);
+      toast.error('Failed to load biaya lain data');
+    } finally {
+      setLoadingTagihan(false);
+    }
   };
 
   const fetchBalancingData = async (groupId: number, page: number = balancingPage) => {
@@ -486,7 +562,7 @@ const DepositGroupManagement = () => {
     const confirmed = window.confirm(
       `Confirm OCR data for ${deliveryOrder.do_number}?\n\n` +
       `OCR Volume: ${deliveryOrder.surat_jalan_volume_extracted} m³\n` +
-      `Gas Volume: ${deliveryOrder.gas_volume_m3} m³\n\n` +
+      `Gas Volume: ${deliveryOrder.gas_volume_m3} L\n\n` +
       `Do you want to confirm this volume?`
     );
 
@@ -559,6 +635,7 @@ const DepositGroupManagement = () => {
     setShowTagihanModal(false);
     setShowPhotoModal(false);
     setShowBalancingModal(false);
+    setShowBiayaLainModal(false);
     setSelectedGroup(null);
     setSelectedDOPhotos(null);
     setEditingLocationId(null);
@@ -795,12 +872,7 @@ const DepositGroupManagement = () => {
                   >
                     Top Up
                   </button>
-                  <button
-                    onClick={() => openMembersModal(group)}
-                    className="flex-1 bg-gray-500 hover:bg-gray-600 text-white text-sm py-2 px-3 rounded"
-                  >
-                    View DOs
-                  </button>
+                  {/* View DOs button removed as requested */}
                 </div>
                 <div className="flex space-x-2">
                   <button
@@ -814,6 +886,14 @@ const DepositGroupManagement = () => {
                     className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white text-sm py-2 px-3 rounded"
                   >
                     Balancing
+                  </button>
+                </div>
+                <div className="mt-2">
+                  <button
+                    onClick={() => openBiayaLainModal(group)}
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-white text-sm py-2 px-3 rounded"
+                  >
+                    💰 Biaya Lain
                   </button>
                 </div>
               </div>
@@ -1167,7 +1247,31 @@ const DepositGroupManagement = () => {
                   <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                   <p className="mt-2 text-gray-500">Loading billing data...</p>
                 </div>
-              ) : tagihanData ? (
+              ) : tagihanData ? (() => {
+                const allGasTransactions: any[] = tagihanData.gas_transactions || [];
+
+                // Only use APPROVED gas transactions for volume and receipt summaries
+                const approvedGasTransactions = allGasTransactions.filter(
+                  (tx: any) => tx.status === 'approved'
+                );
+
+                // Volume total from approved transactions (using same unit as gas transactions table, L)
+                const approvedVolumeTotal = approvedGasTransactions.reduce(
+                  (sum: number, tx: any) => sum + (Number(tx.volume_m3) || 0),
+                  0
+                );
+
+                // All APPROVED gas transactions that have a nota photo (driver uploaded approved receipt)
+                const approvedReceiptTransactions =
+                  approvedGasTransactions.filter((tx: any) => tx.nota_photo_url) || [];
+
+                const receiptTotal = approvedReceiptTransactions.reduce(
+                  (sum: number, tx: any) => sum + (tx.total_cost || 0),
+                  0
+                );
+                const receiptCount = approvedReceiptTransactions.length;
+
+                return (
                 <div className="space-y-6">
                   {/* Debug info */}
                   <div className="mb-4 p-2 bg-gray-100 rounded text-xs">
@@ -1176,30 +1280,22 @@ const DepositGroupManagement = () => {
                   </div>
                   {/* Summary Section */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                    <div className="bg-blue-50 p-4 rounded-lg">
-                      <div className="text-xs text-gray-600 mb-1">Total DOs</div>
-                      <div className="text-2xl font-bold text-blue-600">
-                        {tagihanData.summary.total_delivery_orders}
-                      </div>
-                    </div>
                     <div className="bg-green-50 p-4 rounded-lg">
                       <div className="text-xs text-gray-600 mb-1">Base Gas Cost</div>
                       <div className="text-lg font-bold text-green-600">
-                        {formatCurrency(tagihanData.summary.total_base_gas_cost)}
+                        {formatCurrency(tagihanData.summary?.total_base_gas_cost || 0)}
                       </div>
                     </div>
                     <div className="bg-orange-50 p-4 rounded-lg">
                       <div className="text-xs text-gray-600 mb-1">Selisih Cost</div>
                       <div className="text-lg font-bold text-orange-600">
-                        {formatCurrency(tagihanData.summary.total_selisih_cost)}
+                        {formatCurrency(tagihanData.summary?.total_selisih_cost || 0)}
                       </div>
                     </div>
                     <div className="bg-yellow-50 p-4 rounded-lg">
-                      <div className="text-xs text-gray-600 mb-1">Pending / Confirmed</div>
-                      <div className="text-2xl font-bold">
-                        <span className="text-yellow-600">{tagihanData.summary.pending_confirmation}</span>
-                        <span className="text-gray-400 mx-1">/</span>
-                        <span className="text-green-600">{tagihanData.summary.confirmed}</span>
+                      <div className="text-xs text-gray-600 mb-1">Pending</div>
+                      <div className="text-2xl font-bold text-yellow-600">
+                        {tagihanData.summary?.pending_confirmation || 0}
                       </div>
                     </div>
                   </div>
@@ -1209,16 +1305,16 @@ const DepositGroupManagement = () => {
                     <div className="bg-pink-50 p-4 rounded-lg border-2 border-pink-200">
                       <div className="text-xs text-gray-600 mb-1">Receipt Cost</div>
                       <div className="text-lg font-bold text-pink-600">
-                        {formatCurrency(tagihanData.summary.total_receipt_cost || 0)}
+                        {formatCurrency(receiptTotal || 0)}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
-                        {tagihanData.summary.total_receipts || 0} receipt{(tagihanData.summary.total_receipts || 0) !== 1 ? 's' : ''}
+                        {receiptCount} receipt{receiptCount !== 1 ? 's' : ''}
                       </div>
                     </div>
                     <div className="bg-purple-50 p-4 rounded-lg border-4 border-purple-300">
                       <div className="text-xs text-gray-600 mb-1">💰 Grand Total Cost</div>
                       <div className="text-xl font-bold text-purple-600">
-                        {formatCurrency(tagihanData.summary.total_cost)}
+                        {formatCurrency(tagihanData.summary?.total_cost || 0)}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
                         Gas + Selisih + Receipts
@@ -1226,193 +1322,18 @@ const DepositGroupManagement = () => {
                     </div>
                   </div>
 
-                  {/* Volume Summary */}
+                  {/* Volume Summary - only approved gas transactions */}
                   <div className="bg-gray-50 p-4 rounded-lg">
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div>
-                        <div className="text-sm text-gray-600 mb-1">Set Volume (m³)</div>
-                        <div className="text-xl font-bold text-blue-600">
-                          {tagihanData.summary.total_set_volume.toFixed(2)}
-                        </div>
+                    <div className="text-center">
+                      <div className="text-sm text-gray-600 mb-1">Approved Volume Total (L)</div>
+                      <div className="text-2xl font-bold text-blue-600">
+                        {approvedVolumeTotal.toFixed(2)}
                       </div>
-                      <div>
-                        <div className="text-sm text-gray-600 mb-1">Actual Volume (m³)</div>
-                        <div className="text-xl font-bold text-green-600">
-                          {tagihanData.summary.total_actual_volume.toFixed(2)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-sm text-gray-600 mb-1">Selisih Volume (m³)</div>
-                        <div className={`text-xl font-bold ${tagihanData.summary.total_selisih_volume >= 0 ? 'text-orange-600' : 'text-red-600'}`}>
-                          {tagihanData.summary.total_selisih_volume >= 0 ? '+' : ''}{tagihanData.summary.total_selisih_volume.toFixed(2)}
-                        </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        From {approvedGasTransactions.length} approved transaction
+                        {approvedGasTransactions.length !== 1 ? 's' : ''}
                       </div>
                     </div>
-                  </div>
-
-                  {/* Delivery Orders Table */}
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                            DO Number
-                          </th>
-                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                            Customer
-                          </th>
-                          <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                            Set Vol. (m³)
-                          </th>
-                          <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                            Actual Vol. (m³)
-                          </th>
-                          <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                            Selisih (m³)
-                          </th>
-                          <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                            Base Cost
-                          </th>
-                          <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                            Selisih Cost
-                          </th>
-                          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                            🧾 Receipts
-                          </th>
-                          <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                            Total Cost
-                          </th>
-                          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                            Status
-                          </th>
-                          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                            Action
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {tagihanData.delivery_orders.map((do_item: any) => (
-                          <tr key={do_item.id} className={`hover:bg-gray-50 ${do_item.selisih_volume_m3 > 0 ? 'bg-orange-50' : ''}`}>
-                            <td className="px-3 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                              {do_item.do_number}
-                            </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-700">
-                              {do_item.customer_name}
-                            </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-sm text-right text-blue-600 font-medium">
-                              {do_item.set_volume_m3.toFixed(2)}
-                            </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-sm text-right">
-                              {do_item.actual_volume_m3 > 0 ? (
-                                <div className="flex flex-col items-end">
-                                  <span className={`font-medium ${do_item.surat_jalan_ocr_confirmed ? 'text-green-600' : 'text-blue-500'}`}>
-                                    {do_item.actual_volume_m3.toFixed(2)}
-                                  </span>
-                                  {do_item.has_ocr_data && (
-                                    <span className="text-xs text-gray-500">
-                                      {do_item.surat_jalan_ocr_confirmed ? '✓ Confirmed' : '📊 OCR'}
-                                    </span>
-                                  )}
-                                  {do_item.has_surat_jalan && !do_item.has_ocr_data && (
-                                    <span className="text-xs text-orange-500">⚠️ No OCR</span>
-                                  )}
-                                </div>
-                              ) : do_item.has_surat_jalan ? (
-                                <span className="text-orange-500 text-xs">📷 Photo only</span>
-                              ) : (
-                                <span className="text-gray-400">-</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-sm text-right">
-                              {do_item.actual_volume_m3 > 0 ? (
-                                <span className={`font-bold ${do_item.selisih_volume_m3 > 0 ? 'text-orange-600' : do_item.selisih_volume_m3 < 0 ? 'text-red-600' : 'text-gray-600'}`}>
-                                  {do_item.selisih_volume_m3 > 0 ? '+' : ''}{do_item.selisih_volume_m3.toFixed(2)}
-                                </span>
-                              ) : (
-                                <span className="text-gray-400">-</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-sm text-right text-gray-900">
-                              {formatCurrency(do_item.base_gas_cost)}
-                            </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-sm text-right">
-                              {do_item.selisih_cost > 0 ? (
-                                <span className="text-orange-600 font-medium">
-                                  {formatCurrency(do_item.selisih_cost)}
-                                </span>
-                              ) : (
-                                <span className="text-gray-400">-</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-sm text-center">
-                              {do_item.receipts_count > 0 ? (
-                                <div className="flex flex-col items-center">
-                                  <span className="font-medium text-pink-600">
-                                    {do_item.receipts_count} receipt{do_item.receipts_count > 1 ? 's' : ''}
-                                  </span>
-                                  <span className="text-xs text-gray-500">
-                                    {do_item.total_receipt_volume.toFixed(2)} m³
-                                  </span>
-                                  <span className="font-semibold text-pink-700">
-                                    {formatCurrency(do_item.total_receipt_cost)}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span className="text-gray-400">-</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-sm text-right font-bold text-purple-600">
-                              {formatCurrency(do_item.total_cost)}
-                            </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-center">
-                              {do_item.surat_jalan_ocr_confirmed ? (
-                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
-                                  ✓ Confirmed
-                                </span>
-                              ) : do_item.actual_volume_m3 > 0 ? (
-                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">
-                                  Pending
-                                </span>
-                              ) : (
-                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">
-                                  No Data
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-center">
-                              <div className="flex flex-col space-y-1">
-                                {do_item.needs_confirmation && (
-                                  <button
-                                    onClick={() => handleConfirmOCR(do_item)}
-                                    className="text-blue-600 hover:text-blue-900 text-sm font-medium"
-                                  >
-                                    Confirm
-                                  </button>
-                                )}
-                                {do_item.has_surat_jalan && !do_item.has_ocr_data && (
-                                  <button
-                                    onClick={() => handleRetryOCR(do_item)}
-                                    className="text-orange-600 hover:text-orange-900 text-xs font-medium"
-                                    title="Retry OCR processing"
-                                  >
-                                    🔄 Retry OCR
-                                  </button>
-                                )}
-                                {do_item.has_surat_jalan && (
-                                  <button
-                                    onClick={() => handleViewSuratJalan(do_item)}
-                                    className="text-green-600 hover:text-green-900 text-xs font-medium"
-                                    title="View Surat Jalan Photos"
-                                  >
-                                    📷 View Photos
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
                   </div>
 
                   {/* Gas Transactions Section */}
@@ -1428,11 +1349,12 @@ const DepositGroupManagement = () => {
                               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver</th>
                               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vehicle</th>
-                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Volume (m³)</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Volume (L)</th>
                               <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Rate</th>
                               <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total Cost</th>
                               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Photos</th>
                               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                              <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Action</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-200">
@@ -1448,10 +1370,10 @@ const DepositGroupManagement = () => {
                                   {tx.vehicle?.license_plate || '-'}
                                 </td>
                                 <td className="px-3 py-3 whitespace-nowrap text-sm text-right text-gray-900">
-                                  {tx.volume_m3} m³
+                                  {tx.volume_m3} L
                                 </td>
                                 <td className="px-3 py-3 whitespace-nowrap text-sm text-right text-gray-900">
-                                  {formatCurrency(tx.rate_per_m3)}/m³
+                                  {formatCurrency(tx.rate_per_m3)}/L
                                   {tx.calculation_method === 'jisdor' && tx.jisdor_rate && (
                                     <span className="text-xs text-gray-500 ml-1">(JISDOR: {tx.jisdor_rate})</span>
                                   )}
@@ -1460,41 +1382,47 @@ const DepositGroupManagement = () => {
                                   {formatCurrency(tx.total_cost)}
                                 </td>
                                 <td className="px-3 py-3 whitespace-nowrap text-sm text-center">
-                                  <div className="flex gap-2 justify-center">
-                                    {tx.surat_jalan_photo_url && (
+                                  <div className="flex flex-col items-center gap-1">
+                                    <div className="flex gap-2 justify-center">
+                                      {tx.surat_jalan_photo_url && (
+                                        <span className="text-xs" title="Has Surat Jalan photo">
+                                          📄
+                                        </span>
+                                      )}
+                                      {tx.nota_photo_url && (
+                                        <span className="text-xs" title="Has Nota (receipt) photo">
+                                          🧾
+                                        </span>
+                                      )}
+                                      {tx.biaya_lain_photo_url && (
+                                        <span className="text-xs" title="Has Biaya Lain photo">
+                                          💰
+                                        </span>
+                                      )}
+                                      {!tx.surat_jalan_photo_url && !tx.nota_photo_url && !tx.biaya_lain_photo_url && (
+                                        <span className="text-gray-400">-</span>
+                                      )}
+                                    </div>
+                                    {(tx.surat_jalan_photo_url || tx.nota_photo_url || tx.biaya_lain_photo_url) && (
                                       <button
-                                        onClick={() => setSelectedGasTransactionImage(tx.surat_jalan_photo_url)}
-                                        className="text-blue-600 hover:text-blue-800 text-xs"
-                                        title="View Surat Jalan"
+                                        onClick={() => {
+                                          const images: string[] = [];
+                                          if (tx.surat_jalan_photo_url) images.push(tx.surat_jalan_photo_url);
+                                          if (tx.nota_photo_url) images.push(tx.nota_photo_url);
+                                          if (tx.biaya_lain_photo_url) images.push(tx.biaya_lain_photo_url);
+                                          setSelectedGasTransactionImages(images);
+                                          setSelectedGasTransactionImageIndex(0);
+                                        }}
+                                        className="px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded"
+                                        title="View all photos for this transaction"
                                       >
-                                        📄
+                                        View Pic
                                       </button>
                                     )}
                                     {tx.nota_photo_url && (
-                                      <button
-                                        onClick={() => setSelectedGasTransactionImage(tx.nota_photo_url)}
-                                        className="text-green-600 hover:text-green-800 text-xs font-medium"
-                                        title="View Nota (Used for OCR)"
-                                      >
-                                        🧾*
-                                      </button>
-                                    )}
-                                    {tx.biaya_lain_photo_url && (
-                                      <button
-                                        onClick={() => setSelectedGasTransactionImage(tx.biaya_lain_photo_url)}
-                                        className="text-purple-600 hover:text-purple-800 text-xs"
-                                        title="View Biaya Lain"
-                                      >
-                                        💰
-                                      </button>
-                                    )}
-                                    {!tx.surat_jalan_photo_url && !tx.nota_photo_url && !tx.biaya_lain_photo_url && (
-                                      <span className="text-gray-400">-</span>
+                                      <p className="text-xs text-gray-500 mt-1">*Nota used for OCR</p>
                                     )}
                                   </div>
-                                  {tx.nota_photo_url && (
-                                    <p className="text-xs text-gray-500 mt-1">*Used for OCR</p>
-                                  )}
                                 </td>
                                 <td className="px-3 py-3 whitespace-nowrap text-center">
                                   <span className={`px-2 py-1 text-xs font-medium rounded-full ${
@@ -1505,6 +1433,35 @@ const DepositGroupManagement = () => {
                                     {tx.status.charAt(0).toUpperCase() + tx.status.slice(1)}
                                   </span>
                                 </td>
+                                <td className="px-3 py-3 whitespace-nowrap text-center">
+                                  <div className="flex flex-col space-y-1 items-center">
+                                    {tx.status === 'pending' && (
+                                      <>
+                                        <button
+                                          disabled={updatingGasTransactionId === tx.id}
+                                          onClick={() => handleUpdateGasTransactionStatus(tx, 'approved')}
+                                          className="text-green-600 hover:text-green-800 text-xs font-medium disabled:opacity-50"
+                                        >
+                                          Accept
+                                        </button>
+                                        <button
+                                          disabled={updatingGasTransactionId === tx.id}
+                                          onClick={() => handleUpdateGasTransactionStatus(tx, 'rejected')}
+                                          className="text-red-600 hover:text-red-800 text-xs font-medium disabled:opacity-50"
+                                        >
+                                          Reject
+                                        </button>
+                                      </>
+                                    )}
+                                    <button
+                                      disabled={updatingGasTransactionId === tx.id}
+                                      onClick={() => openEditGasTransaction(tx)}
+                                      className="text-blue-600 hover:text-blue-800 text-xs font-medium disabled:opacity-50"
+                                    >
+                                      Update
+                                    </button>
+                                  </div>
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -1514,7 +1471,8 @@ const DepositGroupManagement = () => {
                   )}
 
                 </div>
-              ) : (
+              );
+              })() : (
                 <div className="text-center py-8 text-gray-500">
                   <p>No billing data available</p>
                 </div>
@@ -1524,30 +1482,152 @@ const DepositGroupManagement = () => {
         </div>
       )}
 
-      {/* Gas Transaction Image Modal */}
-      {selectedGasTransactionImage && (
+      {/* Gas Transaction Image Gallery Modal */}
+      {selectedGasTransactionImages.length > 0 && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-4 max-w-4xl max-h-[90vh] overflow-auto">
+          <div className="bg-white rounded-lg p-4 max-w-4xl max-h-[90vh] w-full overflow-auto">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">View Photo</h3>
+              <h3 className="text-lg font-semibold">View Photos</h3>
               <button
-                onClick={() => setSelectedGasTransactionImage(null)}
+                onClick={() => {
+                  setSelectedGasTransactionImages([]);
+                  setSelectedGasTransactionImageIndex(0);
+                }}
                 className="text-gray-500 hover:text-gray-700"
               >
                 ✕
               </button>
             </div>
-            <img
-              src={`${BACKEND_URL || 'http://localhost:5000'}${selectedGasTransactionImage}`}
-              alt="Transaction photo"
-              className="max-w-full h-auto"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EImage not found%3C/text%3E%3C/svg%3E';
-              }}
-            />
+
+            {selectedGasTransactionImages.length > 0 && (
+              <>
+                {/* Main image */}
+                <div className="flex items-center justify-center mb-4">
+                  <img
+                    src={`${BACKEND_URL || 'http://localhost:5000'}${
+                      selectedGasTransactionImages[selectedGasTransactionImageIndex]
+                    }`}
+                    alt="Transaction photo"
+                    className="max-h-[60vh] max-w-full object-contain"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src =
+                        'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EImage not found%3C/text%3E%3C/svg%3E';
+                    }}
+                  />
+                </div>
+
+                {/* Thumbnails */}
+                {selectedGasTransactionImages.length > 1 && (
+                  <div className="flex justify-center gap-3 mt-2">
+                    {selectedGasTransactionImages.map((img, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectedGasTransactionImageIndex(idx)}
+                        className={`border rounded p-1 ${
+                          idx === selectedGasTransactionImageIndex
+                            ? 'border-blue-500'
+                            : 'border-gray-300'
+                        }`}
+                      >
+                        <img
+                          src={`${BACKEND_URL || 'http://localhost:5000'}${img}`}
+                          alt={`Thumbnail ${idx + 1}`}
+                          className="h-16 w-16 object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
+
+      {/* Edit Gas Transaction Modal */}
+      {editingGasTransaction && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <div className="mt-3 space-y-4">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Update Gas Transaction
+                </h3>
+                <button
+                  onClick={() => setEditingGasTransaction(null)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Volume (L)
+                  </label>
+                  <input
+                    type="number"
+                    value={editingGasForm.volume}
+                    onChange={(e) =>
+                      setEditingGasForm((prev) => ({ ...prev, volume: e.target.value }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Rate per Liter (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    value={editingGasForm.rate}
+                    onChange={(e) =>
+                      setEditingGasForm((prev) => ({ ...prev, rate: e.target.value }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Total Cost (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    value={editingGasForm.total}
+                    onChange={(e) =>
+                      setEditingGasForm((prev) => ({ ...prev, total: e.target.value }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingGasTransaction(null)}
+                  className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={updatingGasTransactionId === editingGasTransaction.id}
+                  onClick={handleSaveEditedGasTransaction}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Surat Jalan Photo Modal */}
       {showPhotoModal && selectedDOPhotos && (
@@ -1655,80 +1735,68 @@ const DepositGroupManagement = () => {
                 <div className="space-y-6">
                   {/* Summary Cards */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                    {/* Existing cards */}
                     <div className="bg-blue-50 p-4 rounded-lg">
-                      <div className="text-xs text-gray-600 mb-1">Total DOs</div>
+                      <div className="text-xs text-gray-600 mb-1">Total Purchases (SPBG)</div>
                       <div className="text-2xl font-bold text-blue-600">
-                        {tagihanData.summary.total_delivery_orders}
+                        {formatCurrency(balancingData.summary?.total_purchases || 0)}
                       </div>
                     </div>
                     <div className="bg-green-50 p-4 rounded-lg">
-                      <div className="text-xs text-gray-600 mb-1">Base Gas Cost</div>
+                      <div className="text-xs text-gray-600 mb-1">Total Sales (Customers)</div>
                       <div className="text-lg font-bold text-green-600">
-                        {formatCurrency(tagihanData.summary.total_base_gas_cost)}
+                        {formatCurrency(balancingData.summary?.total_sales || 0)}
                       </div>
                     </div>
                     <div className="bg-orange-50 p-4 rounded-lg">
-                      <div className="text-xs text-gray-600 mb-1">Selisih Cost</div>
+                      <div className="text-xs text-gray-600 mb-1">Balance Difference</div>
                       <div className="text-lg font-bold text-orange-600">
-                        {formatCurrency(tagihanData.summary.total_selisih_cost)}
+                        {formatCurrency(balancingData.summary?.balance_difference || 0)}
                       </div>
                     </div>
-                    {/* NEW: Gas Transactions Card */}
                     <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
-                      <div className="text-xs text-gray-600 mb-1">Gas Transactions</div>
+                      <div className="text-xs text-gray-600 mb-1">Total Purchase Volume</div>
                       <div className="text-xl font-bold text-indigo-600">
-                        {tagihanData.summary.total_gas_transactions || 0}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {formatCurrency(tagihanData.summary.total_gas_transaction_cost || 0)}
+                        {(balancingData.summary?.total_purchase_volume || 0).toFixed(2)} m³
                       </div>
                     </div>
                   </div>
 
                   {/* Additional Costs Summary - Updated */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {/* Existing Receipt Cost */}
                     <div className="bg-pink-50 p-4 rounded-lg border-2 border-pink-200">
-                      <div className="text-xs text-gray-600 mb-1">Receipt Cost</div>
+                      <div className="text-xs text-gray-600 mb-1">Purchases Total</div>
                       <div className="text-lg font-bold text-pink-600">
-                        {formatCurrency(tagihanData.summary.total_receipt_cost || 0)}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {tagihanData.summary.total_receipts || 0} receipt{(tagihanData.summary.total_receipts || 0) !== 1 ? 's' : ''}
+                        {formatCurrency(balancingData.purchases?.total || 0)}
                       </div>
                     </div>
                     
-                    {/* NEW: Gas Transactions Total */}
                     <div className="bg-indigo-50 p-4 rounded-lg border-4 border-indigo-300">
-                      <div className="text-xs text-gray-600 mb-1">⛽ Gas Transaction Cost</div>
+                      <div className="text-xs text-gray-600 mb-1">⛽ Gas Filling Costs</div>
                       <div className="text-xl font-bold text-indigo-600">
-                        {formatCurrency(tagihanData.summary.total_gas_transaction_cost || 0)}
+                        {formatCurrency(balancingData.purchases?.gas_filling_costs || 0)}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
-                        {tagihanData.summary.total_gas_transaction_volume?.toFixed(2) || '0.00'} m³
+                        {(balancingData.purchases?.total_volume || 0).toFixed(2)} m³
                       </div>
                     </div>
                     
-                    {/* NEW: Delivery Order Total */}
                     <div className="bg-green-50 p-4 rounded-lg border-4 border-green-300">
-                      <div className="text-xs text-gray-600 mb-1">🚚 Delivery Order Cost</div>
+                      <div className="text-xs text-gray-600 mb-1">🚚 Sales Total</div>
                       <div className="text-xl font-bold text-green-600">
-                        {formatCurrency(tagihanData.summary.total_delivery_order_cost || 0)}
+                        {formatCurrency(balancingData.sales?.total || 0)}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
-                        DOs + Selisih + Receipts
+                        Delivery Orders Amount
                       </div>
                     </div>
                     
-                    {/* Updated Grand Total */}
                     <div className="bg-purple-50 p-4 rounded-lg border-4 border-purple-300">
                       <div className="text-xs text-gray-600 mb-1">💰 Grand Total Cost</div>
                       <div className="text-xl font-bold text-purple-600">
-                        {formatCurrency(tagihanData.summary.total_cost || 0)}
+                        {formatCurrency((balancingData.summary?.total_purchases || 0) + (balancingData.summary?.total_sales || 0))}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
-                        DOs + Gas Transactions
+                        Purchases + Sales
                       </div>
                     </div>
                   </div>
@@ -1899,6 +1967,144 @@ const DepositGroupManagement = () => {
               ) : (
                 <div className="text-center py-8 text-gray-500">
                   <p>No balancing data available</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Biaya Lain Modal */}
+      {showBiayaLainModal && selectedGroup && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-10 mx-auto p-5 border w-full max-w-6xl shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  💰 Biaya Lain (Other Expenses) - {selectedGroup.spbg_location}
+                </h3>
+                <button
+                  onClick={closeModal}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {loadingTagihan ? (
+                <div className="text-center py-8">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+                  <p className="mt-2 text-gray-500">Loading biaya lain data...</p>
+                </div>
+              ) : tagihanData ? (() => {
+                // Filter gas transactions that have biaya_lain data
+                const biayaLainTransactions = (tagihanData.gas_transactions || []).filter(
+                  (tx: any) => tx.biaya_lain_amount || tx.biaya_lain_photo_url || tx.biaya_lain_description
+                );
+
+                // Calculate totals
+                const totalBiayaLain = biayaLainTransactions.reduce(
+                  (sum: number, tx: any) => sum + (parseFloat(tx.biaya_lain_amount) || 0),
+                  0
+                );
+
+                return (
+                  <div className="space-y-6">
+                    {/* Summary Section */}
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div className="bg-amber-50 p-4 rounded-lg border-2 border-amber-200">
+                        <div className="text-xs text-gray-600 mb-1">Total Biaya Lain</div>
+                        <div className="text-2xl font-bold text-amber-600">
+                          {formatCurrency(totalBiayaLain)}
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <div className="text-xs text-gray-600 mb-1">Total Transactions</div>
+                        <div className="text-2xl font-bold text-gray-600">
+                          {biayaLainTransactions.length}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Transactions Table */}
+                    {biayaLainTransactions.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vehicle</th>
+                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount (Rp)</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Photo</th>
+                              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {biayaLainTransactions.map((tx: any) => (
+                              <tr key={tx.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                  {new Date(tx.created_at).toLocaleDateString('id-ID', {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric'
+                                  })}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                  {tx.driver?.driverProfile?.full_name || tx.driver?.username || '-'}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                  {tx.vehicle?.license_plate || '-'}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-medium text-gray-900">
+                                  {tx.biaya_lain_amount ? formatCurrency(parseFloat(tx.biaya_lain_amount)) : '-'}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-900">
+                                  {tx.biaya_lain_description || '-'}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-center">
+                                  {tx.biaya_lain_photo_url ? (
+                                    <button
+                                      onClick={() => {
+                                        setSelectedGasTransactionImages([tx.biaya_lain_photo_url]);
+                                        setSelectedGasTransactionImageIndex(0);
+                                      }}
+                                      className="px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded"
+                                      title="View biaya lain photo"
+                                    >
+                                      View Photo
+                                    </button>
+                                  ) : (
+                                    <span className="text-gray-400">-</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-center">
+                                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                    tx.status === 'approved' ? 'bg-green-100 text-green-800' :
+                                    tx.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                    'bg-yellow-100 text-yellow-800'
+                                  }`}>
+                                    {tx.status.charAt(0).toUpperCase() + tx.status.slice(1)}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        <p>No biaya lain expenses found for this SPBG.</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })() : (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No data available</p>
                 </div>
               )}
             </div>

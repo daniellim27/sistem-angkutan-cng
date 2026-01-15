@@ -1,8 +1,8 @@
 // backend/src/controllers/gasTransactionController.js
 const { GasTransaction, DepositGroup, Vehicle, User, DriverProfile } = require('../models');
+const { Op } = require('sequelize');
 const receiptOcrService = require('../services/receiptOcrService');
 const fs = require('fs'); // Add this import
-const { Op } = require('sequelize');
 
 /**
  * Create a gas transaction (fire-and-forget) with OCR extraction
@@ -55,15 +55,15 @@ exports.createGasTransaction = async (req, res, next) => {
         if (ocrResult.success && ocrResult.data) {
           ocrExtractedData = ocrResult.data;
           console.log('✅ OCR extraction successful:', {
-            volume_m3: ocrExtractedData.volume_m3,
-            rate_per_m3: ocrExtractedData.rate_per_m3,
+            volume_liters: ocrExtractedData.volume_liters,
+            rate_per_liter: ocrExtractedData.rate_per_liter,
             total_cost: ocrExtractedData.total_cost
           });
           
           // Mark which fields were extracted by OCR
           extractedFields = {
-            volume_m3: !!ocrExtractedData.volume_m3,
-            rate_per_m3: !!ocrExtractedData.rate_per_m3,
+            volume_liters: !!ocrExtractedData.volume_liters,
+            rate_per_liter: !!ocrExtractedData.rate_per_liter,
             total_cost: !!ocrExtractedData.total_cost
           };
         } else {
@@ -76,25 +76,57 @@ exports.createGasTransaction = async (req, res, next) => {
     }
 
     // Determine final values: use OCR-extracted data if available, otherwise use manual input
-    const finalVolumeM3 = ocrExtractedData?.volume_m3 || volume_m3;
+    // Note: volume_m3 field stores liters (for backward compatibility with DB schema)
+    const finalVolumeLiters = ocrExtractedData?.volume_liters || volume_m3;
     const finalCalculationMethod = ocrExtractedData?.calculation_method || calculation_method || 'fixed_rate';
-    const finalRatePerM3 = ocrExtractedData?.rate_per_m3 || rate_per_m3;
+    const finalRatePerLiter = ocrExtractedData?.rate_per_liter || rate_per_m3;
     const finalTotalCost = ocrExtractedData?.total_cost || total_cost;
     const finalJisdorRate = jisdor_rate; // Not from OCR, only manual
 
     // Validate required fields (either from OCR or manual)
-    if (!finalVolumeM3 || !finalRatePerM3 || !finalTotalCost) {
+    if (!finalVolumeLiters || !finalRatePerLiter || !finalTotalCost) {
+      console.error('❌ Missing required fields:', {
+        finalVolumeLiters,
+        finalRatePerLiter,
+        finalTotalCost,
+        ocrExtractedData: !!ocrExtractedData
+      });
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: volume_m3, rate_per_m3, total_cost',
+        message: 'Missing required fields: volume_liters, rate_per_liter, total_cost',
         details: {
           ocr_used: !!ocrExtractedData,
           ocr_success: ocrExtractedData ? 'partial' : 'failed',
           required: {
-            volume_m3: !finalVolumeM3,
-            rate_per_m3: !finalRatePerM3,
+            volume_liters: !finalVolumeLiters,
+            rate_per_liter: !finalRatePerLiter,
             total_cost: !finalTotalCost
           }
+        }
+      });
+    }
+
+    // Validate that values are valid numbers
+    const volumeNum = parseFloat(finalVolumeLiters);
+    const rateNum = parseFloat(finalRatePerLiter);
+    const totalNum = parseFloat(finalTotalCost);
+
+    if (isNaN(volumeNum) || isNaN(rateNum) || isNaN(totalNum)) {
+      console.error('❌ Invalid number values:', {
+        volumeNum,
+        rateNum,
+        totalNum,
+        finalVolumeLiters,
+        finalRatePerLiter,
+        finalTotalCost
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid number values provided',
+        details: {
+          volume_liters: isNaN(volumeNum),
+          rate_per_liter: isNaN(rateNum),
+          total_cost: isNaN(totalNum)
         }
       });
     }
@@ -124,20 +156,27 @@ exports.createGasTransaction = async (req, res, next) => {
       ocr_used: !!ocrExtractedData,
       ocr_extracted_fields: extractedFields,
       ocr_confidence: ocrExtractedData?.ocr_confidence || null,
-      manual_override: !ocrExtractedData // True if user manually entered data
+      manual_override: !ocrExtractedData, // True if user manually entered data
+      // Store OCR extracted values for display even if main fields are 0/null
+      ocr_extracted_values: ocrExtractedData ? {
+        volume_liters: ocrExtractedData.volume_liters ? parseFloat(ocrExtractedData.volume_liters) : null,
+        rate_per_liter: ocrExtractedData.rate_per_liter ? parseFloat(ocrExtractedData.rate_per_liter) : null,
+        total_cost: ocrExtractedData.total_cost ? parseFloat(ocrExtractedData.total_cost) : null
+      } : null
     };
 
     // Create gas transaction
+    // Note: volume_m3 and rate_per_m3 fields store liters and rate_per_liter (for backward compatibility)
     const gasTransaction = await GasTransaction.create({
       deposit_group_id: deposit_group_id || null,
       delivery_order_id: finalDeliveryOrderId,
       driver_id: driverId,
       vehicle_id: finalVehicleId || null,
-      volume_m3: parseFloat(finalVolumeM3),
+      volume_m3: volumeNum, // Store liters in volume_m3 field
       calculation_method: finalCalculationMethod,
-      rate_per_m3: parseFloat(finalRatePerM3),
+      rate_per_m3: rateNum, // Store rate_per_liter in rate_per_m3 field
       jisdor_rate: finalJisdorRate ? parseFloat(finalJisdorRate) : null,
-      total_cost: parseFloat(finalTotalCost),
+      total_cost: totalNum,
       status: 'pending',
       surat_jalan_photo_url: suratJalanPhotoUrl,
       nota_photo_url: notaPhotoUrl,
@@ -154,8 +193,8 @@ exports.createGasTransaction = async (req, res, next) => {
         id: gasTransaction.id,
         status: gasTransaction.status,
         ocr_extracted: !!ocrExtractedData,
-        volume_m3: gasTransaction.volume_m3,
-        rate_per_m3: gasTransaction.rate_per_m3,
+        volume_liters: gasTransaction.volume_m3, // Return as volume_liters (stored in volume_m3 field)
+        rate_per_liter: gasTransaction.rate_per_m3, // Return as rate_per_liter (stored in rate_per_m3 field)
         total_cost: gasTransaction.total_cost,
         calculation_method: gasTransaction.calculation_method
       }
@@ -214,6 +253,321 @@ exports.getGasTransactionsByDepositGroup = async (req, res, next) => {
     console.error('Error getting gas transactions by deposit group:', error?.stack || error);
     // Return a clear message for the mobile client in development
     return res.status(500).json({ success: false, message: 'Failed to fetch gas transactions', details: error?.message || String(error) });
+  }
+};
+
+/**
+ * Get gas transactions by driver_id
+ * GET /api/gas-transactions/by-driver
+ */
+exports.getGasTransactionsByDriver = async (req, res, next) => {
+  try {
+    const driverId = req.user?.id;
+
+    if (!driverId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const gasTransactions = await GasTransaction.findAll({
+      where: {
+        driver_id: driverId
+      },
+      include: [
+        {
+          model: Vehicle,
+          as: 'vehicle',
+          attributes: ['id', 'license_plate', 'type'],
+          required: false
+        },
+        {
+          model: DepositGroup,
+          as: 'depositGroup',
+          attributes: ['id', 'spbg_name', 'spbg_location'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'driver',
+          attributes: ['id', 'username'],
+          required: false,
+          include: [{
+            model: DriverProfile,
+            as: 'driverProfile',
+            attributes: ['full_name', 'phone'],
+            required: false
+          }]
+        }
+      ],
+      order: [['created_at', 'DESC']]
+    });
+
+    res.json({
+      success: true,
+      data: gasTransactions
+    });
+  } catch (error) {
+    console.error('Error getting gas transactions by driver:', error?.stack || error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch gas transactions', details: error?.message || String(error) });
+  }
+};
+
+/**
+ * Get all gas transactions that have driver "biaya lain" (extra expenses)
+ * For web admin view under /driver-expenses
+ *
+ * GET /api/gas-transactions/driver-extra-expenses
+ * (also mounted under /api/web/gas-transactions/driver-extra-expenses)
+ */
+exports.getDriverExtraExpensesForAdmin = async (req, res) => {
+  try {
+    const {
+      status,
+      page = 1,
+      limit = 20,
+    } = req.query;
+
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 20;
+    const offset = (pageNum - 1) * limitNum;
+
+    const whereClause = {
+      [Op.or]: [
+        { biaya_lain_amount: { [Op.not]: null } },
+        { biaya_lain_photo_url: { [Op.not]: null } },
+        { biaya_lain_description: { [Op.not]: null } },
+      ],
+    };
+
+    if (status) {
+      whereClause.status = status;
+    }
+
+    const result = await GasTransaction.findAndCountAll({
+      where: whereClause,
+      include: [
+        {
+          model: User,
+          as: 'driver',
+          attributes: ['id', 'username'],
+          required: false,
+          include: [
+            {
+              model: DriverProfile,
+              as: 'driverProfile',
+              attributes: ['full_name', 'phone'],
+              required: false,
+            },
+          ],
+        },
+        {
+          model: Vehicle,
+          as: 'vehicle',
+          attributes: ['id', 'license_plate', 'type'],
+          required: false,
+        },
+        {
+          model: DepositGroup,
+          as: 'depositGroup',
+          attributes: ['id', 'spbg_name', 'spbg_location'],
+          required: false,
+        },
+      ],
+      order: [['created_at', 'DESC']],
+      limit: limitNum,
+      offset,
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        items: result.rows,
+        pagination: {
+          total: result.count,
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(result.count / limitNum),
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching driver extra gas expenses:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch driver extra gas expenses',
+      details: error?.message || String(error),
+    });
+  }
+};
+
+/**
+ * Update a gas transaction (admin/owner only)
+ * PATCH /api/gas-transactions/:id
+ *
+ * Allows updating:
+ * - status: 'pending' | 'approved' | 'rejected'
+ * - volume_m3, rate_per_m3, total_cost
+ * - nota_ocr_data (optional JSON payload)
+ */
+exports.updateGasTransaction = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const txId = parseInt(id, 10);
+
+    if (isNaN(txId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid gas transaction id',
+      });
+    }
+
+    const gasTransaction = await GasTransaction.findByPk(txId);
+
+    if (!gasTransaction) {
+      return res.status(404).json({
+        success: false,
+        message: 'Gas transaction not found',
+      });
+    }
+
+    const updatableFields = [
+      'status',
+      'volume_m3',
+      'rate_per_m3',
+      'total_cost',
+      'nota_ocr_data',
+    ];
+
+    const updates = {};
+
+    updatableFields.forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+        // For numeric fields, allow strings but store as-is; Sequelize/DB will coerce
+        updates[field] = req.body[field];
+      }
+    });
+
+    // If admin updates numeric fields, also sync them into nota_ocr_data so mobile,
+    // which prefers OCR values, sees the corrected numbers.
+    const hasVolumeUpdate = Object.prototype.hasOwnProperty.call(
+      updates,
+      "volume_m3"
+    );
+    const hasRateUpdate = Object.prototype.hasOwnProperty.call(
+      updates,
+      "rate_per_m3"
+    );
+    const hasTotalUpdate = Object.prototype.hasOwnProperty.call(
+      updates,
+      "total_cost"
+    );
+
+    if (hasVolumeUpdate || hasRateUpdate || hasTotalUpdate) {
+      const currentSnapshot = gasTransaction.nota_ocr_data || {};
+      const existingValues = currentSnapshot.ocr_extracted_values || {};
+
+      const newVolume =
+        hasVolumeUpdate && updates.volume_m3 !== undefined
+          ? parseFloat(String(updates.volume_m3))
+          : existingValues.volume_liters ?? parseFloat(String(gasTransaction.volume_m3));
+
+      const newRate =
+        hasRateUpdate && updates.rate_per_m3 !== undefined
+          ? parseFloat(String(updates.rate_per_m3))
+          : existingValues.rate_per_liter ?? parseFloat(String(gasTransaction.rate_per_m3));
+
+      const newTotal =
+        hasTotalUpdate && updates.total_cost !== undefined
+          ? parseFloat(String(updates.total_cost))
+          : existingValues.total_cost ?? parseFloat(String(gasTransaction.total_cost));
+
+      updates.nota_ocr_data = {
+        ...currentSnapshot,
+        ocr_used: true,
+        manual_override: true,
+        ocr_extracted_fields: {
+          volume_liters: true,
+          rate_per_liter: true,
+          total_cost: true,
+        },
+        ocr_extracted_values: {
+          volume_liters: isNaN(newVolume) ? null : newVolume,
+          rate_per_liter: isNaN(newRate) ? null : newRate,
+          total_cost: isNaN(newTotal) ? null : newTotal,
+        },
+      };
+    }
+
+    await gasTransaction.update(updates);
+
+    return res.json({
+      success: true,
+      data: gasTransaction,
+    });
+  } catch (error) {
+    console.error('Error updating gas transaction:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update gas transaction',
+      details: error?.message || String(error),
+    });
+  }
+};
+
+/**
+ * Process nota photo with OCR and return extracted data
+ * POST /api/gas-transactions/process-nota-ocr
+ * Driver only
+ */
+exports.processNotaOCR = async (req, res, next) => {
+  try {
+    const notaFile = req.file;
+    
+    if (!notaFile) {
+      return res.status(400).json({
+        success: false,
+        message: 'No nota photo provided'
+      });
+    }
+
+    try {
+      console.log('🔍 Processing nota OCR extraction...');
+      
+      // Read the file directly from the file system
+      const imageBuffer = fs.readFileSync(notaFile.path);
+      
+      // Extract data from receipt using OCR
+      const ocrResult = await receiptOcrService.processReceipt(imageBuffer);
+      
+      if (ocrResult.success && ocrResult.data) {
+        console.log('✅ OCR extraction successful:', {
+          volume_liters: ocrResult.data.volume_liters,
+          rate_per_liter: ocrResult.data.rate_per_liter,
+          total_cost: ocrResult.data.total_cost
+        });
+        
+        return res.json({
+          success: true,
+          message: 'OCR processing completed successfully',
+          data: ocrResult.data
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'OCR extraction failed or incomplete',
+          error: ocrResult.error || 'Unknown error'
+        });
+      }
+    } catch (ocrError) {
+      console.error('❌ OCR processing error:', ocrError);
+      return res.status(500).json({
+        success: false,
+        message: 'OCR processing failed',
+        error: ocrError.message
+      });
+    }
+  } catch (error) {
+    console.error('Error processing nota OCR:', error);
+    next(error);
   }
 };
 
