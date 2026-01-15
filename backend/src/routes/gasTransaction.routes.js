@@ -73,6 +73,18 @@ router.get(
 );
 
 /**
+ * POST /api/gas-transactions/:id/pay
+ * Mark gas transaction as paid using SPBG balance (admin/owner only)
+ * IMPORTANT: This must be defined BEFORE /:id route to avoid route matching conflicts
+ */
+router.post(
+  '/:id/pay',
+  verifyToken,
+  checkRole(['admin', 'owner']),
+  gasTransactionController.payGasTransaction
+);
+
+/**
  * PATCH /api/gas-transactions/:id
  * Update a gas transaction (admin/owner only)
  */

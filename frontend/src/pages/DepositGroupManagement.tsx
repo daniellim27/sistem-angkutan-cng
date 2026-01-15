@@ -116,6 +116,7 @@ const DepositGroupManagement = () => {
     rate: '',
     total: '',
   });
+  const [transactionFilter, setTransactionFilter] = useState<'all' | 'approved' | 'paid' | 'unpaid' | 'pending' | 'rejected'>('all');
 
   // Balancing state
   const [balancingData, setBalancingData] = useState<any>(null);
@@ -191,17 +192,17 @@ const DepositGroupManagement = () => {
       console.log('🔍 Debug - groupsData:', groupsData.map((g: DepositGroup) => ({ id: g.id, name: g.spbg_location })));
       
       const transformedGroups = groupsData.map((group: DepositGroup) => {
-        // Calculate balance based on DO amounts (no longer use PO data)
-        const depositedAmount = parseFloat(group.deposited_amount) || 0; // Handle null/empty values gracefully
+        // Use balance directly from backend (already accounts for paid gas transactions)
+        const depositedAmount = parseFloat(group.deposited_amount) || 0;
+        const balance = parseFloat(group.balance) || 0; // Use actual balance from database
         const deliveryOrders = group.delivery_orders || [];
         const totalDOAmount = deliveryOrders.reduce((sum, do_item) => sum + parseFloat(do_item.total_amount), 0);
-        const calculatedBalance = depositedAmount - totalDOAmount;
         
         return {
           ...group,
-          delivery_orders: deliveryOrders, // Use DOs from backend response
+          delivery_orders: deliveryOrders,
           total_deposits: depositedAmount,
-          total_balance: calculatedBalance,
+          total_balance: balance, // Use actual balance from database, not calculated
           total_completed_amount: totalDOAmount,
           do_count: deliveryOrders.length
         };
@@ -435,6 +436,27 @@ const DepositGroupManagement = () => {
     } catch (err: any) {
       console.error('Failed to update gas transaction values:', err);
       toast.error(err.response?.data?.message || 'Failed to update gas transaction');
+    } finally {
+      setUpdatingGasTransactionId(null);
+    }
+  };
+
+  const handlePayGasTransaction = async (tx: any) => {
+    if (!window.confirm(`Mark this transaction as paid using SPBG balance?\n\nAmount: Rp ${tx.total_cost?.toLocaleString('id-ID') || '0'}\n\nThis will deduct the amount from the SPBG's top-up balance.`)) {
+      return;
+    }
+
+    try {
+      setUpdatingGasTransactionId(tx.id);
+      const response = await authClient.post(`/gas-transactions/${tx.id}/pay`);
+      toast.success(response.data.message || 'Transaction marked as paid');
+      await refreshTagihanData();
+      // Also refresh groups to update balance
+      await fetchGroups();
+    } catch (err: any) {
+      console.error('Failed to mark transaction as paid:', err);
+      const errorMsg = err.response?.data?.message || 'Failed to mark transaction as paid';
+      toast.error(errorMsg);
     } finally {
       setUpdatingGasTransactionId(null);
     }
@@ -749,17 +771,26 @@ const DepositGroupManagement = () => {
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center space-x-2">
-                    <h3 className="text-lg font-semibold text-gray-900">{group.spbg_location}</h3>
-                    <button
-                      onClick={() => startEditingLocation(group)}
-                      className="p-1 text-gray-500 hover:text-blue-600"
-                      title="Edit location name"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2">
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {group.spbg_name || group.spbg_location}
+                      </h3>
+                      <button
+                        onClick={() => startEditingLocation(group)}
+                        className="p-1 text-gray-500 hover:text-blue-600"
+                        title="Edit location name"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    </div>
+                    {group.spbg_name && (
+                      <p className="text-sm text-gray-600 ml-0">
+                        📍 {group.spbg_location}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -770,7 +801,7 @@ const DepositGroupManagement = () => {
                 <div className="space-y-1 text-sm">
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-700 font-medium">Completed:</span>
+                      <span className="text-gray-700 font-medium" title="Total amount spent on gas purchases from this SPBG">Completed:</span>
                     </div>
                     {group.total_completed_amount > 0 && (
                       <div className="ml-4 space-y-1 text-xs">
@@ -791,7 +822,7 @@ const DepositGroupManagement = () => {
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-700 font-medium">Remaining:</span>
+                      <span className="text-gray-700 font-medium" title="Remaining balance in SPBG deposit account">Remaining:</span>
                     </div>
                     {group.total_balance > 0 && (
                       <div className="ml-4 space-y-1 text-xs">
@@ -1250,20 +1281,72 @@ const DepositGroupManagement = () => {
               ) : tagihanData ? (() => {
                 const allGasTransactions: any[] = tagihanData.gas_transactions || [];
 
-                // Only use APPROVED gas transactions for volume and receipt summaries
-                const approvedGasTransactions = allGasTransactions.filter(
+                // Categorize transactions
+                const approvedTransactions = allGasTransactions.filter(
                   (tx: any) => tx.status === 'approved'
                 );
+                const pendingTransactions = allGasTransactions.filter(
+                  (tx: any) => tx.status === 'pending'
+                );
+                const rejectedTransactions = allGasTransactions.filter(
+                  (tx: any) => tx.status === 'rejected'
+                );
+                const paidTransactions = approvedTransactions.filter(
+                  (tx: any) => tx.nota_ocr_data?.payment_status === 'paid'
+                );
+                const unpaidTransactions = approvedTransactions.filter(
+                  (tx: any) => tx.nota_ocr_data?.payment_status !== 'paid'
+                );
+
+                // Calculate totals for each category
+                const approvedTotal = approvedTransactions.reduce(
+                  (sum: number, tx: any) => sum + (parseFloat(tx.total_cost) || 0),
+                  0
+                );
+                const pendingTotal = pendingTransactions.reduce(
+                  (sum: number, tx: any) => sum + (parseFloat(tx.total_cost) || 0),
+                  0
+                );
+                const rejectedTotal = rejectedTransactions.reduce(
+                  (sum: number, tx: any) => sum + (parseFloat(tx.total_cost) || 0),
+                  0
+                );
+                const paidTotal = paidTransactions.reduce(
+                  (sum: number, tx: any) => sum + (parseFloat(tx.total_cost) || 0),
+                  0
+                );
+                const unpaidTotal = unpaidTransactions.reduce(
+                  (sum: number, tx: any) => sum + (parseFloat(tx.total_cost) || 0),
+                  0
+                );
+
+                // Filter transactions based on selected filter
+                const filteredTransactions = (() => {
+                  switch (transactionFilter) {
+                    case 'approved':
+                      return approvedTransactions;
+                    case 'paid':
+                      return paidTransactions;
+                    case 'unpaid':
+                      return unpaidTransactions;
+                    case 'pending':
+                      return pendingTransactions;
+                    case 'rejected':
+                      return rejectedTransactions;
+                    default:
+                      return allGasTransactions;
+                  }
+                })();
 
                 // Volume total from approved transactions (using same unit as gas transactions table, L)
-                const approvedVolumeTotal = approvedGasTransactions.reduce(
+                const approvedVolumeTotal = approvedTransactions.reduce(
                   (sum: number, tx: any) => sum + (Number(tx.volume_m3) || 0),
                   0
                 );
 
                 // All APPROVED gas transactions that have a nota photo (driver uploaded approved receipt)
                 const approvedReceiptTransactions =
-                  approvedGasTransactions.filter((tx: any) => tx.nota_photo_url) || [];
+                  approvedTransactions.filter((tx: any) => tx.nota_photo_url) || [];
 
                 const receiptTotal = approvedReceiptTransactions.reduce(
                   (sum: number, tx: any) => sum + (tx.total_cost || 0),
@@ -1273,11 +1356,64 @@ const DepositGroupManagement = () => {
 
                 return (
                 <div className="space-y-6">
-                  {/* Debug info */}
-                  <div className="mb-4 p-2 bg-gray-100 rounded text-xs">
-                    <strong>Debug:</strong> Found {tagihanData.delivery_orders?.length || 0} delivery orders, 
-                    Total cost: {tagihanData.summary?.total_cost || 0}
+                  {/* Transaction Summary Cards */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
+                    <div className="bg-green-50 p-4 rounded-lg border-2 border-green-200">
+                      <div className="text-xs text-gray-600 mb-1">✅ Approved</div>
+                      <div className="text-lg font-bold text-green-600">
+                        {approvedTransactions.length}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {formatCurrency(approvedTotal)}
+                      </div>
+                    </div>
+                    <div className="bg-purple-50 p-4 rounded-lg border-2 border-purple-200">
+                      <div className="text-xs text-gray-600 mb-1">💰 Paid</div>
+                      <div className="text-lg font-bold text-purple-600">
+                        {paidTransactions.length}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {formatCurrency(paidTotal)}
+                      </div>
+                    </div>
+                    <div className="bg-orange-50 p-4 rounded-lg border-2 border-orange-200">
+                      <div className="text-xs text-gray-600 mb-1">⏳ Unpaid</div>
+                      <div className="text-lg font-bold text-orange-600">
+                        {unpaidTransactions.length}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {formatCurrency(unpaidTotal)}
+                      </div>
+                    </div>
+                    <div className="bg-yellow-50 p-4 rounded-lg border-2 border-yellow-200">
+                      <div className="text-xs text-gray-600 mb-1">⏸️ Pending</div>
+                      <div className="text-lg font-bold text-yellow-600">
+                        {pendingTransactions.length}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {formatCurrency(pendingTotal)}
+                      </div>
+                    </div>
+                    <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200">
+                      <div className="text-xs text-gray-600 mb-1">❌ Rejected</div>
+                      <div className="text-lg font-bold text-red-600">
+                        {rejectedTransactions.length}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {formatCurrency(rejectedTotal)}
+                      </div>
+                    </div>
+                    <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
+                      <div className="text-xs text-gray-600 mb-1">📊 Total</div>
+                      <div className="text-lg font-bold text-blue-600">
+                        {allGasTransactions.length}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        All transactions
+                      </div>
+                    </div>
                   </div>
+
                   {/* Summary Section */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <div className="bg-green-50 p-4 rounded-lg">
@@ -1330,8 +1466,8 @@ const DepositGroupManagement = () => {
                         {approvedVolumeTotal.toFixed(2)}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
-                        From {approvedGasTransactions.length} approved transaction
-                        {approvedGasTransactions.length !== 1 ? 's' : ''}
+                        From {approvedTransactions.length} approved transaction
+                        {approvedTransactions.length !== 1 ? 's' : ''}
                       </div>
                     </div>
                   </div>
@@ -1339,9 +1475,74 @@ const DepositGroupManagement = () => {
                   {/* Gas Transactions Section */}
                   {tagihanData.gas_transactions && tagihanData.gas_transactions.length > 0 && (
                     <div className="mt-8 border-t pt-6">
-                      <h4 className="text-lg font-semibold text-gray-900 mb-4">
-                        ⛽ Gas Transactions ({tagihanData.gas_transactions.length})
-                      </h4>
+                      <div className="flex justify-between items-center mb-4">
+                        <h4 className="text-lg font-semibold text-gray-900">
+                          ⛽ Gas Transactions ({filteredTransactions.length} of {allGasTransactions.length})
+                        </h4>
+                        {/* Filter Buttons */}
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => setTransactionFilter('all')}
+                            className={`px-3 py-1 text-xs font-medium rounded ${
+                              transactionFilter === 'all'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            All
+                          </button>
+                          <button
+                            onClick={() => setTransactionFilter('pending')}
+                            className={`px-3 py-1 text-xs font-medium rounded ${
+                              transactionFilter === 'pending'
+                                ? 'bg-yellow-600 text-white'
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            Pending ({pendingTransactions.length})
+                          </button>
+                          <button
+                            onClick={() => setTransactionFilter('approved')}
+                            className={`px-3 py-1 text-xs font-medium rounded ${
+                              transactionFilter === 'approved'
+                                ? 'bg-green-600 text-white'
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            Approved ({approvedTransactions.length})
+                          </button>
+                          <button
+                            onClick={() => setTransactionFilter('paid')}
+                            className={`px-3 py-1 text-xs font-medium rounded ${
+                              transactionFilter === 'paid'
+                                ? 'bg-purple-600 text-white'
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            Paid ({paidTransactions.length})
+                          </button>
+                          <button
+                            onClick={() => setTransactionFilter('unpaid')}
+                            className={`px-3 py-1 text-xs font-medium rounded ${
+                              transactionFilter === 'unpaid'
+                                ? 'bg-orange-600 text-white'
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            Unpaid ({unpaidTransactions.length})
+                          </button>
+                          <button
+                            onClick={() => setTransactionFilter('rejected')}
+                            className={`px-3 py-1 text-xs font-medium rounded ${
+                              transactionFilter === 'rejected'
+                                ? 'bg-red-600 text-white'
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            Rejected ({rejectedTransactions.length})
+                          </button>
+                        </div>
+                      </div>
                       <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-gray-200">
                           <thead className="bg-gray-50">
@@ -1358,7 +1559,7 @@ const DepositGroupManagement = () => {
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-200">
-                            {tagihanData.gas_transactions.map((tx: any) => (
+                            {filteredTransactions.map((tx: any) => (
                               <tr key={tx.id} className="hover:bg-gray-50">
                                 <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-900">
                                   {new Date(tx.created_at).toLocaleDateString()}
@@ -1425,13 +1626,24 @@ const DepositGroupManagement = () => {
                                   </div>
                                 </td>
                                 <td className="px-3 py-3 whitespace-nowrap text-center">
-                                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                    tx.status === 'approved' ? 'bg-green-100 text-green-800' :
-                                    tx.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                                    'bg-yellow-100 text-yellow-800'
-                                  }`}>
-                                    {tx.status.charAt(0).toUpperCase() + tx.status.slice(1)}
-                                  </span>
+                                  <div className="flex flex-col gap-1 items-center">
+                                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                      tx.status === 'approved' ? 'bg-green-100 text-green-800' :
+                                      tx.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                      'bg-yellow-100 text-yellow-800'
+                                    }`}>
+                                      {tx.status.charAt(0).toUpperCase() + tx.status.slice(1)}
+                                    </span>
+                                    {tx.status === 'approved' && (
+                                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                                        tx.nota_ocr_data?.payment_status === 'paid'
+                                          ? 'bg-purple-100 text-purple-800'
+                                          : 'bg-orange-100 text-orange-800'
+                                      }`}>
+                                        {tx.nota_ocr_data?.payment_status === 'paid' ? '💰 Paid' : '⏳ Unpaid'}
+                                      </span>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="px-3 py-3 whitespace-nowrap text-center">
                                   <div className="flex flex-col space-y-1 items-center">
@@ -1452,6 +1664,19 @@ const DepositGroupManagement = () => {
                                           Reject
                                         </button>
                                       </>
+                                    )}
+                                    {tx.status === 'approved' && tx.nota_ocr_data?.payment_status !== 'paid' && (
+                                      <button
+                                        disabled={updatingGasTransactionId === tx.id}
+                                        onClick={() => handlePayGasTransaction(tx)}
+                                        className="text-purple-600 hover:text-purple-800 text-xs font-medium disabled:opacity-50"
+                                        title="Mark as paid using SPBG balance"
+                                      >
+                                        💰 Mark as Paid
+                                      </button>
+                                    )}
+                                    {tx.status === 'approved' && tx.nota_ocr_data?.payment_status === 'paid' && (
+                                      <span className="text-xs text-purple-600 font-medium">✓ Paid</span>
                                     )}
                                     <button
                                       disabled={updatingGasTransactionId === tx.id}

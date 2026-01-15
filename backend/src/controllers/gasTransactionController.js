@@ -1,5 +1,5 @@
 // backend/src/controllers/gasTransactionController.js
-const { GasTransaction, DepositGroup, Vehicle, User, DriverProfile } = require('../models');
+const { GasTransaction, DepositGroup, Vehicle, User, DriverProfile, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const receiptOcrService = require('../services/receiptOcrService');
 const fs = require('fs'); // Add this import
@@ -510,6 +510,158 @@ exports.updateGasTransaction = async (req, res, next) => {
       message: 'Failed to update gas transaction',
       details: error?.message || String(error),
     });
+  }
+};
+
+/**
+ * Mark gas transaction as paid using SPBG balance
+ * POST /api/gas-transactions/:id/pay
+ * Admin/Owner only
+ */
+exports.payGasTransaction = async (req, res, next) => {
+  const dbTransaction = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const txId = parseInt(id, 10);
+
+    if (isNaN(txId)) {
+      await dbTransaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid gas transaction id',
+      });
+    }
+
+    const gasTransaction = await GasTransaction.findByPk(txId, {
+      include: [
+        {
+          model: DepositGroup,
+          as: 'depositGroup',
+          required: false,
+        },
+      ],
+      transaction: dbTransaction,
+    });
+
+    if (!gasTransaction) {
+      await dbTransaction.rollback();
+      return res.status(404).json({
+        success: false,
+        message: 'Gas transaction not found',
+      });
+    }
+
+    // Only allow payment for approved transactions
+    if (gasTransaction.status !== 'approved') {
+      await dbTransaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Only approved gas transactions can be marked as paid',
+      });
+    }
+
+    // Check if already paid
+    const currentOcrData = gasTransaction.nota_ocr_data || {};
+    if (currentOcrData.payment_status === 'paid') {
+      await dbTransaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'This transaction is already marked as paid',
+      });
+    }
+
+    // Check if transaction has a deposit group
+    if (!gasTransaction.deposit_group_id || !gasTransaction.depositGroup) {
+      await dbTransaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Gas transaction is not associated with an SPBG',
+      });
+    }
+
+    const depositGroup = gasTransaction.depositGroup;
+    const transactionAmount = parseFloat(gasTransaction.total_cost) || 0;
+    const currentBalance = parseFloat(depositGroup.balance) || 0;
+
+    // Check if balance is sufficient
+    if (currentBalance < transactionAmount) {
+      await dbTransaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient SPBG balance. Current balance: Rp ${currentBalance.toLocaleString('id-ID')}, Required: Rp ${transactionAmount.toLocaleString('id-ID')}`,
+        current_balance: currentBalance,
+        required_amount: transactionAmount,
+      });
+    }
+
+    // Deduct from SPBG balance
+    const newBalance = currentBalance - transactionAmount;
+    await depositGroup.update(
+      {
+        balance: newBalance,
+      },
+      { transaction: dbTransaction }
+    );
+
+    // Mark transaction as paid in nota_ocr_data
+    const updatedOcrData = {
+      ...currentOcrData,
+      payment_status: 'paid',
+      paid_at: new Date().toISOString(),
+      paid_by: req.user?.id || null,
+      payment_amount: transactionAmount,
+    };
+
+    await gasTransaction.update(
+      {
+        nota_ocr_data: updatedOcrData,
+      },
+      { transaction: dbTransaction }
+    );
+
+    await dbTransaction.commit();
+
+    const updatedTx = await GasTransaction.findByPk(txId, {
+      include: [
+        {
+          model: Vehicle,
+          as: 'vehicle',
+          attributes: ['id', 'license_plate', 'type'],
+          required: false,
+        },
+        {
+          model: User,
+          as: 'driver',
+          attributes: ['id', 'username'],
+          required: false,
+          include: [
+            {
+              model: DriverProfile,
+              as: 'driverProfile',
+              attributes: ['full_name', 'phone'],
+              required: false,
+            },
+          ],
+        },
+        {
+          model: DepositGroup,
+          as: 'depositGroup',
+          attributes: ['id', 'spbg_name', 'spbg_location', 'balance'],
+          required: false,
+        },
+      ],
+    });
+
+    return res.json({
+      success: true,
+      message: `Gas transaction marked as paid. Rp ${transactionAmount.toLocaleString('id-ID')} deducted from SPBG balance.`,
+      data: updatedTx,
+      new_balance: newBalance,
+    });
+  } catch (error) {
+    await dbTransaction.rollback();
+    console.error('Error paying gas transaction:', error);
+    next(error);
   }
 };
 

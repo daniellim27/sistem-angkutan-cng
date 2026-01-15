@@ -38,7 +38,7 @@ const NotaManagementPage: React.FC = () => {
               >
                 CCTV Monitoring
               </button>
-              
+                
             </nav>
           </div>
 

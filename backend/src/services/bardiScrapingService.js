@@ -101,7 +101,7 @@ class BardiScrapingService {
       }));
       await page.setCookie(...cookies);
 
-      await page.goto('https://ipc.bardi.co.id/playback', { waitUntil: 'networkidle2', timeout: 30000 });
+      await page.goto('https://ipc.bardi.co.id/playback', { waitUntil: 'networkidle2', timeout: 60000 }); // Increased to 60 seconds for camera loading
 
       if (page.url().includes('/login')) {
         throw new Error('Session expired');
@@ -503,7 +503,7 @@ class BardiScrapingService {
       // --------------------------------------------------------------
       await page.goto('https://ipc.bardi.co.id/playback', {
         waitUntil: 'networkidle2',
-        timeout: 30000,
+        timeout: 60000, // Increased to 60 seconds for camera loading
       });
 
       if (page.url().includes('/login')) {
@@ -518,7 +518,7 @@ class BardiScrapingService {
       await this.expandAllDevices(page);
 
       // NEW: Smart wait — keep checking until we see real camera entries
-      const maxWaitMs = 30_000; // max 30 seconds
+      const maxWaitMs = 60_000; // Increased to 60 seconds for camera loading
       const checkIntervalMs = 1000;
       let attempts = 0;
 
@@ -538,7 +538,7 @@ class BardiScrapingService {
       }
 
       if (attempts >= maxWaitMs / checkIntervalMs) {
-        console.warn('[BARDI] Timeout: No cameras loaded after 30s – proceeding anyway (might get black screen)');
+        console.warn('[BARDI] Timeout: No cameras loaded after 60s – proceeding anyway (might get black screen)');
       } else {
         // Extra 3 seconds for streams to start rendering
         await new Promise(r => setTimeout(r, 3000));
@@ -552,7 +552,7 @@ class BardiScrapingService {
         console.warn(`[BARDI] Could not click camera at row ${targetRow} – capturing current view`);
       }
 
-      await new Promise(r => setTimeout(r, 5000)); // Wait for stream to load
+      await new Promise(r => setTimeout(r, 10000)); // Increased wait time to 10 seconds for stream to load
 
       // --------------------------------------------------------------
       // 7. GO TRUE FULLSCREEN (8th button) — THIS IS THE MAGIC

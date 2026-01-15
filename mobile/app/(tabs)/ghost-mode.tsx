@@ -29,6 +29,7 @@ const GhostMode = () => {
   const [isNearSPBG, setIsNearSPBG] = useState(false);
   const [distance, setDistance] = useState<number | null>(null);
   const [nearestSpbg, setNearestSpbg] = useState<any>(null);
+  const [allSpbgs, setAllSpbgs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showGasButton, setShowGasButton] = useState(false);
   const [viewMode, setViewMode] = useState<'dashboard' | 'map'>('map');
@@ -114,6 +115,47 @@ const GhostMode = () => {
     checkProximity();
     const interval = setInterval(checkProximity, 10000); // Check every 10 seconds
 
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch all SPBGs for map display
+  useEffect(() => {
+    const fetchAllSpbgs = async () => {
+      try {
+        // Try /api/web/deposit-groups first, fallback to /api/deposit-groups
+        let response;
+        try {
+          response = await apiClient.get('/web/deposit-groups');
+        } catch (err) {
+          // Fallback to non-web endpoint
+          response = await apiClient.get('/deposit-groups');
+        }
+        
+        if (response.data && Array.isArray(response.data)) {
+          // Filter SPBGs that have coordinates
+          const spbgsWithCoords = response.data.filter((spbg: any) => 
+            spbg.latitude && spbg.longitude && 
+            !isNaN(parseFloat(spbg.latitude)) && 
+            !isNaN(parseFloat(spbg.longitude))
+          );
+          setAllSpbgs(spbgsWithCoords);
+        } else if (response.data?.data && Array.isArray(response.data.data)) {
+          const spbgsWithCoords = response.data.data.filter((spbg: any) => 
+            spbg.latitude && spbg.longitude && 
+            !isNaN(parseFloat(spbg.latitude)) && 
+            !isNaN(parseFloat(spbg.longitude))
+          );
+          setAllSpbgs(spbgsWithCoords);
+        }
+      } catch (error: any) {
+        console.error('Error fetching all SPBGs:', error);
+        // Don't show error to user, just log it
+      }
+    };
+
+    fetchAllSpbgs();
+    // Refresh SPBGs every 5 minutes
+    const interval = setInterval(fetchAllSpbgs, 300000);
     return () => clearInterval(interval);
   }, []);
 
@@ -229,15 +271,47 @@ const GhostMode = () => {
             initialRegion={{
               latitude: vehicleLocation.latitude,
               longitude: vehicleLocation.longitude,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
+              latitudeDelta: allSpbgs.length > 0 ? 0.1 : 0.01,
+              longitudeDelta: allSpbgs.length > 0 ? 0.1 : 0.01,
             }}
-            region={{
-              latitude: vehicleLocation.latitude,
-              longitude: vehicleLocation.longitude,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
+            region={(() => {
+              // If we have SPBGs, calculate region to fit all markers
+              if (allSpbgs.length > 0 && vehicleLocation) {
+                const allLatitudes = [
+                  vehicleLocation.latitude,
+                  ...allSpbgs.map((spbg) => parseFloat(spbg.latitude))
+                ].filter((lat) => !isNaN(lat));
+                const allLongitudes = [
+                  vehicleLocation.longitude,
+                  ...allSpbgs.map((spbg) => parseFloat(spbg.longitude))
+                ].filter((lng) => !isNaN(lng));
+                
+                if (allLatitudes.length > 0 && allLongitudes.length > 0) {
+                  const minLat = Math.min(...allLatitudes);
+                  const maxLat = Math.max(...allLatitudes);
+                  const minLng = Math.min(...allLongitudes);
+                  const maxLng = Math.max(...allLongitudes);
+                  
+                  const latDelta = Math.max((maxLat - minLat) * 1.3, 0.01);
+                  const lngDelta = Math.max((maxLng - minLng) * 1.3, 0.01);
+                  
+                  return {
+                    latitude: (minLat + maxLat) / 2,
+                    longitude: (minLng + maxLng) / 2,
+                    latitudeDelta: latDelta,
+                    longitudeDelta: lngDelta,
+                  };
+                }
+              }
+              
+              // Default to vehicle location
+              return {
+                latitude: vehicleLocation.latitude,
+                longitude: vehicleLocation.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              };
+            })()}
           >
             {/* Vehicle location marker (from Inovatracks) */}
             {vehicleLocation && (
@@ -252,17 +326,22 @@ const GhostMode = () => {
               />
             )}
             
-            {/* SPBG marker */}
-            {nearestSpbg && (
-              <Marker
-                coordinate={{
-                  latitude: parseFloat(nearestSpbg.latitude),
-                  longitude: parseFloat(nearestSpbg.longitude),
-                }}
-                title={nearestSpbg.spbg_name || nearestSpbg.spbg_location}
-                pinColor="green"
-              />
-            )}
+            {/* All SPBG markers */}
+            {allSpbgs.map((spbg) => {
+              const isNearest = nearestSpbg && nearestSpbg.id === spbg.id;
+              return (
+                <Marker
+                  key={spbg.id}
+                  coordinate={{
+                    latitude: parseFloat(spbg.latitude),
+                    longitude: parseFloat(spbg.longitude),
+                  }}
+                  title={spbg.spbg_name || spbg.spbg_location}
+                  description={spbg.spbg_location}
+                  pinColor={isNearest ? "red" : "green"}
+                />
+              );
+            })}
           </MapView>
 
           {/* Distance overlay showing how many meters left to SPBG */}
