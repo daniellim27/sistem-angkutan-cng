@@ -2,135 +2,66 @@ version: '3.8'
 
 services:
 
-  # PostgreSQL Database
-
   postgres:
-
     image: postgres:17.5
-
     container_name: cng-postgres
-
     restart: unless-stopped
-
     environment:
-
       POSTGRES_DB: cng_db
-
       POSTGRES_USER: cng_user
-
       POSTGRES_PASSWORD: awak1234
-
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
-
-    ports:
-
-      - "5435:5432"
-
+    # No ports exposed — only accessible within docker network
     volumes:
-
       - postgres_data:/var/lib/postgresql/data
-
-      # REMOVE THE MIGRATION FOLDER (Postgres cannot run JS migrations)
-
-      # - ./backend/src/migrations:/docker-entrypoint-initdb.d/migrations:ro
-
-      # Seeder is OK ONLY if it's SQL
-
       - ./backend/src/migrations/seeder.sql:/docker-entrypoint-initdb.d/seeder.sql:ro
-
     networks:
-
       - angkutan_network
-
     healthcheck:
-
       test: ["CMD-SHELL", "pg_isready -U cng_user -d cng_db"]
-
       interval: 10s
-
       timeout: 5s
-
       retries: 5
 
-  # Backend API
-
   backend:
-
     build:
-
       context: ./backend
-
       dockerfile: Dockerfile
-
     container_name: cng-backend
-
     restart: unless-stopped
-
+    env_file:
+      - ./backend/.env
     environment:
-
-      NODE_ENV: development
-
-      # DATABASE CONFIG (CORRECT)
-
+      NODE_ENV: production
       DB_HOST: postgres
-
       DB_NAME: cng_db
-
       DB_PASSWORD: awak1234
-
       DB_PORT: 5432
-
       DB_USER: cng_user
-
       DB_DIALECT: postgres
-
       DB_SSL: "false"
-
       PORT: 3000
-
-      # IMPORTANT: ENABLE AUTOMATIC MIGRATION
-
       AUTO_MIGRATE: "true"
-
     ports:
-
       - "3000:3000"
-
     volumes:
-
       - ./backend/uploads:/app/uploads
-
       - ./backend/src/config:/app/src/config:ro
-
     networks:
-
       - angkutan_network
-
     depends_on:
-
       postgres:
-
         condition: service_healthy
-
     healthcheck:
-
       test: ["CMD", "curl", "-f", "http://localhost:3000/"]
-
       interval: 30s
-
       timeout: 10s
-
       retries: 3
 
 volumes:
-
   postgres_data:
-
     driver: local
 
 networks:
-
   angkutan_network:
-
     driver: bridge
-
