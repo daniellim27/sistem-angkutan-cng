@@ -91,8 +91,14 @@ class ScheduledScrapingService {
       
       logger.info(`Starting scheduled GPS scraping cycle #${this.stats.totalRuns}`);
       logger.info(`Mode: ${enableConcurrent ? `concurrent (${maxTabs} tabs)` : 'sequential'}`);
-      
-      const gpsData = await this.scraper.runScrapingCycle(enableConcurrent);
+
+      const SCRAPING_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max per cycle
+      const gpsData = await Promise.race([
+        this.scraper.runScrapingCycle(enableConcurrent),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Scraping cycle timed out after 5 minutes')), SCRAPING_TIMEOUT_MS)
+        )
+      ]);
       
       this.stats.successfulRuns++;
       this.stats.lastError = null;
