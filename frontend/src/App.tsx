@@ -53,6 +53,7 @@ import DepositGroupManagement from "./pages/DepositGroupManagement";
 import DriverExpenseManagement from "./pages/DriverExpenseManagement";
 import LiveTracking from "./pages/LiveTracking";
 import TrackDeliveryDetail from "./pages/TrackDeliveryDetail";
+import NotificationsPage from "./pages/NotificationsPage";
 import { Toaster } from "react-hot-toast";
 
 import ComprehensiveRitaseTable from "./pages/Ritase/ComprehensiveRitaseTable";
@@ -180,6 +181,7 @@ function App() {
           <Route path="driver-expenses" element={<DriverExpenseManagement />} />
           <Route path="live-tracking" element={<LiveTracking />} />
           <Route path="track-delivery/:id" element={<TrackDeliveryDetail />} />
+          <Route path="notifications" element={<NotificationsPage />} />
         </Route>
       </Routes>
     </Router>

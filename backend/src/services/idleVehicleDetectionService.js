@@ -269,7 +269,7 @@ class IdleVehicleDetectionService {
         if (spbgCheck.isNear) {
           // Vehicle is near SPBG, skip notification
           skippedCount++;
-          logger.debug(`Vehicle ${vehicle.plate_number} (ID: ${vehicle.id}) is idle but near SPBG, skipping notification`);
+          logger.debug(`Vehicle ${vehicle.license_plate} (ID: ${vehicle.id}) is idle but near SPBG, skipping notification`);
           continue;
         }
 
@@ -279,7 +279,7 @@ class IdleVehicleDetectionService {
         if (customerCheck.isNear) {
           // Vehicle is near customer, skip notification
           skippedCount++;
-          logger.debug(`Vehicle ${vehicle.plate_number} (ID: ${vehicle.id}) is idle but near customer, skipping notification`);
+          logger.debug(`Vehicle ${vehicle.license_plate} (ID: ${vehicle.id}) is idle but near customer, skipping notification`);
           continue;
         }
 
@@ -288,7 +288,7 @@ class IdleVehicleDetectionService {
         const now = Date.now();
         if (lastNotificationTime && (now - lastNotificationTime) < (this.notificationCooldownMinutes * 60 * 1000)) {
           skippedCount++;
-          logger.debug(`Vehicle ${vehicle.plate_number} (ID: ${vehicle.id}) notification on cooldown`);
+          logger.debug(`Vehicle ${vehicle.license_plate} (ID: ${vehicle.id}) notification on cooldown`);
           continue;
         }
 
@@ -298,8 +298,8 @@ class IdleVehicleDetectionService {
           
           await Notification.create({
             type: 'idle_vehicle',
-            title: `Kendaraan Idle: ${vehicle.plate_number || vehicle.device_id}`,
-            message: `Kendaraan ${vehicle.plate_number || vehicle.device_id} telah idle selama ${idleDurationHours.toFixed(1)} jam. Lokasi: ${lat.toFixed(6)}, ${lng.toFixed(6)}. Jarak dari SPBG terdekat: ${(spbgCheck.distance / 1000).toFixed(2)} km.`,
+            title: `Kendaraan Idle: ${vehicle.license_plate || vehicle.device_id}`,
+            message: `Kendaraan ${vehicle.license_plate || vehicle.device_id} telah idle selama ${idleDurationHours.toFixed(1)} jam. Lokasi: ${lat.toFixed(6)}, ${lng.toFixed(6)}. Jarak dari SPBG terdekat: ${(spbgCheck.distance / 1000).toFixed(2)} km.`,
             vehicle_id: vehicle.id,
             driver_id: vehicle.driver_id,
             latitude: lat,
@@ -313,7 +313,7 @@ class IdleVehicleDetectionService {
                 id: spbgCheck.nearestSpbg.id,
                 name: spbgCheck.nearestSpbg.spbg_name || spbgCheck.nearestSpbg.spbg_location
               } : null,
-              vehiclePlateNumber: vehicle.plate_number,
+              vehicleLicensePlate: vehicle.license_plate,
               deviceId: vehicle.device_id
             }
           });
@@ -321,7 +321,7 @@ class IdleVehicleDetectionService {
           this.lastNotificationTime.set(vehicle.id, now);
           notifiedCount++;
           
-          logger.info(`⚠️ Created idle vehicle notification for vehicle ${vehicle.plate_number} (ID: ${vehicle.id})`);
+          logger.info(`⚠️ Created idle vehicle notification for vehicle ${vehicle.license_plate} (ID: ${vehicle.id})`);
         } catch (error) {
           logger.error(`Error creating notification for vehicle ${vehicle.id}:`, error);
         }

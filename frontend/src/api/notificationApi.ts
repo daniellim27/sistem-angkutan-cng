@@ -77,3 +77,63 @@ export const deleteNotification = async (id: number): Promise<{ success: boolean
   return response.data;
 };
 
+export interface IdleVehicleSummary {
+  vehicle_id: number;
+  license_plate: string | null;
+  device_id: string | null;
+  driver: { id: number; username: string } | null;
+  latest_notification: Notification | null;
+  unread_count: number;
+  total_count: number;
+  latest_idle_duration_hours: number | null;
+  latest_latitude: number | null;
+  latest_longitude: number | null;
+  latest_created_at: string;
+}
+
+export interface IdleSummaryResponse {
+  success: boolean;
+  vehicles: IdleVehicleSummary[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+  totalUnread: number;
+}
+
+export const getIdleSummary = async (
+  page: number = 1,
+  limit: number = 20,
+  isRead?: boolean,
+  search?: string
+): Promise<IdleSummaryResponse> => {
+  const params = new URLSearchParams();
+  params.append('page', page.toString());
+  params.append('limit', limit.toString());
+  if (isRead !== undefined) params.append('is_read', isRead.toString());
+  if (search) params.append('search', search);
+
+  const response = await apiClient.get(`/notifications/idle-summary?${params.toString()}`);
+  return response.data;
+};
+
+export const getVehicleNotifications = async (
+  vehicleId: number,
+  page: number = 1,
+  limit: number = 20
+): Promise<NotificationResponse> => {
+  const params = new URLSearchParams();
+  params.append('page', page.toString());
+  params.append('limit', limit.toString());
+
+  const response = await apiClient.get(`/notifications/vehicle/${vehicleId}?${params.toString()}`);
+  return response.data;
+};
+
+export const markVehicleAsRead = async (vehicleId: number): Promise<{ success: boolean; updatedCount: number }> => {
+  const response = await apiClient.patch(`/notifications/vehicle/${vehicleId}/read`);
+  return response.data;
+};
+

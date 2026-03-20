@@ -1,6 +1,6 @@
 // src/components/MainLayout.tsx
 import React, { useState, useEffect, useRef } from "react";
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import DropdownNavSection from "./ui/DropdownNavSection";
 import { Bell, X, Check } from "lucide-react";
@@ -9,6 +9,7 @@ import { getNotifications, getUnreadCount, markAsRead, markAllAsRead, deleteNoti
 const MainLayout = () => {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [hasNotifications, setHasNotifications] = useState(false);
@@ -175,6 +176,7 @@ const MainLayout = () => {
     if (path.startsWith("/customers") && path.includes("/nota-kecil"))
       return "Nota Kecil Management";
     if (path.startsWith("/customers")) return "Customer Management";
+    if (path.startsWith("/notifications")) return "Notifikasi Kendaraan Idle";
 
     return "CNG Dashboard";
   };
@@ -481,96 +483,59 @@ const MainLayout = () => {
                 )}
               </button>
               
-              {/* Notification Dropdown */}
+              {/* Notification Dropdown - Quick Preview */}
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-[32rem] overflow-hidden flex flex-col">
-                  <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50 overflow-hidden flex flex-col">
+                  <div className="p-3 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">Notifikasi</h3>
                       {unreadCount > 0 && (
-                        <span className="px-2 py-0.5 text-xs font-medium text-white bg-red-500 rounded-full">
-                          {unreadCount} new
+                        <span className="px-1.5 py-0.5 text-xs font-medium text-white bg-red-500 rounded-full">
+                          {unreadCount}
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      {unreadCount > 0 && (
-                        <button
-                          onClick={handleMarkAllAsRead}
-                          className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                          title="Mark all as read"
-                        >
-                          Mark all read
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setShowNotifications(false)}
-                        className="text-gray-400 hover:text-gray-600 transition-colors"
-                        aria-label="Close notifications"
-                      >
-                        <X className="h-5 w-5" />
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => setShowNotifications(false)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                      aria-label="Close notifications"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
-                  <div className="overflow-y-auto flex-1">
+                  <div className="max-h-64 overflow-y-auto">
                     {loadingNotifications ? (
-                      <div className="p-8 text-center">
-                        <p className="text-gray-500">Loading notifications...</p>
+                      <div className="p-6 text-center">
+                        <p className="text-gray-400 text-sm">Memuat...</p>
                       </div>
                     ) : notifications.length === 0 ? (
-                      <div className="p-8 text-center">
-                        <p className="text-gray-500">No notifications at this time</p>
+                      <div className="p-6 text-center">
+                        <p className="text-gray-400 text-sm">Tidak ada notifikasi</p>
                       </div>
                     ) : (
-                      <div className="divide-y divide-gray-200">
-                        {notifications.map((notification) => (
+                      <div className="divide-y divide-gray-100">
+                        {notifications.slice(0, 5).map((notification) => (
                           <div
                             key={notification.id}
-                            className={`p-4 hover:bg-gray-50 transition-colors ${
-                              !notification.is_read ? 'bg-blue-50' : ''
+                            className={`px-3 py-2.5 hover:bg-gray-50 transition-colors cursor-pointer ${
+                              !notification.is_read ? 'bg-blue-50/50' : ''
                             }`}
+                            onClick={() => {
+                              setShowNotifications(false);
+                              navigate('/notifications');
+                            }}
                           >
-                            <div className="flex justify-between items-start gap-2">
+                            <div className="flex items-start gap-2">
+                              {!notification.is_read && (
+                                <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-500 flex-shrink-0"></span>
+                              )}
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-start gap-2">
-                                  {!notification.is_read && (
-                                    <span className="mt-1.5 h-2 w-2 rounded-full bg-blue-500 flex-shrink-0"></span>
-                                  )}
-                                  <div className="flex-1 min-w-0">
-                                    <h4 className="text-sm font-semibold text-gray-900 truncate">
-                                      {notification.title}
-                                    </h4>
-                                    <p className="text-sm text-gray-600 mt-1 line-clamp-2">
-                                      {notification.message}
-                                    </p>
-                                    {notification.vehicle && (
-                                      <p className="text-xs text-gray-500 mt-1">
-                                        Vehicle: {notification.vehicle.license_plate || notification.vehicle.device_id}
-                                      </p>
-                                    )}
-                                    <p className="text-xs text-gray-400 mt-1">
-                                      {new Date(notification.created_at).toLocaleString()}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                {!notification.is_read && (
-                                  <button
-                                    onClick={() => handleMarkAsRead(notification.id)}
-                                    className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
-                                    title="Mark as read"
-                                  >
-                                    <Check className="h-4 w-4" />
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => handleDelete(notification.id)}
-                                  className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                                  title="Delete"
-                                >
-                                  <X className="h-4 w-4" />
-                                </button>
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {notification.title}
+                                </p>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  {new Date(notification.created_at).toLocaleString('id-ID')}
+                                </p>
                               </div>
                             </div>
                           </div>
@@ -578,6 +543,13 @@ const MainLayout = () => {
                       </div>
                     )}
                   </div>
+                  <Link
+                    to="/notifications"
+                    onClick={() => setShowNotifications(false)}
+                    className="block text-center text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 py-2.5 border-t border-gray-200 transition-colors"
+                  >
+                    Lihat Semua Notifikasi
+                  </Link>
                 </div>
               )}
             </div>

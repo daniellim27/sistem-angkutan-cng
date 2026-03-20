@@ -20,6 +20,24 @@ router.get('/', notificationController.getNotifications);
 router.get('/unread-count', notificationController.getUnreadCount);
 
 /**
+ * GET /api/notifications/idle-summary
+ * Get idle vehicle notifications grouped by vehicle
+ */
+router.get('/idle-summary', notificationController.getIdleSummary);
+
+/**
+ * GET /api/notifications/vehicle/:vehicleId
+ * Get all notifications for a specific vehicle
+ */
+router.get('/vehicle/:vehicleId', notificationController.getVehicleNotifications);
+
+/**
+ * PATCH /api/notifications/vehicle/:vehicleId/read
+ * Mark all notifications for a specific vehicle as read
+ */
+router.patch('/vehicle/:vehicleId/read', notificationController.markVehicleAsRead);
+
+/**
  * PATCH /api/notifications/:id/read
  * Mark a notification as read
  */
